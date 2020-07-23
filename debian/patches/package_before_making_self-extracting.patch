@@ -1,0 +1,38 @@
+--- a/compile.sh
++++ b/compile.sh
+@@ -31,7 +31,7 @@
+ 
+ source scripts/bootstrap/buildenv.sh
+ 
+-mkdir -p output
++mkdir -p output/usr/lib/bazel/install
+ : ${BAZEL:=}
+ 
+ #
+@@ -68,13 +68,6 @@
+   --host_platform=@local_config_platform//:host \
+   --platforms=@local_config_platform//:host \
+   || fail "Could not build Bazel"
+-bazel_bin_path="$(get_bazel_bin_path)/src/bazel_nojdk${EXE_EXT}"
+-[ -e "$bazel_bin_path" ] \
+-  || fail "Could not find freshly built Bazel binary at '$bazel_bin_path'"
+-cp -f "$bazel_bin_path" "output/bazel${EXE_EXT}" \
+-  || fail "Could not copy '$bazel_bin_path' to 'output/bazel${EXE_EXT}'"
+-chmod 0755 "output/bazel${EXE_EXT}"
+-BAZEL="$(pwd)/output/bazel${EXE_EXT}"
+ 
+ clear_log
+-display "Build successful! Binary is here: ${BAZEL}"
++display "Build successful!"
+--- a/src/package-bazel.sh
++++ b/src/package-bazel.sh
+@@ -99,7 +99,8 @@
+ 
+ # Zero timestamps.
+ (cd $PACKAGE_DIR; xargs touch -t 198001010000.00) < files.list
+-
++# Hardcoding package install path since build variables are not preserved here
++(cd $PACKAGE_DIR; cp -r -t "/build/bazel-3.0.0+dfsg1/output/usr/lib/bazel/install" *)
+ if [[ "$DEV_BUILD" -eq 1 ]]; then
+   # Create output zip with lowest compression, but fast.
+   ZIP_ARGS="-q1DX@"

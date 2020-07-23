@@ -1,0 +1,8 @@
+#!/usr/bin/dh-exec
+usr/share/java/bazel-3.0.0.jar usr/lib/bazel/install/A-server.jar
+usr/share/java/bazel-3.0.0.jar usr/share/java/bazel.jar
+usr/libexec/bazel/build-runfiles usr/lib/bazel/install/build-runfiles
+usr/libexec/bazel/daemonize usr/lib/bazel/install/daemonize
+usr/lib/${DEB_HOST_MULTIARCH}/bazel/libunix.so usr/lib/bazel/install/libunix.so
+usr/libexec/bazel/linux-sandbox usr/lib/bazel/install/linux-sandbox
+usr/libexec/bazel/process-wrapper usr/lib/bazel/install/process-wrapper

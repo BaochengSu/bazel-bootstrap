@@ -1,0 +1,7 @@
+mock_repos.patch
+remove_grpc_api.patch
+remove_javac.patch
+remove_license_deps.patch
+replace_grpc_java_plugin.patch
+WORKSPACE.patch
+package_before_making_self-extracting.patch

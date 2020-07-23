@@ -1,0 +1,8 @@
+Bazel for Debian
+---------------
+
+This build system is not currently considered stable in Debian. Furthermore,
+this is only a bootstrap version to allow required initial builds. Please
+report any bugs or unusual indications!
+
+ -- Olek Wojnar <olek@debian.org>  Fri, 10 Apr 2020 12:02:44 -0400

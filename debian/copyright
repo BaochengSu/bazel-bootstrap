@@ -1,0 +1,227 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: bazel
+Upstream-Contact: bazel-dev@googlegroups.com
+Source: https://github.com/bazelbuild/bazel
+ Modified to remove files that are separately packaged in Debian.
+Files-Excluded: derived
+                third_party/allocation_instrumenter/LICENSE
+                third_party/android_common
+                third_party/animal_sniffer
+                third_party/antlr
+                third_party/apache*
+                third_party/api_client
+                third_party/asm
+                third_party/auth
+                third_party/auto
+                third_party/bazel_bootstrap
+                third_party/bytebuddy
+                third_party/caffeine
+                third_party/checker_framework*
+                third_party/compile_testing
+                third_party/css
+                third_party/diffutils
+                third_party/error_prone
+                third_party/flogger
+                third_party/grpc/compiler
+                third_party/grpc/*.patch
+                third_party/grpc/*.md
+                third_party/grpc/*.txt
+                third_party/grpc/LICENSE
+                third_party/grpc/PATENTS
+                third_party/gson
+                third_party/guava
+                third_party/hamcrest
+                third_party/hungarian_algorithm
+                third_party/ijar/test/invokedynamic
+                third_party/ijar/test/methodparameters
+                third_party/ijar/test/nestmates
+                third_party/ijar/test/typeannotations2
+                third_party/ijar/test/*.java
+                third_party/ijar/test/*.sh
+                third_party/jackson2
+                third_party/jarjar/java
+                third_party/jarjar/LICENSE
+                third_party/java/android_databinding
+                third_party/java/aosp_gradle_core/java
+                third_party/java/aosp_gradle_core/LICENSE
+                third_party/java/j2objc-annotations
+                third_party/java/jacoco/LICENSE
+                third_party/java/javapoet/LICENSE
+                third_party/java/jcommander/LICENSE
+                third_party/java/jdk/README.md
+                third_party/java/jdk/langtools/LICENSE
+                third_party/java/jdk/langtools/*.srcjar
+                third_party/java/proguard/proguard5.3.3
+                third_party/java-diff-utils
+                third_party/javascript
+                third_party/javax*
+                third_party/jaxb
+                third_party/jcip_annotations
+                third_party/jetbrains_annotations
+                third_party/jetifier
+                third_party/jformatstring/java
+                third_party/jformatstring/LICENSE
+                third_party/jimfs
+                third_party/jsr305
+                third_party/jsr330_inject
+                third_party/junit
+                third_party/juniversalchardet
+                third_party/kotlin_stdlib
+                third_party/mockito
+                third_party/netty
+                third_party/netty_tcnative
+                third_party/objenesis
+                third_party/opencensus
+                third_party/pcollections
+                third_party/perfmark
+                third_party/protobuf/LICENSE
+                third_party/py/abseil/absl*
+                third_party/py/abseil/PKG-INFO
+                third_party/py/abseil/README.md
+                third_party/py/abseil/setup.*
+                third_party/py/concurrent/futures
+                third_party/py/concurrent/*.py
+                third_party/py/concurrent/*.md
+                third_party/py/concurrent/LICENSE
+                third_party/py/gflags/debian
+                third_party/py/gflags/gflags
+                third_party/py/gflags/A*
+                third_party/py/gflags/C*
+                third_party/py/gflags/M*
+                third_party/py/gflags/P*
+                third_party/py/gflags/R*
+                third_party/py/gflags/*.py
+                third_party/py/mock/docs
+                third_party/py/mock/html
+                third_party/py/mock/mock*
+                third_party/py/mock/tests
+                third_party/py/mock/*.py
+                third_party/py/mock/L*
+                third_party/py/mock/M*
+                third_party/py/mock/P*
+                third_party/py/mock/R*
+                third_party/py/mock/setup*
+                third_party/py/mock/tox*
+                third_party/py/six/documentation
+                third_party/py/six/*six*
+                third_party/py/six/C*
+                third_party/py/six/L*
+                third_party/py/six/M*
+                third_party/py/six/P*
+                third_party/py/six/R*
+                third_party/py/six/setup*
+                third_party/tomcat_annotations_api
+                third_party/truth
+                third_party/truth8
+                third_party/turbine
+                third_party/xz
+                third_party/zlib/.gitignore
+                third_party/zlib/a*
+                third_party/zlib/c*
+                third_party/zlib/d*
+                third_party/zlib/e*
+                third_party/zlib/m*
+                third_party/zlib/n*
+                third_party/zlib/o*
+                third_party/zlib/q*
+                third_party/zlib/t*
+                third_party/zlib/w*
+                third_party/zlib/z*
+                third_party/zlib/C*
+                third_party/zlib/F*
+                third_party/zlib/I*
+                third_party/zlib/L*
+                third_party/zlib/M*
+                third_party/zlib/R*
+                third_party/zlib/*.c
+                third_party/zlib/*.h
+                */*.jar
+
+Files: *
+Copyright: 2002-2020 Google Inc.
+                     The Bazel Authors <bazel-dev@googlegroups.com>
+					 Anthony Bellissimo <twon33@gmail.com>
+					 Volker Braun <vbraun.name@gmail.com>
+					 Thomas Broyer <t.broyer@ltgt.net>
+					 Steven Dee <steven@choosemuse.com>
+					 Alan Donovan <adonovan@google.com>
+					 Thiago Farina <tfarina@chromium.org>
+					 Peter Foley <pefoley2@pefoley.com>
+					 Roland Huß <roland@jolokia.org>
+					 Erik Kuefler <ekuefler@gmail.com>
+					 liuhuahang <liuhuahang@zerus.co>
+					 David Mankin <dmankin@atlassian.com>
+					 Kamal Marhubi <kamal@marhubi.com>
+					 Carl Mastrangelo <carl-mastrangelo@users.noreply.github.com>
+					 Kyle Moffett <kyle@moffetthome.net>
+					 NicholasGorski <nicholasgorski@outlook.com>
+					 Allen Porter <allen.porter@gmail.com>
+					 Doug Rabson <dfr@rabson.org>
+					 David Santiago <david.santiago@gmail.com>
+					 John Shimek <varikin@gmail.com>
+					 Brian Silverman <bsilver16384@gmail.com>
+					 John Sullivan <john.t.sullivan@gmail.com>
+					 Topher <topher.the.geek@gmail.com>
+					 Zhong Wang <linuxerwang@gmail.com>
+					 Kevin Watts <kevinwwatts@gmail.com>
+					 Jie Yu <yujie.jay@gmail.com>
+					 Andrew Z Allen <me@andrewzallen.com>
+					 Ming Zhao <mzhao@luminatewireless.com>
+License: Apache-2.0
+
+Files: third_party/aws-sdk-auth-lite/src/*
+Copyright: 1998-2010 AOL Inc.
+           2006-2009 James Murty
+           2010-2018 Amazon.com, Inc. or its affiliates
+           2011-2018 Amazon Technologies, Inc.
+License: Apache-2.0
+
+Files: third_party/grpc/*
+Copyright: 2016-2019 The gRPC Authors
+License: Apache-2.0
+
+Files: src/main/cpp/util/md5.cc
+Copyright: 1991-1992 RSA Data Security, Inc.
+           2014 The Bazel Authors
+License: Apache-2.0 (see detached) and RSA Make Use License (see below)
+  Copyright (C) 1991-2, RSA Data Security, Inc. Created 1991. All
+  rights reserved.
+ .
+  License to copy and use this software is granted provided that it
+  is identified as the "RSA Data Security, Inc. MD5 Message-Digest
+  Algorithm" in all material mentioning or referencing this software
+  or this function.
+ .
+  License is also granted to make and use derivative works provided
+  that such works are identified as "derived from the RSA Data
+  Security, Inc. MD5 Message-Digest Algorithm" in all material
+  mentioning or referencing the derived work.
+ .
+  RSA Data Security, Inc. makes no representations concerning either
+  the merchantability of this software or the suitability of this
+  software for any particular purpose. It is provided "as is"
+  without express or implied warranty of any kind.
+ .
+  These notices must be retained in any copies of any part of this
+  documentation and/or software.
+
+Files: debian/*
+Copyright: 2020 Olek Wojnar <olek@debian.org>
+           2020 Yun Peng <pcloudy@google.com>
+License: Apache-2.0
+
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+ .
+ https://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ .
+ On Debian systems, the complete text of the Apache version 2.0 license
+ can be found in "/usr/share/common-licenses/Apache-2.0".

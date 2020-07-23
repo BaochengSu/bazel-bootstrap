@@ -1,0 +1,6 @@
+Bug-Database: https://github.com/bazelbuild/bazel/issues
+Bug-Submit: https://github.com/bazelbuild/bazel/issues/new
+Documentation: https://docs.bazel.build/versions/master/user-manual.html
+Homepage: https://bazel.build/
+Repository: https://github.com/bazelbuild/bazel.git
+Repository-Browse: https://github.com/bazelbuild/bazel

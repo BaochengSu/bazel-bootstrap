@@ -1,0 +1,94 @@
+#!/usr/bin/make -f
+export DH_VERBOSE = 1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/buildflags.mk
+#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
+#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+
+# May still need this
+#export BAZEL_WRKDIR = debian/tmp
+export VERBOSE = yes
+export DESTDIR = ${CURDIR}/debian/bazel-bootstrap
+
+# Bypass ccache
+export CCACHE_DISABLE = 1
+export CCACHE_TEMPDIR = ${CURDIR}/debian/ccachetmp
+
+# Ensure packages build with no Internet access
+export http_proxy=127.0.0.1:9
+export https_proxy=127.0.0.1:9
+
+# Use the local JDK
+export EXTRA_BAZEL_ARGS = "\
+	--host_javabase=@local_jdk//:jdk \
+	--define=distribution=debian \
+	--noremote_accept_cached \
+	--verbose_failures \
+	--compilation_mode dbg \
+	--action_env=CPPFLAGS \
+	--action_env=CFLAGS \
+	--action_env=CXXFLAGS \
+	--action_env=LDFLAGS \
+	--sandbox_debug \
+	--sandbox_writable_path ~/.ccache/tmp \
+	--action_env=CCACHE_DISABLE \
+	--action_env=CCACHE_TEMPDIR \
+	--override_repository=com_google_protobuf=${CURDIR}/tools/distributions/debian/protobuf \
+	--override_repository=remote_java_tools_linux=${CURDIR}/mock_repos/remote_java_tools_linux \
+	--override_repository=bazel_skylib=${CURDIR}/mock_repos/bazel_skylib \
+	--override_repository=io_bazel_skydoc=${CURDIR}/mock_repos/bazel_skydoc \
+	--override_repository=rules_pkg=${CURDIR}/mock_repos/rules_pkg \
+	--override_repository=rules_cc=${CURDIR}/mock_repos/rules_cc \
+	--override_repository=rules_java=${CURDIR}/mock_repos/rules_java \
+	--override_repository=rules_proto=${CURDIR}/mock_repos/rules_proto \
+	--override_repository=platforms=${CURDIR}/mock_repos/platforms \
+	"
+
+# May still need this
+#export EXTRA_BAZEL_ARGS="$EXTRA_BAZEL_ARGS --output_dir=debian/tmp"
+
+export PROTOC = /usr/bin/protoc
+export GRPC_JAVA_PLUGIN = /usr/bin/grpc_java_plugin
+
+%:
+	dh $@ --with python3
+
+override_dh_auto_build:
+	mkdir -p ${CURDIR}/debian/ccachetmp
+	./compile.sh
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf derived
+	rm -f output
+	rm -f bazel-*
+
+override_dh_install:
+	mkdir -p debian/tmp
+	rm output/usr/lib/bazel/install/xcode-locator
+	mv output/* debian/tmp
+	dh_install
+
+override_dh_fixperms:
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/build_defs/hash/sha256.py
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/runfiles/runfiles.cc
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/runfiles/runfiles.h
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/StdRedirect.dylib
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/realpath
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/install_base_key
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/platforms/BUILD
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/platforms/cpu/BUILD
+	chmod a-x ${DESTDIR}/usr/lib/bazel/install/platforms/os/BUILD
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/android/build_java8_legacy_dex.sh
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/android/desugar.sh
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/android/dex_list_obfuscator.sh
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/buildstamp/get_workspace_status
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/build_interface_so
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/gcov_stub
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/mcov_stub
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/protobuf_support
+	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/python/pywrapper_template.txt
+	dh_fixperms

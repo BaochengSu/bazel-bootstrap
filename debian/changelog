@@ -1,0 +1,5 @@
+bazel-bootstrap (3.4.0+ds-1) unstable; urgency=medium
+
+  * Initial release (Closes: #782654)
+
+ -- Olek Wojnar <olek@debian.org>  Sun, 19 Jul 2020 00:25:48 -0400

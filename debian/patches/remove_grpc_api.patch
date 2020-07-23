@@ -1,0 +1,18 @@
+Description: Ignore grpc-api
+ It does not exist in grpc-java 1.20.0. Remove this patch once a newer version
+ of grpc-java is in Debian.
+Author: Yun Peng <pcloudy@google.com>
+Origin: upstream, https://github.com/meteorcloudy/bazel/commit/1c38681aec9dee4eeeeac6196154c01e67878d65
+Forwarded: not-needed
+Last-Update: 2020-07-22
+
+--- a/tools/distributions/debian/debian_java.BUILD
++++ b/tools/distributions/debian/debian_java.BUILD
+@@ -439,7 +439,6 @@
+ filegroup(
+     name = "bootstrap-grpc-jars",
+     srcs = [
+-        "grpc-api.jar",
+         "grpc-auth.jar",
+         "grpc-context.jar",
+         "grpc-core.jar",

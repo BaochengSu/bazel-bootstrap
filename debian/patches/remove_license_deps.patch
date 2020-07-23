@@ -1,0 +1,45 @@
+Description: Remove license dependencies
+ For third-party software that is not bundled in the Debian source tarball.
+Author: Yun Peng <pcloudy@google.com>
+Origin: upstream, https://github.com/meteorcloudy/bazel/commit/1c38681aec9dee4eeeeac6196154c01e67878d65
+Forwarded: not-needed
+Last-Update: 2020-07-22
+
+--- a/src/main/java/com/google/devtools/build/lib/runtime/commands/license/BUILD
++++ b/src/main/java/com/google/devtools/build/lib/runtime/commands/license/BUILD
+@@ -11,11 +11,8 @@
+ )
+ 
+ # Satisfy the rules in runtime/commands/BUILD which use a generated LICENSE file in Bazel open source
+-merge_licenses(
++genrule(
+     name = "license",
+-    srcs = [
+-        "//:LICENSE",
+-        "//third_party:srcs",
+-    ],
+-    out = "LICENSE",
++    cmd = "touch $@",
++    outs = ["LICENSE"],
+ )
+--- a/third_party/jarjar/BUILD
++++ b/third_party/jarjar/BUILD
+@@ -13,7 +13,6 @@
+     name = "embedded_build_and_license",
+     srcs = [
+         "BUILD.tools",
+-        "LICENSE",
+     ],
+ )
+ 
+--- a/third_party/zlib/BUILD
++++ b/third_party/zlib/BUILD
+@@ -10,7 +10,7 @@
+ 
+ filegroup(
+     name = "embedded_tools",
+-    srcs = glob(["*.c"]) + glob(["*.h"]) + [":embedded_build_file"] + ["LICENSE.txt"],
++    srcs = glob(["*.c"]) + glob(["*.h"]) + [":embedded_build_file"],
+     visibility = ["//visibility:public"],
+ )
+ 
