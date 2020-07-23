@@ -4,10 +4,10 @@ Priority: optional
 Maintainer: Debian Bazel Team <team+bazel@tracker.debian.org>
 Uploaders: Olek Wojnar <olek@debian.org>
 Build-Depends: debhelper-compat (= 13),
-               dh-exec,
                dh-python,
                fonts-font-awesome,
                fonts-glyphicons-halflings,
+               jdupes,
                libandroid-tools-common-java,
                libandroid-tools-repository-java,
                libandroid-layoutlib-api-java,

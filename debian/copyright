@@ -183,7 +183,7 @@ License: Apache-2.0
 Files: src/main/cpp/util/md5.cc
 Copyright: 1991-1992 RSA Data Security, Inc.
            2014 The Bazel Authors
-License: Apache-2.0 (see detached) and RSA Make Use License (see below)
+License: Apache-2.0 and RSA_Make_Use
   Copyright (C) 1991-2, RSA Data Security, Inc. Created 1991. All
   rights reserved.
  .

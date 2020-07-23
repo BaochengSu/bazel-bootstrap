@@ -1,0 +1,4 @@
+# Path is correct
+bazel-bootstrap: repeated-path-segment
+# Test data
+bazel-bootstrap: compressed-duplicate

@@ -20,7 +20,7 @@ export http_proxy=127.0.0.1:9
 export https_proxy=127.0.0.1:9
 
 # Use the local JDK
-export EXTRA_BAZEL_ARGS = "\
+export EXTRA_BAZEL_ARGS = \
 	--host_javabase=@local_jdk//:jdk \
 	--define=distribution=debian \
 	--noremote_accept_cached \
@@ -42,11 +42,10 @@ export EXTRA_BAZEL_ARGS = "\
 	--override_repository=rules_cc=${CURDIR}/mock_repos/rules_cc \
 	--override_repository=rules_java=${CURDIR}/mock_repos/rules_java \
 	--override_repository=rules_proto=${CURDIR}/mock_repos/rules_proto \
-	--override_repository=platforms=${CURDIR}/mock_repos/platforms \
-	"
+	--override_repository=platforms=${CURDIR}/mock_repos/platforms
 
 # May still need this
-#export EXTRA_BAZEL_ARGS="$EXTRA_BAZEL_ARGS --output_dir=debian/tmp"
+#export EXTRA_BAZEL_ARGS=$EXTRA_BAZEL_ARGS --output_dir=debian/tmp
 
 export PROTOC = /usr/bin/protoc
 export GRPC_JAVA_PLUGIN = /usr/bin/grpc_java_plugin
@@ -66,29 +65,47 @@ override_dh_auto_clean:
 
 override_dh_install:
 	mkdir -p debian/tmp
-	rm output/usr/lib/bazel/install/xcode-locator
+	rm -f output/usr/lib/bazel-bootstrap/install/xcode-locator
+	rm -rf output/usr/lib/bazel-bootstrap/install/embedded_tools/tools/jdk/nosystemjdk
+	mkdir -p output/usr/share/java
+	mv output/usr/lib/bazel-bootstrap/install/A-server.jar output/usr/share/java/bazel-3.4.0.jar
 	mv output/* debian/tmp
 	dh_install
 
+override_dh_installdocs:
+	dh_installdocs
+	mv debian/bazel-bootstrap/usr/lib/bazel-bootstrap/install/embedded_tools/tools/build_defs/pkg/README.md \
+		debian/bazel-bootstrap/usr/share/doc/bazel-bootstrap/README-build_defs.md
+	mv debian/bazel-bootstrap/usr/lib/bazel-bootstrap/install/embedded_tools/tools/config/README.md \
+		debian/bazel-bootstrap/usr/share/doc/bazel-bootstrap/README-config.md
+
+override_dh_link:
+	jdupes -rl debian/bazel-bootstrap/usr
+	dh_link
+
 override_dh_fixperms:
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/build_defs/hash/sha256.py
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/runfiles/runfiles.cc
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/runfiles/runfiles.h
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/StdRedirect.dylib
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/realpath
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/install_base_key
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/platforms/BUILD
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/platforms/cpu/BUILD
-	chmod a-x ${DESTDIR}/usr/lib/bazel/install/platforms/os/BUILD
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/android/build_java8_legacy_dex.sh
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/android/desugar.sh
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/android/dex_list_obfuscator.sh
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/buildstamp/get_workspace_status
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/build_interface_so
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/gcov_stub
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/mcov_stub
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/objc/protobuf_support
-	chmod a+x ${DESTDIR}/usr/lib/bazel/install/embedded_tools/tools/python/pywrapper_template.txt
+	find debian/bazel-bootstrap/usr/lib -type f -print0 2>/dev/null | xargs -0r chmod a-x
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.py
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.cc
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.h
+#	chmod -R a-x ${DESTDIR}/usr/lib/BUILD
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.java
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.proto
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.bzl
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.txt
+#	chmod -R a-x ${DESTDIR}/usr/lib/*.patch
+#	chmod a-x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/StdRedirect.dylib
+#	chmod a-x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/realpath
+#	chmod a-x ${DESTDIR}/usr/lib/bazel-bootstrap/install/install_base_key
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/android/build_java8_legacy_dex.sh
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/android/desugar.sh
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/android/dex_list_obfuscator.sh
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/buildstamp/get_workspace_status
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/build_interface_so
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/gcov_stub
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/mcov_stub
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/protobuf_support
+#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/python/pywrapper_template.txt
 	dh_fixperms

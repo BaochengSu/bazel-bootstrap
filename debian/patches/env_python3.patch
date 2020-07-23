@@ -1,0 +1,166 @@
+Description: Update source code for Python 3
+ Python 2 reached End-of-Life in January 2020. This patch completely
+ removes Python 2 support per release team guidance.
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: https://github.com/bazelbuild/bazel/pull/11201
+Last-Update: 2020-07-23
+
+--- a/src/main/java/com/google/devtools/build/lib/bazel/rules/python/BazelPythonSemantics.java
++++ b/src/main/java/com/google/devtools/build/lib/bazel/rules/python/BazelPythonSemantics.java
+@@ -215,7 +215,7 @@
+      * logic will extract the zip's runfiles into a temporary directory.
+      *
+      * The stub script has a shebang pointing to a first-stage Python interpreter (as of this
+-     * writing "#!/usr/bin/env python"). When a zip file is built on unix, this shebang is also
++     * writing "#!/usr/bin/env python3"). When a zip file is built on unix, this shebang is also
+      * prepended to the final zip artifact. On Windows shebangs are ignored, and the launcher
+      * runs the first stage with an interpreter whose path is passed in as LaunchInfo.
+      */
+@@ -247,7 +247,7 @@
+         PathFragment shExecutable = ShToolchain.getPathOrError(ruleContext);
+         // TODO(#8685): Remove this special-case handling as part of making the proper shebang a
+         // property of the Python toolchain configuration.
+-        String pythonExecutableName = OS.getCurrent() == OS.OPENBSD ? "python3" : "python";
++        String pythonExecutableName = "python3";
+         // NOTE: keep the following line intact to support nix builds
+         String pythonShebang = "#!/usr/bin/env " + pythonExecutableName;
+         ruleContext.registerAction(
+--- a/src/main/java/com/google/devtools/build/lib/bazel/rules/python/python_stub_template.txt
++++ b/src/main/java/com/google/devtools/build/lib/bazel/rules/python/python_stub_template.txt
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env python
++#!/usr/bin/env python3
+ 
+ # This script must retain compatibility with a wide variety of Python versions
+ # since it is run for every py_binary target. Currently we guarantee support
+--- a/src/test/py/bazel/launcher_test.py
++++ b/src/test/py/bazel/launcher_test.py
+@@ -355,7 +355,7 @@
+         'helloworld(', '  name = "hello",', '  out = "hello.txt",', ')'
+     ])
+     foo_py = self.ScratchFile('foo/foo.py', [
+-        '#!/usr/bin/env python',
++        '#!/usr/bin/env python3',
+         'import sys',
+         'if len(sys.argv) == 2:',
+         '  with open(sys.argv[1], "w") as f:',
+@@ -364,7 +364,7 @@
+         '  print("Hello World!")',
+     ])
+     test_py = self.ScratchFile('foo/test.py', [
+-        '#!/usr/bin/env python',
++        '#!/usr/bin/env python3',
+         'import unittest',
+         'class MyTest(unittest.TestCase):',
+         '  def test_dummy(self):',
+--- a/tools/j2objc/j2objc_header_map.py
++++ b/tools/j2objc/j2objc_header_map.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/python2.7
++#!/usr/bin/python3
+ 
+ # Copyright 2017 The Bazel Authors. All rights reserved.
+ #
+--- a/tools/j2objc/j2objc_wrapper.py
++++ b/tools/j2objc/j2objc_wrapper.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/python2.7
++#!/usr/bin/python3
+ 
+ # Copyright 2015 The Bazel Authors. All rights reserved.
+ #
+@@ -25,7 +25,7 @@
+ import errno
+ import multiprocessing
+ import os
+-import Queue
++import queue
+ import re
+ import shutil
+ import subprocess
+@@ -68,7 +68,7 @@
+       os.close(fd)
+   try:
+     j2objc_cmd = [java]
+-    j2objc_cmd.extend(filter(None, jvm_flags.split(',')))
++    j2objc_cmd.extend([_f for _f in jvm_flags.split(',') if _f])
+     j2objc_cmd.extend(['-cp', j2objc, main_class])
+     j2objc_cmd.extend(['@%s' % param_filename])
+     subprocess.check_call(j2objc_cmd, stderr=subprocess.STDOUT)
+@@ -100,13 +100,13 @@
+     None.
+   """
+   dep_mapping = dict()
+-  input_file_queue = Queue.Queue()
+-  output_dep_mapping_queue = Queue.Queue()
+-  error_message_queue = Queue.Queue()
++  input_file_queue = queue.Queue()
++  output_dep_mapping_queue = queue.Queue()
++  error_message_queue = queue.Queue()
+   for objc_file in objc_files:
+     input_file_queue.put(os.path.join(objc_file_root, objc_file))
+ 
+-  for _ in xrange(multiprocessing.cpu_count()):
++  for _ in range(multiprocessing.cpu_count()):
+     t = threading.Thread(target=_ReadDepMapping, args=(input_file_queue,
+                                                        output_dep_mapping_queue,
+                                                        error_message_queue,
+@@ -136,7 +136,7 @@
+   while True:
+     try:
+       input_file = input_file_queue.get_nowait()
+-    except Queue.Empty:
++    except queue.Empty:
+       # No more work left in the queue.
+       return
+ 
+--- a/tools/objc/j2objc_dead_code_pruner.py
++++ b/tools/objc/j2objc_dead_code_pruner.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/python2.7
++#!/usr/bin/python3
+ 
+ # Copyright 2015 The Bazel Authors. All rights reserved.
+ #
+@@ -30,7 +30,7 @@
+ import multiprocessing
+ import os
+ import pipes  # swap to shlex once on Python 3
+-import Queue
++import queue
+ import re
+ import shutil
+ import subprocess
+@@ -162,12 +162,12 @@
+   Returns:
+     None.
+   """
+-  file_queue = Queue.Queue()
++  file_queue = queue.Queue()
+   for input_file, output_file in zip(input_files.split(','),
+                                      output_files.split(',')):
+     file_queue.put((input_file, output_file))
+ 
+-  for _ in xrange(multiprocessing.cpu_count()):
++  for _ in range(multiprocessing.cpu_count()):
+     t = threading.Thread(target=_PruneFile, args=(file_queue,
+                                                   reachable_files,
+                                                   objc_file_path,
+@@ -183,7 +183,7 @@
+   while True:
+     try:
+       input_file, output_file = file_queue.get_nowait()
+-    except Queue.Empty:
++    except queue.Empty:
+       return
+     file_name = os.path.relpath(os.path.splitext(input_file)[0],
+                                 objc_file_path)
+@@ -209,7 +209,7 @@
+   duplicated_files = []
+   dict_with_duplicates = dict()
+ 
+-  for source_files in archive_source_file_mapping.values():
++  for source_files in list(archive_source_file_mapping.values()):
+     for source_file in source_files:
+       file_basename = os.path.basename(source_file)
+       file_without_ext = os.path.splitext(source_file)[0]
