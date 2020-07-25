@@ -6,39 +6,43 @@ Last-Update: 2020-07-23
 
 --- a/compile.sh
 +++ b/compile.sh
-@@ -31,7 +31,7 @@
+@@ -31,7 +31,9 @@
  
  source scripts/bootstrap/buildenv.sh
  
 -mkdir -p output
 +mkdir -p output/usr/lib/bazel-bootstrap/install
++mkdir -p output/usr/bin
++mkdir -p output/etc
  : ${BAZEL:=}
  
  #
-@@ -68,13 +68,6 @@
-   --host_platform=@local_config_platform//:host \
-   --platforms=@local_config_platform//:host \
-   || fail "Could not build Bazel"
--bazel_bin_path="$(get_bazel_bin_path)/src/bazel_nojdk${EXE_EXT}"
--[ -e "$bazel_bin_path" ] \
--  || fail "Could not find freshly built Bazel binary at '$bazel_bin_path'"
+@@ -71,10 +71,10 @@
+ bazel_bin_path="$(get_bazel_bin_path)/src/bazel_nojdk${EXE_EXT}"
+ [ -e "$bazel_bin_path" ] \
+   || fail "Could not find freshly built Bazel binary at '$bazel_bin_path'"
 -cp -f "$bazel_bin_path" "output/bazel${EXE_EXT}" \
 -  || fail "Could not copy '$bazel_bin_path' to 'output/bazel${EXE_EXT}'"
 -chmod 0755 "output/bazel${EXE_EXT}"
 -BAZEL="$(pwd)/output/bazel${EXE_EXT}"
++cp -f "$bazel_bin_path" "output/usr/bin/bazel-3.4.0" \
++  || fail "Could not copy '$bazel_bin_path' to 'output/usr/bin/'"
++chmod 0755 "output/usr/bin/bazel-3.4.0"
++BAZEL="$(pwd)/output/usr/bin/bazel-3.4.0"
  
  clear_log
--display "Build successful! Binary is here: ${BAZEL}"
-+display "Build successful!"
+ display "Build successful! Binary is here: ${BAZEL}"
 --- a/src/package-bazel.sh
 +++ b/src/package-bazel.sh
-@@ -99,7 +99,8 @@
- 
+@@ -100,6 +100,11 @@
  # Zero timestamps.
  (cd $PACKAGE_DIR; xargs touch -t 198001010000.00) < files.list
--
+ 
 +# Hardcoding package install path since build variables are not preserved here
 +(cd $PACKAGE_DIR; cp -r -t "/build/bazel-bootstrap-3.4.0+ds/output/usr/lib/bazel-bootstrap/install" *)
++cp debian/bazel.bazelrc /build/bazel-bootstrap-3.4.0+ds/output/etc/bazel.bazelrc
++cp scripts/packages/bazel.sh /build/bazel-bootstrap-3.4.0+ds/output/usr/bin/bazel
++
  if [[ "$DEV_BUILD" -eq 1 ]]; then
    # Create output zip with lowest compression, but fast.
    ZIP_ARGS="-q1DX@"

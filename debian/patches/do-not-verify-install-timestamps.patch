@@ -1,0 +1,38 @@
+Description: Don't verify time stamp of files in install base
+ The Debian package does a system install of Bazel therefore this would fail.
+Author: Yun Peng <pcloudy@google.com>
+Origin: upstream, https://github.com/meteorcloudy/bazel/commit/622215437f3d9740557b6604855cddb4339f22a3
+Forwarded: not-needed
+Last-Update: 2020-07-24
+
+--- a/src/main/cpp/blaze.cc
++++ b/src/main/cpp/blaze.cc
+@@ -1009,17 +1009,17 @@
+     }
+     blaze_util::Path install_dir(install_base);
+     // Check that all files are present and have timestamps from BlessFiles().
+-    std::unique_ptr<blaze_util::IFileMtime> mtime(
+-        blaze_util::CreateFileMtime());
+-    for (const auto &it : archive_contents) {
+-      blaze_util::Path path = install_dir.GetRelative(it);
+-      if (!mtime->IsUntampered(path)) {
+-        BAZEL_DIE(blaze_exit_code::LOCAL_ENVIRONMENTAL_ERROR)
+-            << "corrupt installation: file '" << path.AsPrintablePath()
+-            << "' is missing or modified.  Please remove '" << install_base
+-            << "' and try again.";
+-      }
+-    }
++    // std::unique_ptr<blaze_util::IFileMtime> mtime(
++    //     blaze_util::CreateFileMtime());
++    // for (const auto &it : archive_contents) {
++    //   blaze_util::Path path = install_dir.GetRelative(it);
++    //   if (!mtime->IsUntampered(path)) {
++    //     BAZEL_DIE(blaze_exit_code::LOCAL_ENVIRONMENTAL_ERROR)
++    //         << "corrupt installation: file '" << path.AsPrintablePath()
++    //         << "' is missing or modified.  Please remove '" << install_base
++    //         << "' and try again.";
++    //   }
++    // }
+     // Also check that the installed files claim to match this binary.
+     // We check this afterward because the above diagnostic is better
+     // for a missing install_base_key file.

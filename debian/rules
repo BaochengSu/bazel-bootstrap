@@ -85,27 +85,22 @@ override_dh_link:
 
 override_dh_fixperms:
 	find debian/bazel-bootstrap/usr/lib -type f -print0 2>/dev/null | xargs -0r chmod a-x
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.py
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.cc
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.h
-#	chmod -R a-x ${DESTDIR}/usr/lib/BUILD
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.java
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.proto
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.bzl
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.txt
-#	chmod -R a-x ${DESTDIR}/usr/lib/*.patch
+	find debian/bazel-bootstrap/usr/share/doc/bazel-bootstrap/examples -type f \
+		-not -name '*.sh' -print0 2>/dev/null | xargs -0r chmod a-x
+	find debian/bazel-bootstrap/usr/lib/bazel-bootstrap/install/embedded_tools/tools \
+		-type f -name '*.sh*' -print0 2>/dev/null | xargs -0r chmod a+x
 #	chmod a-x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/StdRedirect.dylib
 #	chmod a-x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/realpath
 #	chmod a-x ${DESTDIR}/usr/lib/bazel-bootstrap/install/install_base_key
 #	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/android/build_java8_legacy_dex.sh
 #	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/android/desugar.sh
 #	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/android/dex_list_obfuscator.sh
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/buildstamp/get_workspace_status
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/build_interface_so
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/gcov_stub
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/mcov_stub
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/protobuf_support
-#	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/python/pywrapper_template.txt
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/buildstamp/get_workspace_status
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/build_interface_so
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/gcov_stub
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/mcov_stub
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/objc/protobuf_support
+	chmod a+x ${DESTDIR}/usr/lib/bazel-bootstrap/install/embedded_tools/tools/python/pywrapper_template.txt
 	dh_fixperms
