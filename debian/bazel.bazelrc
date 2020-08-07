@@ -1,4 +1,5 @@
 try-import $HOME/.config/bazel/bazelrc
 common --install_base=/usr/lib/bazel
+common --trust_install_base=true
 common --host_javabase=@local_jdk//:jdk
 common --output_user_root=$HOME/.cache/bazel-build

@@ -17,7 +17,7 @@ Last-Update: 2020-07-23
  : ${BAZEL:=}
  
  #
-@@ -71,10 +71,10 @@
+@@ -71,10 +73,10 @@
  bazel_bin_path="$(get_bazel_bin_path)/src/bazel_nojdk${EXE_EXT}"
  [ -e "$bazel_bin_path" ] \
    || fail "Could not find freshly built Bazel binary at '$bazel_bin_path'"
