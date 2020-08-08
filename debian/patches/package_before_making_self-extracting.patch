@@ -11,7 +11,7 @@ Last-Update: 2020-07-23
  source scripts/bootstrap/buildenv.sh
  
 -mkdir -p output
-+mkdir -p output/usr/lib/bazel-bootstrap/install
++mkdir -p output/usr/share/bazel/install
 +mkdir -p output/usr/bin
 +mkdir -p output/etc
  : ${BAZEL:=}
@@ -25,10 +25,10 @@ Last-Update: 2020-07-23
 -  || fail "Could not copy '$bazel_bin_path' to 'output/bazel${EXE_EXT}'"
 -chmod 0755 "output/bazel${EXE_EXT}"
 -BAZEL="$(pwd)/output/bazel${EXE_EXT}"
-+cp -f "$bazel_bin_path" "output/usr/bin/bazel-3.4.0" \
++cp -f "$bazel_bin_path" "output/usr/bin/bazel3" \
 +  || fail "Could not copy '$bazel_bin_path' to 'output/usr/bin/'"
-+chmod 0755 "output/usr/bin/bazel-3.4.0"
-+BAZEL="$(pwd)/output/usr/bin/bazel-3.4.0"
++chmod 0755 "output/usr/bin/bazel3"
++BAZEL="$(pwd)/output/usr/bin/bazel3"
  
  clear_log
  display "Build successful! Binary is here: ${BAZEL}"
@@ -39,7 +39,7 @@ Last-Update: 2020-07-23
  (cd $PACKAGE_DIR; xargs touch -t 198001010000.00) < files.list
  
 +# Hardcoding package install path since build variables are not preserved here
-+(cd $PACKAGE_DIR; cp -r -t "/build/bazel-bootstrap-3.4.0+ds/output/usr/lib/bazel-bootstrap/install" *)
++(cd $PACKAGE_DIR; cp -r -t "/build/bazel-bootstrap-3.4.0+ds/output/usr/share/bazel/install" *)
 +cp debian/bazel.bazelrc /build/bazel-bootstrap-3.4.0+ds/output/etc/bazel.bazelrc
 +cp scripts/packages/bazel.sh /build/bazel-bootstrap-3.4.0+ds/output/usr/bin/bazel
 +
