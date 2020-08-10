@@ -2,9 +2,9 @@ Description: Add --trust_install_base option
  This will allow Bazel client to run individually without the appended
  zip archive, which is a requirement for Debian installation.
 Author: Yun Peng <pcloudy@google.com>
-Origin: upstream, https://github.com/bazelbuild/bazel/commit/28551150ae9a08d9627607ebb771197e3f354acc
+Origin: upstream, https://github.com/meteorcloudy/bazel/commit/798831be403175a7a262a3fa3875c550dcc89aed
 Forwarded: not-needed
-Last-Update: 2020-08-07
+Last-Update: 2020-08-10
 
 --- a/src/main/cpp/blaze.cc
 +++ b/src/main/cpp/blaze.cc
@@ -18,8 +18,20 @@ Last-Update: 2020-08-07
 +    }
      blaze_util::Path install_dir(install_base);
      // Check that all files are present and have timestamps from BlessFiles().
-     // std::unique_ptr<blaze_util::IFileMtime> mtime(
-@@ -1486,9 +1490,21 @@
+     std::unique_ptr<blaze_util::IFileMtime> mtime(
+@@ -1198,7 +1202,10 @@
+     // find install bases that haven't been used for a long time
+     std::unique_ptr<blaze_util::IFileMtime> mtime(
+         blaze_util::CreateFileMtime());
+-    if (!mtime->SetToNow(blaze_util::Path(startup_options.install_base))) {
++    // We skip touching the install base if --trust_install_base is enabled,
++    // because the provided install base might not be writable.
++    if (!startup_options.trust_install_base &&
++        !mtime->SetToNow(blaze_util::Path(startup_options.install_base))) {
+       string err = GetLastErrorString();
+       BAZEL_DIE(blaze_exit_code::LOCAL_ENVIRONMENTAL_ERROR)
+           << "failed to set timestamp on '" << startup_options.install_base
+@@ -1486,9 +1493,21 @@
    return custom_exit_code;
  }
  
@@ -43,7 +55,7 @@ Last-Update: 2020-08-07
    printf("%s %s\n", product_name.c_str(), build_label.c_str());
  }
  
-@@ -1582,11 +1598,6 @@
+@@ -1582,11 +1601,6 @@
  
    const string self_path = GetSelfPath(argv[0]);
  
@@ -55,7 +67,7 @@ Last-Update: 2020-08-07
    string cwd = GetCanonicalCwd();
    LoggingInfo logging_info(CheckAndGetBinaryPath(cwd, argv[0]), start_time);
  
-@@ -1617,11 +1628,23 @@
+@@ -1617,11 +1631,23 @@
    StartupOptions *startup_options = option_processor->GetParsedStartupOptions();
    startup_options->MaybeLogStartupOptionWarnings();
  
@@ -79,7 +91,7 @@ Last-Update: 2020-08-07
    if (startup_options->unlimit_coredumps) {
      UnlimitCoredumps();
    }
-@@ -1637,7 +1660,28 @@
+@@ -1637,7 +1663,28 @@
  
    vector<string> archive_contents;
    string install_md5;
