@@ -16,5 +16,16 @@ RUN yes | mk-build-deps -i
 # too slow
 ENV http_proxy=127.0.0.1:9
 ENV https_proxy=127.0.0.1:9
-RUN quilt push -a
+
+RUN patch -p1 < debian/patches/mock_repos.patch
+RUN patch -p1 < debian/patches/remove_grpc_api.patch
+RUN patch -p1 < debian/patches/remove_javac.patch
+RUN patch -p1 < debian/patches/remove_license_deps.patch
+RUN patch -p1 < debian/patches/replace_grpc_java_plugin.patch
+RUN patch -p1 < debian/patches/WORKSPACE.patch
+RUN patch -p1 < debian/patches/package_before_making_self-extracting.patch
+RUN patch -p1 < debian/patches/env_python3.patch
+RUN patch -p1 < debian/patches/add-trust_install_base-option.patch
+RUN patch -p1 < debian/patches/allow-install-base-symlinks.patch
+
 RUN debian/rules binary
