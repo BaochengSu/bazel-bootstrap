@@ -1,0 +1,18 @@
+commit 3c0d47030f3c1b9c96d256e82fced642a7ce700b
+Author: Yun Peng <pcloudy@google.com>
+Date:   Mon Aug 10 12:57:19 2020 +0200
+
+    Accept symlinks in install base
+
+diff --git a/src/main/java/com/google/devtools/build/lib/exec/BinTools.java b/src/main/java/com/google/devtools/build/lib/exec/BinTools.java
+index 2b6ea0a78c..a9d4a4290c 100644
+--- a/src/main/java/com/google/devtools/build/lib/exec/BinTools.java
++++ b/src/main/java/com/google/devtools/build/lib/exec/BinTools.java
+@@ -133,6 +133,7 @@ public final class BinTools {
+           : relative + "/" + dirent.getName();
+       switch (dirent.getType()) {
+         case FILE:
++        case SYMLINK:
+           result.add(childRelative);
+           break;
+ 
