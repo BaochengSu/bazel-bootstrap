@@ -6,6 +6,5 @@ replace_grpc_java_plugin.patch
 WORKSPACE.patch
 package_before_making_self-extracting.patch
 env_python3.patch
-do-not-verify-install-timestamps.patch
 add-trust_install_base-option.patch
 allow-install-base-symlinks.patch
