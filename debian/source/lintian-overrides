@@ -1,0 +1,2 @@
+# Forwarded upstream: https://github.com/bazelbuild/bazel/issues/10519
+bazel-bootstrap: maintainer-manual-page
