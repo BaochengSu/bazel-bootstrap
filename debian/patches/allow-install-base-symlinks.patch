@@ -1,0 +1,16 @@
+Description: Accept symlinks in install base
+Author: Yun Peng <pcloudy@google.com>
+Origin: upstream, https://github.com/meteorcloudy/bazel/commit/3c0d47030f3c1b9c96d256e82fced642a7ce700b
+Forwarded: not-needed
+Last-Update: 2020-08-10
+
+--- a/src/main/java/com/google/devtools/build/lib/exec/BinTools.java
++++ b/src/main/java/com/google/devtools/build/lib/exec/BinTools.java
+@@ -133,6 +133,7 @@
+           : relative + "/" + dirent.getName();
+       switch (dirent.getType()) {
+         case FILE:
++        case SYMLINK:
+           result.add(childRelative);
+           break;
+ 

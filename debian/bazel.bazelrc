@@ -1,5 +1,5 @@
 try-import $HOME/.config/bazel/bazelrc
 startup --install_base=/usr/share/bazel
 startup --trust_install_base
-common --host_javabase=@local_jdk//:jdk
-common --output_user_root=$HOME/.cache/bazel
+startup --output_user_root=$HOME/.cache/bazel
+build --host_javabase=@local_jdk//:jdk
