@@ -1,8 +1,8 @@
 usr/share/java/bazel-3.4.0.jar usr/lib/bazel-bootstrap/install/A-server.jar
 usr/share/java/bazel-3.4.0.jar usr/share/java/bazel.jar
-usr/libexec/bazel-bootstrap/build-runfiles usr/lib/bazel-bootstrap/install/build-runfiles
-usr/libexec/bazel-bootstrap/daemonize usr/lib/bazel-bootstrap/install/daemonize
-usr/lib/${DEB_HOST_MULTIARCH}/bazel-bootstrap/libunix.so usr/lib/bazel-bootstrap/install/libunix.so
-usr/lib/${DEB_HOST_MULTIARCH}/bazel-bootstrap/libcpu_profiler.so usr/lib/bazel-bootstrap/install/libcpu_profiler.so
-usr/libexec/bazel-bootstrap/linux-sandbox usr/lib/bazel-bootstrap/install/linux-sandbox
-usr/libexec/bazel-bootstrap/process-wrapper usr/lib/bazel-bootstrap/install/process-wrapper
+usr/libexec/bazel/build-runfiles usr/lib/bazel-bootstrap/install/build-runfiles
+usr/libexec/bazel/daemonize usr/lib/bazel-bootstrap/install/daemonize
+usr/lib/${DEB_HOST_MULTIARCH}/bazel/libunix.so usr/lib/bazel-bootstrap/install/libunix.so
+usr/lib/${DEB_HOST_MULTIARCH}/bazel/libcpu_profiler.so usr/lib/bazel-bootstrap/install/libcpu_profiler.so
+usr/libexec/bazel/linux-sandbox usr/lib/bazel-bootstrap/install/linux-sandbox
+usr/libexec/bazel/process-wrapper usr/lib/bazel-bootstrap/install/process-wrapper
