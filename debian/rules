@@ -65,16 +65,16 @@ override_dh_auto_clean:
 
 override_dh_install:
 	mkdir -p debian/tmp
-	rm -f output/usr/share/bazel/install/xcode-locator
-	rm -rf output/usr/share/bazel/install/embedded_tools/tools/jdk/nosystemjdk
+	rm -f output/usr/share/bazel/xcode-locator
+	rm -rf output/usr/share/bazel/embedded_tools/tools/jdk/nosystemjdk
 	mv output/* debian/tmp
 	dh_install
 
 override_dh_installdocs:
 	dh_installdocs
-	mv debian/bazel-bootstrap/usr/share/bazel/install/embedded_tools/tools/build_defs/pkg/README.md \
+	mv debian/bazel-bootstrap/usr/share/bazel/embedded_tools/tools/build_defs/pkg/README.md \
 		debian/bazel-bootstrap/usr/share/doc/bazel-bootstrap/README-build_defs.md
-	mv debian/bazel-bootstrap/usr/share/bazel/install/embedded_tools/tools/config/README.md \
+	mv debian/bazel-bootstrap/usr/share/bazel/embedded_tools/tools/config/README.md \
 		debian/bazel-bootstrap/usr/share/doc/bazel-bootstrap/README-config.md
 
 override_dh_link:
@@ -85,20 +85,20 @@ override_dh_fixperms:
 	find debian/bazel-bootstrap/usr/share -type f -print0 2>/dev/null | xargs -0r chmod a-x
 	find debian/bazel-bootstrap/usr/share/doc/bazel/examples -type f \
 		-not -name '*.sh' -print0 2>/dev/null | xargs -0r chmod a-x
-	find debian/bazel-bootstrap/usr/share/bazel/install/embedded_tools/tools \
+	find debian/bazel-bootstrap/usr/share/bazel/embedded_tools/tools \
 		-type f -name '*.sh*' -print0 2>/dev/null | xargs -0r chmod a+x
-#	chmod a-x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/objc/StdRedirect.dylib
-#	chmod a-x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/objc/realpath
-#	chmod a-x ${DESTDIR}/usr/share/bazel/install/install_base_key
-#	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/android/build_java8_legacy_dex.sh
-#	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/android/desugar.sh
-#	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/android/dex_list_obfuscator.sh
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/buildstamp/get_workspace_status
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/cpp/build_interface_so
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/objc/gcov_stub
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/objc/mcov_stub
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/objc/protobuf_support
-	chmod a+x ${DESTDIR}/usr/share/bazel/install/embedded_tools/tools/python/pywrapper_template.txt
+#	chmod a-x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/StdRedirect.dylib
+#	chmod a-x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/realpath
+#	chmod a-x ${DESTDIR}/usr/share/bazel/install_base_key
+#	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/android/build_java8_legacy_dex.sh
+#	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/android/desugar.sh
+#	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/android/dex_list_obfuscator.sh
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/buildstamp/get_workspace_status
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/build_interface_so
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/gcov_stub
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/mcov_stub
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/protobuf_support
+	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/python/pywrapper_template.txt
 	dh_fixperms

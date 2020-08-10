@@ -1,14 +1,14 @@
 etc/bazel.bazelrc
 usr/bin/bazel*
-usr/share/bazel/install/A-server.jar
-usr/share/bazel/install/build-label.txt
-usr/share/bazel/install/install_base_key
-usr/share/bazel/install/jdk.BUILD
-usr/share/bazel/install/build-runfiles usr/libexec/bazel
-usr/share/bazel/install/daemonize usr/libexec/bazel
-usr/share/bazel/install/libcpu_profiler.so usr/lib/${DEB_HOST_MULTIARCH}/bazel
-usr/share/bazel/install/libunix.so usr/lib/${DEB_HOST_MULTIARCH}/bazel
-usr/share/bazel/install/linux-sandbox usr/libexec/bazel
-usr/share/bazel/install/process-wrapper usr/libexec/bazel
-usr/share/bazel/install/embedded_tools/*
-usr/share/bazel/install/platforms/*
+usr/share/bazel/A-server.jar
+usr/share/bazel/build-label.txt
+usr/share/bazel/install_base_key
+usr/share/bazel/jdk.BUILD
+usr/share/bazel/build-runfiles usr/libexec/bazel
+usr/share/bazel/daemonize usr/libexec/bazel
+usr/share/bazel/libcpu_profiler.so usr/lib/${DEB_HOST_MULTIARCH}/bazel
+usr/share/bazel/libunix.so usr/lib/${DEB_HOST_MULTIARCH}/bazel
+usr/share/bazel/linux-sandbox usr/libexec/bazel
+usr/share/bazel/process-wrapper usr/libexec/bazel
+usr/share/bazel/embedded_tools/*
+usr/share/bazel/platforms/*

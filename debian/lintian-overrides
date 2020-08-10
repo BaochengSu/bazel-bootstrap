@@ -2,3 +2,6 @@
 bazel-bootstrap: repeated-path-segment
 # Required test data
 bazel-bootstrap: compressed-duplicate
+# False positive, bug reported at:
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=968071
+bazel-bootstrap: arch-dependent-file-in-usr-share

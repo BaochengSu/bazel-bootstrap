@@ -1,6 +1,6 @@
-usr/libexec/bazel/build-runfiles usr/share/bazel/install/build-runfiles
-usr/libexec/bazel/daemonize usr/share/bazel/install/daemonize
-usr/lib/${DEB_HOST_MULTIARCH}/bazel/libunix.so usr/share/bazel/install/libunix.so
-usr/lib/${DEB_HOST_MULTIARCH}/bazel/libcpu_profiler.so usr/share/bazel/install/libcpu_profiler.so
-usr/libexec/bazel/linux-sandbox usr/share/bazel/install/linux-sandbox
-usr/libexec/bazel/process-wrapper usr/share/bazel/install/process-wrapper
+usr/libexec/bazel/build-runfiles usr/share/bazel/build-runfiles
+usr/libexec/bazel/daemonize usr/share/bazel/daemonize
+usr/lib/${DEB_HOST_MULTIARCH}/bazel/libunix.so usr/share/bazel/libunix.so
+usr/lib/${DEB_HOST_MULTIARCH}/bazel/libcpu_profiler.so usr/share/bazel/libcpu_profiler.so
+usr/libexec/bazel/linux-sandbox usr/share/bazel/linux-sandbox
+usr/libexec/bazel/process-wrapper usr/share/bazel/process-wrapper

@@ -59,7 +59,7 @@ Build-Depends: debhelper-compat (= 13),
                libtomcat9-java,
                libtruth-java,
                libxz-java,
-               openjdk-11-jdk,
+               openjdk-11-jdk-headless,
                protobuf-compiler,
                protobuf-compiler-grpc,
                protobuf-compiler-grpc-java-plugin,
@@ -76,8 +76,8 @@ Vcs-Git: https://salsa.debian.org/olek/bazel-bootstrap.git
 
 Package: bazel-bootstrap
 Architecture: any
-Depends: build-essential, zlib1g-dev, unzip, python3,
-         ${shlibs:Depends}, ${misc:Depends}, ${python3:Depends},
+Depends: build-essential, zlib1g-dev, unzip, openjdk-11-jdk-headless,
+         python3, ${shlibs:Depends}, ${misc:Depends}, ${python3:Depends},
 Suggests: bash-completion
 Description: Tool to automate software builds and tests
  Supported build tasks include running compilers and linkers to produce
