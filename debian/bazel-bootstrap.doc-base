@@ -1,0 +1,7 @@
+Document: bazel-bootstrap
+Title: Bazel build and test tool documentation
+Section: Programming/Java
+
+Format: HTML
+Index: /usr/share/doc/bazel-bootstrap/site/search.html
+Files: /usr/share/doc/bazel-bootstrap/site/*

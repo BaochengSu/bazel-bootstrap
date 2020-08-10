@@ -79,6 +79,13 @@ override_dh_installdocs:
 
 override_dh_link:
 	jdupes -rl debian/bazel-bootstrap/usr
+	find debian/bazel-bootstrap/usr/share/bazel/embedded_tools -type f -name \
+		'*.h' -printf '%h\n' | sort -u | sed 's@debian.*embedded_tools/@@' | \
+		xargs -I% mkdir -p debian/bazel-bootstrap/usr/include/bazel/%
+	find debian/bazel-bootstrap/usr/share/bazel/embedded_tools -name '*.h' | \
+		sed 's@debian/.*/embedded_tools/@@g' | xargs -I% ln -s \
+		debian/bazel-bootstrap/usr/share/bazel/embedded_tools/% \
+		debian/bazel-bootstrap/usr/include/bazel/%
 	dh_link
 
 override_dh_fixperms:
@@ -87,12 +94,6 @@ override_dh_fixperms:
 		-not -name '*.sh' -print0 2>/dev/null | xargs -0r chmod a-x
 	find debian/bazel-bootstrap/usr/share/bazel/embedded_tools/tools \
 		-type f -name '*.sh*' -print0 2>/dev/null | xargs -0r chmod a+x
-#	chmod a-x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/StdRedirect.dylib
-#	chmod a-x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/realpath
-#	chmod a-x ${DESTDIR}/usr/share/bazel/install_base_key
-#	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/android/build_java8_legacy_dex.sh
-#	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/android/desugar.sh
-#	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/android/dex_list_obfuscator.sh
 	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/buildstamp/get_workspace_status
 	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/build_interface_so
 	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl

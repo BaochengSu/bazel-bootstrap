@@ -4,11 +4,12 @@ usr/share/bazel/A-server.jar
 usr/share/bazel/build-label.txt
 usr/share/bazel/install_base_key
 usr/share/bazel/jdk.BUILD
-usr/share/bazel/build-runfiles usr/libexec/bazel
-usr/share/bazel/daemonize usr/libexec/bazel
+usr/share/bazel/build-runfiles usr/libexec/${DEB_HOST_MULTIARCH}/bazel
+usr/share/bazel/daemonize usr/libexec/${DEB_HOST_MULTIARCH}/bazel
 usr/share/bazel/libcpu_profiler.so usr/lib/${DEB_HOST_MULTIARCH}/bazel
 usr/share/bazel/libunix.so usr/lib/${DEB_HOST_MULTIARCH}/bazel
-usr/share/bazel/linux-sandbox usr/libexec/bazel
-usr/share/bazel/process-wrapper usr/libexec/bazel
+usr/share/bazel/linux-sandbox usr/libexec/${DEB_HOST_MULTIARCH}/bazel
+usr/share/bazel/process-wrapper usr/libexec/${DEB_HOST_MULTIARCH}/bazel
+usr/share/bazel/embedded_tools/tools/zip/zipper/zipper usr/libexec/${DEB_HOST_MULTIARCH}/bazel
 usr/share/bazel/embedded_tools/*
 usr/share/bazel/platforms/*
