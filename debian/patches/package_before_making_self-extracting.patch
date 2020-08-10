@@ -39,9 +39,9 @@ Last-Update: 2020-07-23
  (cd $PACKAGE_DIR; xargs touch -t 198001010000.00) < files.list
  
 +# Hardcoding package install path since build variables are not preserved here
-+(cd $PACKAGE_DIR; cp -r -t "/build/bazel-bootstrap-3.4.0+ds/output/usr/lib/bazel-bootstrap/install" *)
-+cp debian/bazel.bazelrc /build/bazel-bootstrap-3.4.0+ds/output/etc/bazel.bazelrc
-+cp scripts/packages/bazel.sh /build/bazel-bootstrap-3.4.0+ds/output/usr/bin/bazel
++(cd $PACKAGE_DIR; cp -r -t "/src/output/usr/lib/bazel-bootstrap/install" *)
++cp debian/bazel.bazelrc /src/output/etc/bazel.bazelrc
++cp scripts/packages/bazel.sh /src/output/usr/bin/bazel
 +
  if [[ "$DEV_BUILD" -eq 1 ]]; then
    # Create output zip with lowest compression, but fast.
