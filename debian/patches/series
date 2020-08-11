@@ -9,3 +9,4 @@ env_python3.patch
 add-trust_install_base-option.patch
 allow-install-base-symlinks.patch
 fix-privacy-issues.patch
+build-bash_completion.patch

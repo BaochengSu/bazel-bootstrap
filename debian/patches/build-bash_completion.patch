@@ -1,0 +1,48 @@
+Description: Build bash completion file
+Author: Yun Peng <pcloudy@google.com>
+Author: Olek Wojnar <olek@debian.org>
+Origin: upstream, https://github.com/meteorcloudy/bazel/commit/8beae8a847fda3d1fa8079e89054f24feb71cc11
+Forwarded: not-needed
+Last-Update: 2020-08-11
+
+--- a/compile.sh
++++ b/compile.sh
+@@ -65,14 +65,17 @@
+ log "Building output/bazel"
+ # We set host and target platform directly because we are building for the local
+ # host.
+-bazel_build "src:bazel_nojdk${EXE_EXT}" \
++bazel_build "src:bazel_nojdk${EXE_EXT}" "//scripts:bash_completion" \
+   --action_env=PATH \
+   --host_platform=@local_config_platform//:host \
+   --platforms=@local_config_platform//:host \
+   || fail "Could not build Bazel"
+ bazel_bin_path="$(get_bazel_bin_path)/src/bazel_nojdk${EXE_EXT}"
++bash_completion_path="$(get_bazel_bin_path)/scripts/bazel-complete.bash"
+ [ -e "$bazel_bin_path" ] \
+   || fail "Could not find freshly built Bazel binary at '$bazel_bin_path'"
++cp -f "$bash_completion_path" "output/bazel-complete.bash" \
++  || fail "Could not copy '$bash_completion_path' to 'output/bazel-complete.bash'"
+ cp -f "$bazel_bin_path" "output/usr/bin/bazel-3" \
+   || fail "Could not copy '$bazel_bin_path' to 'output/usr/bin/'"
+ chmod 0755 "output/usr/bin/bazel-3"
+--- a/scripts/BUILD
++++ b/scripts/BUILD
+@@ -12,7 +12,7 @@
+     outs = ["bazel-complete.bash"],
+     cmd = " ".join([
+         "$(location :generate_bash_completion.sh)",
+-        "--bazel=$(location //src:bazel)",
++        "--bazel=$(location //src:bazel_nojdk)",
+         "--output=$@",
+         "--prepend=$(location bazel-complete-header.bash)",
+         "--prepend=$(location bazel-complete-template.bash)",
+@@ -20,7 +20,7 @@
+     output_to_bindir = 1,
+     tools = [
+         ":generate_bash_completion.sh",
+-        "//src:bazel",
++        "//src:bazel_nojdk",
+     ],
+     visibility = ["//scripts/packages:__subpackages__"],
+ )
