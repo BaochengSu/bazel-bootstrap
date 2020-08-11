@@ -19,6 +19,11 @@ export CCACHE_TEMPDIR = ${CURDIR}/debian/ccachetmp
 export http_proxy=127.0.0.1:9
 export https_proxy=127.0.0.1:9
 
+# BAZEL_CXXOPTS and BAZEL_LINKOPTS take a list of flags seperated by colon
+export space = $() $()
+export BAZEL_CXXOPTS = $(subst $(space),:,-std=c++0x ${CPPFLAGS} ${CXXFLAGS})
+export BAZEL_LINKOPTS = $(subst $(space),:,-lstdc++ -lm ${LDFLAGS})
+
 # Use the local JDK
 export EXTRA_BAZEL_ARGS = \
 	--host_javabase=@local_jdk//:jdk \
@@ -26,10 +31,6 @@ export EXTRA_BAZEL_ARGS = \
 	--noremote_accept_cached \
 	--verbose_failures \
 	--compilation_mode dbg \
-	--action_env=CPPFLAGS \
-	--action_env=CFLAGS \
-	--action_env=CXXFLAGS \
-	--action_env=LDFLAGS \
 	--sandbox_debug \
 	--sandbox_writable_path ~/.ccache/tmp \
 	--action_env=CCACHE_DISABLE \
