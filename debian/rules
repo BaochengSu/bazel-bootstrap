@@ -42,7 +42,8 @@ export EXTRA_BAZEL_ARGS = \
 	--override_repository=rules_cc=${CURDIR}/mock_repos/rules_cc \
 	--override_repository=rules_java=${CURDIR}/mock_repos/rules_java \
 	--override_repository=rules_proto=${CURDIR}/mock_repos/rules_proto \
-	--override_repository=platforms=${CURDIR}/mock_repos/platforms
+	--override_repository=platforms=${CURDIR}/mock_repos/platforms \
+	--distinct_host_configuration=false
 
 # May still need this
 #export EXTRA_BAZEL_ARGS=$EXTRA_BAZEL_ARGS --output_dir=debian/tmp
@@ -103,3 +104,6 @@ override_dh_fixperms:
 	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/protobuf_support
 	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/python/pywrapper_template.txt
 	dh_fixperms
+
+override_dh_missing:
+	dh_missing -Xbazel-complete.bash
