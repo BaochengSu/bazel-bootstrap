@@ -1,0 +1,23 @@
+commit 956c172806896625de1c0d716cebafc9bbab43b1
+Author: Yun Peng <pcloudy@google.com>
+Date:   Wed Aug 12 23:01:41 2020 +0200
+
+    Rename daemonize.c to daemonize.cc
+
+diff --git a/src/main/tools/BUILD b/src/main/tools/BUILD
+index f202f1f..fa15f00 100755
+--- a/src/main/tools/BUILD
++++ b/src/main/tools/BUILD
+@@ -4,7 +4,7 @@ package(default_visibility = ["//src:__subpackages__"])
+ 
+ cc_binary(
+     name = "daemonize",
+-    srcs = ["daemonize.c"],
++    srcs = ["daemonize.cc"],
+ )
+ 
+ cc_library(
+diff --git a/src/main/tools/daemonize.c b/src/main/tools/daemonize.cc
+similarity index 100%
+rename from src/main/tools/daemonize.c
+rename to src/main/tools/daemonize.cc
