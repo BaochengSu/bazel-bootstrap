@@ -27,5 +27,6 @@ RUN patch -p1 < debian/patches/package_before_making_self-extracting.patch
 RUN patch -p1 < debian/patches/env_python3.patch
 RUN patch -p1 < debian/patches/add-trust_install_base-option.patch
 RUN patch -p1 < debian/patches/allow-install-base-symlinks.patch
+RUN patch -p1 < debian/patches/build-bash_completion.patch
 
 RUN debian/rules binary
