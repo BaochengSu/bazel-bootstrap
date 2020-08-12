@@ -33,6 +33,7 @@ export EXTRA_BAZEL_ARGS = \
 	--compilation_mode dbg \
 	--sandbox_debug \
 	--sandbox_writable_path ~/.ccache/tmp \
+	--distinct_host_configuration=false \
 	--action_env=CCACHE_DISABLE \
 	--action_env=CCACHE_TEMPDIR \
 	--override_repository=com_google_protobuf=${CURDIR}/tools/distributions/debian/protobuf \
