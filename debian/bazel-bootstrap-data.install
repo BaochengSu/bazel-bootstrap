@@ -1,0 +1,7 @@
+etc/bazel.bazelrc
+usr/share/bazel/A-server.jar
+usr/share/bazel/build-label.txt
+usr/share/bazel/install_base_key
+usr/share/bazel/jdk.BUILD
+usr/share/bazel/embedded_tools/*
+usr/share/bazel/platforms/*

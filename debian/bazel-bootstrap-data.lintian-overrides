@@ -1,0 +1,10 @@
+# Path is correct
+bazel-bootstrap-data: repeated-path-segment
+# Required test data
+bazel-bootstrap-data: compressed-duplicate
+# False positive, bug reported at:
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=968071
+bazel-bootstrap-data: arch-dependent-file-in-usr-share
+# False positive, bug reported at:
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=968071
+bazel-bootstrap-data: arch-independent-package-contains-binary-or-object

@@ -1,15 +1,12 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-DPKG_EXPORT_BUILDFLAGS = 1
-include /usr/share/dpkg/buildflags.mk
-#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
-#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+#DPKG_EXPORT_BUILDFLAGS = 1
+#include /usr/share/dpkg/buildflags.mk
 
-# May still need this
-#export BAZEL_WRKDIR = debian/tmp
 export VERBOSE = yes
-export DESTDIR = ${CURDIR}/debian/bazel-bootstrap
+export BAZDIR = ${CURDIR}/debian/bazel-bootstrap
+export BAZDATADIR = ${CURDIR}/debian/bazel-bootstrap-data
 
 # Bypass ccache
 export CCACHE_DISABLE = 1
@@ -46,9 +43,6 @@ export EXTRA_BAZEL_ARGS = \
 	--override_repository=platforms=${CURDIR}/mock_repos/platforms \
 	--distinct_host_configuration=false
 
-# May still need this
-#export EXTRA_BAZEL_ARGS=$EXTRA_BAZEL_ARGS --output_dir=debian/tmp
-
 export PROTOC = /usr/bin/protoc
 export GRPC_JAVA_PLUGIN = /usr/bin/grpc_java_plugin
 
@@ -71,40 +65,43 @@ override_dh_install:
 	rm -rf output/usr/share/bazel/embedded_tools/tools/jdk/nosystemjdk
 	mv output/* debian/tmp
 	dh_install
+	rm -rf ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/zip/zipper
 
 override_dh_installdocs:
-	dh_installdocs
-	mv debian/bazel-bootstrap/usr/share/bazel/embedded_tools/tools/build_defs/pkg/README.md \
-		debian/bazel-bootstrap/usr/share/doc/bazel-bootstrap/README-build_defs.md
-	mv debian/bazel-bootstrap/usr/share/bazel/embedded_tools/tools/config/README.md \
-		debian/bazel-bootstrap/usr/share/doc/bazel-bootstrap/README-config.md
+	dh_installdocs --package=bazel-bootstrap -XREADME.Debian
+	dh_installdocs --package=bazel-bootstrap-data --doc-main-package=bazel-bootstrap
+	mv ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/build_defs/pkg/README.md \
+		${BAZDATADIR}/usr/share/doc/bazel-bootstrap/README-build_defs.md
+	mv ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/config/README.md \
+		${BAZDATADIR}/usr/share/doc/bazel-bootstrap/README-config.md
 
 override_dh_link:
-	jdupes -rl debian/bazel-bootstrap/usr
-	find debian/bazel-bootstrap/usr/share/bazel/embedded_tools -type f -name \
-		'*.h' -printf '%h\n' | sort -u | sed 's@debian.*embedded_tools/@@' | \
-		xargs -I% mkdir -p debian/bazel-bootstrap/usr/include/bazel/%
-	find debian/bazel-bootstrap/usr/share/bazel/embedded_tools -name '*.h' | \
-		sed 's@debian/.*/embedded_tools/@@g' | xargs -I% ln -s \
-		debian/bazel-bootstrap/usr/share/bazel/embedded_tools/% \
-		debian/bazel-bootstrap/usr/include/bazel/%
+	jdupes -rl ${BAZDATADIR}/usr
+	find ${BAZDATADIR}/usr/share/bazel/embedded_tools -type f -name \
+		'*.h' -printf '%h\n' | sort -u | sed 's@/build.*embedded_tools/@@' | \
+		xargs -I% mkdir -p ${BAZDATADIR}/usr/include/bazel/%
+	find ${BAZDATADIR}/usr/share/bazel/embedded_tools -name '*.h' | \
+		sed 's@/build.*/embedded_tools/@@g' | xargs -I% ln -rs \
+		${BAZDATADIR}/usr/share/bazel/embedded_tools/% \
+		${BAZDATADIR}/usr/include/bazel/%
 	dh_link
 
 override_dh_fixperms:
-	find debian/bazel-bootstrap/usr/share -type f -print0 2>/dev/null | xargs -0r chmod a-x
-	find debian/bazel-bootstrap/usr/share/doc/bazel/examples -type f \
+	find ${BAZDATADIR}/usr/share -type f -print0 2>/dev/null | xargs -0r chmod a-x
+	find ${BAZDATADIR}/usr/share/doc/bazel/examples -type f \
 		-not -name '*.sh' -print0 2>/dev/null | xargs -0r chmod a-x
-	find debian/bazel-bootstrap/usr/share/bazel/embedded_tools/tools \
+	find ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools \
 		-type f -name '*.sh*' -print0 2>/dev/null | xargs -0r chmod a+x
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/buildstamp/get_workspace_status
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/build_interface_so
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/gcov_stub
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/mcov_stub
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/objc/protobuf_support
-	chmod a+x ${DESTDIR}/usr/share/bazel/embedded_tools/tools/python/pywrapper_template.txt
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/buildstamp/get_workspace_status
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/cpp/build_interface_so
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/cpp/linux_cc_wrapper.sh.tpl
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/cpp/osx_cc_wrapper.sh.tpl
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/objc/gcov_stub
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/objc/mcov_stub
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/objc/protobuf_support
+	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/python/pywrapper_template.txt
 	dh_fixperms
 
+#dh_bash-completion is not correctly annotating that it has installed files
 override_dh_missing:
 	dh_missing -Xbazel-complete.bash
