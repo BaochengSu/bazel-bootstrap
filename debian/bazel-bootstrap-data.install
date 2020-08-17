@@ -1,4 +1,4 @@
-etc/bazel.bazelrc
+etc/bazel/bazelrc
 usr/share/bazel/A-server.jar
 usr/share/bazel/build-label.txt
 usr/share/bazel/install_base_key

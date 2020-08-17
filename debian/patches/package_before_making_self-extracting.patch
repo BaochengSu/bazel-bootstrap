@@ -13,7 +13,7 @@ Last-Update: 2020-07-23
 -mkdir -p output
 +mkdir -p output/usr/share/bazel
 +mkdir -p output/usr/bin
-+mkdir -p output/etc
++mkdir -p output/etc/bazel
  : ${BAZEL:=}
  
  #
@@ -40,7 +40,7 @@ Last-Update: 2020-07-23
  
 +# Hardcoding package install path since build variables are not preserved here
 +(cd $PACKAGE_DIR; cp -r -t "/build/bazel-bootstrap-3.4.0+ds/output/usr/share/bazel" *)
-+cp debian/bazel.bazelrc /build/bazel-bootstrap-3.4.0+ds/output/etc/bazel.bazelrc
++cp debian/bazelrc /build/bazel-bootstrap-3.4.0+ds/output/etc/bazel/bazelrc
 +cp scripts/packages/bazel.sh /build/bazel-bootstrap-3.4.0+ds/output/usr/bin/bazel
 +
  if [[ "$DEV_BUILD" -eq 1 ]]; then

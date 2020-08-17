@@ -1,0 +1,13 @@
+diff --git a/src/main/cpp/BUILD b/src/main/cpp/BUILD
+index 64bf02b..ff79b01 100755
+--- a/src/main/cpp/BUILD
++++ b/src/main/cpp/BUILD
+@@ -171,7 +171,7 @@ cc_library(
+         # For posix platforms, this can include environment variables in the
+         # form ${var_name}. Braces are required.
+         "//conditions:default": [
+-            "-DBAZEL_SYSTEM_BAZELRC_PATH=\\\"/etc/bazel.bazelrc\\\"",
++            "-DBAZEL_SYSTEM_BAZELRC_PATH=\\\"/etc/bazel/bazelrc\\\"",
+         ],
+     }),
+     visibility = [
