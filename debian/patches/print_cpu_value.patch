@@ -1,0 +1,24 @@
+diff --git a/tools/cpp/cc_configure.bzl b/tools/cpp/cc_configure.bzl
+index 82d41b90c1..2661fcae62 100755
+--- a/tools/cpp/cc_configure.bzl
++++ b/tools/cpp/cc_configure.bzl
+@@ -44,6 +44,7 @@ def cc_autoconf_toolchains_impl(repository_ctx):
+     ])
+     env = repository_ctx.os.environ
+     cpu_value = get_cpu_value(repository_ctx)
++    print("Cpu value is", cpu_value)
+ 
+     # Should we try to find C++ toolchain at all? If not, we don't have to generate toolchains for C++ at all.
+     should_detect_cpp_toolchain = "BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN" not in env or env["BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN"] != "1"
+diff --git a/tools/cpp/lib_cc_configure.bzl b/tools/cpp/lib_cc_configure.bzl
+index ee89b9d849..3e1456eafc 100755
+--- a/tools/cpp/lib_cc_configure.bzl
++++ b/tools/cpp/lib_cc_configure.bzl
+@@ -191,6 +191,7 @@ def get_cpu_value(repository_ctx):
+ 
+     # Use uname to figure out whether we are on x86_32 or x86_64
+     result = repository_ctx.execute(["uname", "-m"])
++    print("uname -m:", result.stdout.strip())
+     if result.stdout.strip() in ["power", "ppc64le", "ppc", "ppc64"]:
+         return "ppc"
+     if result.stdout.strip() in ["s390x"]:
