@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+bazel test \
+//examples/java-native/src/test/java/com/example/myproject:custom_with_test_class \
+--define=distribution=debian

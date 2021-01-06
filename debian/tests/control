@@ -1,3 +1,4 @@
-Tests: test-bazel
-Depends: @, junit4
+Tests: bazel-generic cpp-success cpp-failure java-1 java-2 java-3 java-4 java-5 java-6 java-7 java-8 java-9
+Depends: bazel-bootstrap, junit4, quilt
 Restrictions: allow-stderr
+Architecture: amd64 arm64 mips64el ppc64el s390x alpha ia64 kfreebsd-amd64 ppc64 riscv64 sparc64

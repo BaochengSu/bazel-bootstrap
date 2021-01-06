@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+
+bazel test //examples/cpp:hello-fail_test && exit 1 || exit 0
