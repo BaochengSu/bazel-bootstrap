@@ -238,6 +238,7 @@ License: Apache-2.0 and RSA_Make_Use
 Files: debian/*
 Copyright: 2020 Olek Wojnar <olek@debian.org>
            2020 Yun Peng <pcloudy@google.com>
+           2020 Michael R. Crusoe <crusoe@debian.org>
 License: Apache-2.0
 
 License: Apache-2.0
