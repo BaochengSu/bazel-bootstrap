@@ -12,3 +12,4 @@ rename-daemonize.patch
 change-sysmtem-rc-file-location.patch
 remove-android-rules.patch
 enable-debian-junit4.patch
+support-mips64el-and-riscv64.patch

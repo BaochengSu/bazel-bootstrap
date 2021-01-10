@@ -1,0 +1,21 @@
+Description: Support mips64el and riscv64 architectures
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2021-01-09
+
+--- a/mock_repos/platforms/cpu/BUILD
++++ b/mock_repos/platforms/cpu/BUILD
+@@ -74,3 +74,13 @@
+     name = "x86_64",
+     constraint_setting = ":cpu",
+ )
++
++constraint_value(
++    name = "mips64",
++    constraint_setting = ":cpu",
++)
++
++constraint_value(
++    name = "riscv64",
++    constraint_setting = ":cpu",
++)
