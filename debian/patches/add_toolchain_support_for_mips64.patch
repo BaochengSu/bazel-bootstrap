@@ -1,0 +1,266 @@
+Description: Add toolchain support for the mips64el architecture
+Author: Yun Peng <pcloudy@google.com>
+Forwarded: not-needed
+Last-Update: 2021-01-14
+
+--- a/scripts/bootstrap/bootstrap.sh
++++ b/scripts/bootstrap/bootstrap.sh
+@@ -33,7 +33,7 @@
+ 
+ _BAZEL_ARGS="--spawn_strategy=standalone \
+       --nojava_header_compilation \
+-      --strategy=Javac=worker --worker_quit_after_build --ignore_unsupported_sandboxing \
++      --strategy=Javac=standalone --ignore_unsupported_sandboxing \
+       --compilation_mode=opt \
+       --distdir=derived/distdir \
+       --java_toolchain=//src/java_tools/buildjar:bootstrap_toolchain \
+--- a/src/conditions/BUILD
++++ b/src/conditions/BUILD
+@@ -47,6 +47,12 @@
+ )
+ 
+ config_setting(
++    name = "linux_mips64",
++    values = {"cpu": "mips64"},
++    visibility = ["//visibility:public"],
++)
++
++config_setting(
+     name = "linux_x86_64",
+     values = {"cpu": "k8"},
+     visibility = ["//visibility:public"],
+--- a/src/conditions/BUILD.tools
++++ b/src/conditions/BUILD.tools
+@@ -35,6 +35,12 @@
+ )
+ 
+ config_setting(
++    name = "linux_mips64",
++    values = {"cpu": "mips64"},
++    visibility = ["//visibility:public"],
++)
++
++config_setting(
+     name = "linux_x86_64",
+     values = {"cpu": "k8"},
+     visibility = ["//visibility:public"],
+--- a/src/java_tools/buildjar/BUILD
++++ b/src/java_tools/buildjar/BUILD
+@@ -63,10 +63,10 @@
+     javabuilder = ["bootstrap_VanillaJavaBuilder_deploy.jar"],
+     jvm_opts = [
+         # Prevent "Could not reserve enough space for object heap" errors on Windows.
+-        "-Xmx512m",
++    #    "-Xmx512m",
+         # Using tiered compilation improves performance of Javac when not using the worker mode.
+-        "-XX:+TieredCompilation",
+-        "-XX:TieredStopAtLevel=1",
++    #    "-XX:+TieredCompilation",
++    #    "-XX:TieredStopAtLevel=1",
+     ],
+     singlejar = ["//src/java_tools/singlejar:bootstrap_deploy.jar"],
+     source_version = "8",
+--- a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
++++ b/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
+@@ -61,6 +61,8 @@
+               return "aarch64";
+             case S390X:
+               return "s390x";
++            case MIPS64:
++              return "mips64";
+             default:
+               return "unknown";
+           }
+@@ -100,6 +102,8 @@
+       return Pair.of(CPU.ARM, OS.LINUX);
+     } else if (input.equals("s390x")) {
+       return Pair.of(CPU.S390X, OS.LINUX);
++    } else if (input.equals("mips64")) {
++      return Pair.of(CPU.MIPS64, OS.LINUX);
+     }
+ 
+     // Use the auto-detected values.
+--- a/src/main/java/com/google/devtools/build/lib/bazel/repository/LocalConfigPlatformFunction.java
++++ b/src/main/java/com/google/devtools/build/lib/bazel/repository/LocalConfigPlatformFunction.java
+@@ -116,6 +116,8 @@
+         return "@platforms//cpu:aarch64";
+       case S390X:
+         return "@platforms//cpu:s390x";
++      case MIPS64:
++        return "@platforms//cpu:mips64";
+       default:
+         // Unknown, so skip it.
+         return null;
+--- a/src/main/java/com/google/devtools/build/lib/util/CPU.java
++++ b/src/main/java/com/google/devtools/build/lib/util/CPU.java
+@@ -27,6 +27,7 @@
+   ARM("arm", ImmutableSet.of("arm", "armv7l")),
+   AARCH64("aarch64", ImmutableSet.of("aarch64")),
+   S390X("s390x", ImmutableSet.of("s390x", "s390")),
++  MIPS64("mips64", ImmutableSet.of("mips64el", "mips64")),
+   UNKNOWN("unknown", ImmutableSet.<String>of());
+ 
+   private final String canonicalName;
+--- a/third_party/BUILD
++++ b/third_party/BUILD
+@@ -556,6 +556,7 @@
+     "//src/conditions:linux_aarch64": "*.so *.jnilib *.dll",
+     "//src/conditions:linux_ppc": "*.so *.jnilib *.dll",
+     "//src/conditions:linux_s390x": "*.so *.jnilib *.dll",
++    "//src/conditions:linux_mips64": "*.so *.jnilib *.dll",
+     "//src/conditions:freebsd": "*.so *.jnilib *.dll",
+     "//src/conditions:openbsd": "*.so *.jnilib *.dll",
+     # Default is to play it safe -- better have a big binary than a slow binary
+@@ -754,6 +755,11 @@
+     values = {"host_cpu": "ppc"},
+ )
+ 
++config_setting(
++    name = "mips64",
++    values = {"host_cpu": "mips64"},
++)
++
+ test_suite(
+     name = "all_windows_tests",
+     tests = [
+--- a/tools/cpp/BUILD.tools
++++ b/tools/cpp/BUILD.tools
+@@ -107,6 +107,7 @@
+         "x64_windows_msvc|compiler": ":cc-compiler-x64_windows_msvc",
+         "s390x|compiler": ":cc-compiler-s390x",
+         "ppc|compiler": ":cc-compiler-ppc",
++        "mips64|compiler": ":cc-compiler-mips64",
+         "k8": ":cc-compiler-local",
+         "piii": ":cc-compiler-local",
+         "arm": ":cc-compiler-local",
+@@ -114,6 +115,7 @@
+         "s390x": ":cc-compiler-local",
+         "ppc": ":cc-compiler-local",
+         "ppc64": ":cc-compiler-local",
++        "mips64": ":cc-compiler-local",
+         "darwin": ":cc-compiler-darwin",
+         "freebsd": ":cc-compiler-freebsd",
+         "armeabi-v7a": ":cc-compiler-armeabi-v7a",
+@@ -211,6 +213,33 @@
+     toolchain_type = ":toolchain_type",
+ )
+ 
++cc_toolchain(
++    name = "cc-compiler-mips64",
++    all_files = ":empty",
++    ar_files = ":empty",
++    as_files = ":empty",
++    compiler_files = ":empty",
++    dwp_files = ":empty",
++    linker_files = ":empty",
++    objcopy_files = ":empty",
++    strip_files = ":empty",
++    supports_param_files = 1,
++    toolchain_config = ":local_linux",
++    toolchain_identifier = "local_linux",
++)
++
++toolchain(
++    name = "cc-toolchain-mips64",
++    exec_compatible_with = [
++        "@platforms//cpu:mips64",
++    ],
++    target_compatible_with = [
++        "@platforms//cpu:mips64",
++    ],
++    toolchain = ":cc-compiler-mips64",
++    toolchain_type = ":toolchain_type",
++)
++
+ cc_toolchain(
+     name = "cc-compiler-armeabi-v7a",
+     all_files = ":empty",
+--- a/tools/cpp/lib_cc_configure.bzl
++++ b/tools/cpp/lib_cc_configure.bzl
+@@ -195,6 +195,8 @@
+         return "ppc"
+     if result.stdout.strip() in ["s390x"]:
+         return "s390x"
++    if result.stdout.strip() in ["mips64"]:
++        return "mips64"
+     if result.stdout.strip() in ["arm", "armv7l"]:
+         return "arm"
+     if result.stdout.strip() in ["aarch64"]:
+--- a/tools/jdk/BUILD
++++ b/tools/jdk/BUILD
+@@ -137,6 +137,7 @@
+         "//src/conditions:linux_aarch64": [":jni_md_header-linux"],
+         "//src/conditions:linux_ppc64le": [":jni_md_header-linux"],
+         "//src/conditions:linux_s390x": [":jni_md_header-linux"],
++        "//src/conditions:linux_mips64": [":jni_md_header-linux"],
+         "//src/conditions:linux_x86_64": [":jni_md_header-linux"],
+         "//src/conditions:darwin": [":jni_md_header-darwin"],
+         "//src/conditions:freebsd": [":jni_md_header-freebsd"],
+@@ -148,6 +149,7 @@
+         "//src/conditions:linux_aarch64": ["include/linux"],
+         "//src/conditions:linux_ppc64le": ["include/linux"],
+         "//src/conditions:linux_s390x": ["include/linux"],
++        "//src/conditions:linux_mips64": ["include/linux"],
+         "//src/conditions:linux_x86_64": ["include/linux"],
+         "//src/conditions:darwin": ["include/darwin"],
+         "//src/conditions:freebsd": ["include/freebsd"],
+--- a/tools/platforms/BUILD
++++ b/tools/platforms/BUILD
+@@ -54,6 +54,11 @@
+ )
+ 
+ alias(
++    name = "mips64",
++    actual = "@platforms//cpu:mips64",
++)
++
++alias(
+     name = "os",
+     actual = "@platforms//os:os",
+ )
+@@ -109,6 +114,7 @@
+         "@platforms//cpu:arm",
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
++        "@platforms//cpu:mips64",
+     ],
+     host_platform = True,
+     os_constraints = [
+@@ -131,6 +137,7 @@
+         "@platforms//cpu:arm",
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
++        "@platforms//cpu:mips64",
+     ],
+     os_constraints = [
+         "@platforms//os:osx",
+--- a/tools/platforms/BUILD.tools
++++ b/tools/platforms/BUILD.tools
+@@ -42,6 +42,11 @@
+ )
+ 
+ alias(
++    name = "mips64",
++    actual = "@platforms//cpu:mips64",
++)
++
++alias(
+     name = "os",
+     actual = "@platforms//os:os",
+ )
+@@ -97,6 +102,7 @@
+         "@platforms//cpu:arm",
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
++        "@platforms//cpu:mips64",
+     ],
+     host_platform = True,
+     os_constraints = [
+@@ -119,6 +125,7 @@
+         "@platforms//cpu:arm",
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
++        "@platforms//cpu:mips64",
+     ],
+     os_constraints = [
+         "@platforms//os:osx",
