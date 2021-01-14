@@ -1,3 +1,16 @@
+diff --git a/scripts/bootstrap/bootstrap.sh b/scripts/bootstrap/bootstrap.sh
+index 64a9406..aa82cf0 100755
+--- a/scripts/bootstrap/bootstrap.sh
++++ b/scripts/bootstrap/bootstrap.sh
+@@ -33,7 +33,7 @@ fi
+ 
+ _BAZEL_ARGS="--spawn_strategy=standalone \
+       --nojava_header_compilation \
+-      --strategy=Javac=worker --worker_quit_after_build --ignore_unsupported_sandboxing \
++      --strategy=Javac=standalone --ignore_unsupported_sandboxing \
+       --compilation_mode=opt \
+       --distdir=derived/distdir \
+       --java_toolchain=//src/java_tools/buildjar:bootstrap_toolchain \
 diff --git a/src/conditions/BUILD b/src/conditions/BUILD
 index fd8660c..8c4b56b 100755
 --- a/src/conditions/BUILD
@@ -32,6 +45,24 @@ index 393add7..a021924 100755
  config_setting(
      name = "linux_x86_64",
      values = {"cpu": "k8"},
+diff --git a/src/java_tools/buildjar/BUILD b/src/java_tools/buildjar/BUILD
+index 74f9604..deb555b 100755
+--- a/src/java_tools/buildjar/BUILD
++++ b/src/java_tools/buildjar/BUILD
+@@ -64,10 +64,10 @@ java_toolchain(
+     javac = ["//third_party/java/jdk/langtools:javac_jar"],
+     jvm_opts = [
+         # Prevent "Could not reserve enough space for object heap" errors on Windows.
+-        "-Xmx512m",
++    #    "-Xmx512m",
+         # Using tiered compilation improves performance of Javac when not using the worker mode.
+-        "-XX:+TieredCompilation",
+-        "-XX:TieredStopAtLevel=1",
++    #    "-XX:+TieredCompilation",
++    #    "-XX:TieredStopAtLevel=1",
+     ],
+     singlejar = ["//src/java_tools/singlejar:bootstrap_deploy.jar"],
+     source_version = "8",
 diff --git a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java b/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
 index c0edc7c..171d741 100755
 --- a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
