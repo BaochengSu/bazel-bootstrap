@@ -15,6 +15,23 @@ index fd8660c..8c4b56b 100755
  config_setting(
      name = "linux_x86_64",
      values = {"cpu": "k8"},
+diff --git a/src/conditions/BUILD.tools b/src/conditions/BUILD.tools
+index 393add7..a021924 100755
+--- a/src/conditions/BUILD.tools
++++ b/src/conditions/BUILD.tools
+@@ -34,6 +34,12 @@ config_setting(
+     visibility = ["//visibility:public"],
+ )
+ 
++config_setting(
++    name = "linux_mips64",
++    values = {"cpu": "mips64"},
++    visibility = ["//visibility:public"],
++)
++
+ config_setting(
+     name = "linux_x86_64",
+     values = {"cpu": "k8"},
 diff --git a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java b/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
 index c0edc7c..171d741 100755
 --- a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
