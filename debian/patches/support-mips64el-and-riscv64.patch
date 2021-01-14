@@ -11,7 +11,7 @@ Last-Update: 2021-01-09
  )
 +
 +constraint_value(
-+    name = "mips64el",
++    name = "mips64",
 +    constraint_setting = ":cpu",
 +)
 +
