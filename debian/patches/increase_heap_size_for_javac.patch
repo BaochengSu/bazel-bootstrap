@@ -1,0 +1,13 @@
+diff --git a/tools/build_rules/java_rules_skylark.bzl b/tools/build_rules/java_rules_skylark.bzl
+index 64bad95..ce7d5a8 100755
+--- a/tools/build_rules/java_rules_skylark.bzl
++++ b/tools/build_rules/java_rules_skylark.bzl
+@@ -67,7 +67,7 @@ def _java_library_impl(ctx):
+ 
+     if ctx.files.srcs or ctx.files.srcjars:
+         cmd += "%s/bin/javac" % java_runtime.java_home
+-        cmd += " " + " ".join(javac_options)
++        cmd += " -J-Xmx256m " + " ".join(javac_options)
+         if compile_time_jars:
+             cmd += " -classpath '" + cmd_helper.join_paths(ctx.configuration.host_path_separator, compile_time_jars) + "'"
+         cmd += " -d " + build_output + files + "\n"
