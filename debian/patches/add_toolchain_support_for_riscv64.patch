@@ -1,0 +1,240 @@
+Description: Add toolchain support for the riscv64 architecture
+ Based on the mips64el toolchain patch by Yun Peng
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2021-01-22
+
+--- a/src/conditions/BUILD
++++ b/src/conditions/BUILD
+@@ -53,6 +53,12 @@
+ )
+ 
+ config_setting(
++    name = "linux_riscv64",
++    values = {"cpu": "riscv64"},
++    visibility = ["//visibility:public"],
++)
++
++config_setting(
+     name = "linux_x86_64",
+     values = {"cpu": "k8"},
+     visibility = ["//visibility:public"],
+--- a/src/conditions/BUILD.tools
++++ b/src/conditions/BUILD.tools
+@@ -41,6 +41,12 @@
+ )
+ 
+ config_setting(
++    name = "linux_riscv64",
++    values = {"cpu": "riscv64"},
++    visibility = ["//visibility:public"],
++)
++
++config_setting(
+     name = "linux_x86_64",
+     values = {"cpu": "k8"},
+     visibility = ["//visibility:public"],
+--- a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
++++ b/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
+@@ -63,6 +63,8 @@
+               return "s390x";
+             case MIPS64:
+               return "mips64";
++            case RISCV64:
++              return "riscv64";
+             default:
+               return "unknown";
+           }
+@@ -104,6 +106,8 @@
+       return Pair.of(CPU.S390X, OS.LINUX);
+     } else if (input.equals("mips64")) {
+       return Pair.of(CPU.MIPS64, OS.LINUX);
++    } else if (input.equals("riscv64")) {
++      return Pair.of(CPU.RISCV64, OS.LINUX);
+     }
+ 
+     // Use the auto-detected values.
+--- a/src/main/java/com/google/devtools/build/lib/bazel/repository/LocalConfigPlatformFunction.java
++++ b/src/main/java/com/google/devtools/build/lib/bazel/repository/LocalConfigPlatformFunction.java
+@@ -118,6 +118,8 @@
+         return "@platforms//cpu:s390x";
+       case MIPS64:
+         return "@platforms//cpu:mips64";
++      case RISCV64:
++        return "@platforms//cpu:riscv64";
+       default:
+         // Unknown, so skip it.
+         return null;
+--- a/src/main/java/com/google/devtools/build/lib/util/CPU.java
++++ b/src/main/java/com/google/devtools/build/lib/util/CPU.java
+@@ -28,6 +28,7 @@
+   AARCH64("aarch64", ImmutableSet.of("aarch64")),
+   S390X("s390x", ImmutableSet.of("s390x", "s390")),
+   MIPS64("mips64", ImmutableSet.of("mips64el", "mips64")),
++  RISCV64("riscv64", ImmutableSet.of("riscv64")),
+   UNKNOWN("unknown", ImmutableSet.<String>of());
+ 
+   private final String canonicalName;
+--- a/third_party/BUILD
++++ b/third_party/BUILD
+@@ -557,6 +557,7 @@
+     "//src/conditions:linux_ppc": "*.so *.jnilib *.dll",
+     "//src/conditions:linux_s390x": "*.so *.jnilib *.dll",
+     "//src/conditions:linux_mips64": "*.so *.jnilib *.dll",
++    "//src/conditions:linux_riscv64": "*.so *.jnilib *.dll",
+     "//src/conditions:freebsd": "*.so *.jnilib *.dll",
+     "//src/conditions:openbsd": "*.so *.jnilib *.dll",
+     # Default is to play it safe -- better have a big binary than a slow binary
+@@ -760,6 +761,11 @@
+     values = {"host_cpu": "mips64"},
+ )
+ 
++config_setting(
++    name = "riscv64",
++    values = {"host_cpu": "riscv64"},
++)
++
+ test_suite(
+     name = "all_windows_tests",
+     tests = [
+--- a/tools/cpp/BUILD.tools
++++ b/tools/cpp/BUILD.tools
+@@ -108,6 +108,7 @@
+         "s390x|compiler": ":cc-compiler-s390x",
+         "ppc|compiler": ":cc-compiler-ppc",
+         "mips64|compiler": ":cc-compiler-mips64",
++        "riscv64|compiler": ":cc-compiler-riscv64",
+         "k8": ":cc-compiler-local",
+         "piii": ":cc-compiler-local",
+         "arm": ":cc-compiler-local",
+@@ -116,6 +117,7 @@
+         "ppc": ":cc-compiler-local",
+         "ppc64": ":cc-compiler-local",
+         "mips64": ":cc-compiler-local",
++        "riscv64": ":cc-compiler-local",
+         "darwin": ":cc-compiler-darwin",
+         "freebsd": ":cc-compiler-freebsd",
+         "armeabi-v7a": ":cc-compiler-armeabi-v7a",
+@@ -240,6 +242,33 @@
+     toolchain_type = ":toolchain_type",
+ )
+ 
++cc_toolchain(
++    name = "cc-compiler-riscv64",
++    all_files = ":empty",
++    ar_files = ":empty",
++    as_files = ":empty",
++    compiler_files = ":empty",
++    dwp_files = ":empty",
++    linker_files = ":empty",
++    objcopy_files = ":empty",
++    strip_files = ":empty",
++    supports_param_files = 1,
++    toolchain_config = ":local_linux",
++    toolchain_identifier = "local_linux",
++)
++
++toolchain(
++    name = "cc-toolchain-riscv64",
++    exec_compatible_with = [
++        "@platforms//cpu:riscv64",
++    ],
++    target_compatible_with = [
++        "@platforms//cpu:riscv64",
++    ],
++    toolchain = ":cc-compiler-riscv64",
++    toolchain_type = ":toolchain_type",
++)
++
+ cc_toolchain(
+     name = "cc-compiler-armeabi-v7a",
+     all_files = ":empty",
+--- a/tools/cpp/lib_cc_configure.bzl
++++ b/tools/cpp/lib_cc_configure.bzl
+@@ -197,6 +197,8 @@
+         return "s390x"
+     if result.stdout.strip() in ["mips64"]:
+         return "mips64"
++    if result.stdout.strip() in ["riscv64"]:
++        return "riscv64"
+     if result.stdout.strip() in ["arm", "armv7l"]:
+         return "arm"
+     if result.stdout.strip() in ["aarch64"]:
+--- a/tools/jdk/BUILD
++++ b/tools/jdk/BUILD
+@@ -138,6 +138,7 @@
+         "//src/conditions:linux_ppc64le": [":jni_md_header-linux"],
+         "//src/conditions:linux_s390x": [":jni_md_header-linux"],
+         "//src/conditions:linux_mips64": [":jni_md_header-linux"],
++        "//src/conditions:linux_riscv64": [":jni_md_header-linux"],
+         "//src/conditions:linux_x86_64": [":jni_md_header-linux"],
+         "//src/conditions:darwin": [":jni_md_header-darwin"],
+         "//src/conditions:freebsd": [":jni_md_header-freebsd"],
+@@ -150,6 +151,7 @@
+         "//src/conditions:linux_ppc64le": ["include/linux"],
+         "//src/conditions:linux_s390x": ["include/linux"],
+         "//src/conditions:linux_mips64": ["include/linux"],
++        "//src/conditions:linux_riscv64": ["include/linux"],
+         "//src/conditions:linux_x86_64": ["include/linux"],
+         "//src/conditions:darwin": ["include/darwin"],
+         "//src/conditions:freebsd": ["include/freebsd"],
+--- a/tools/platforms/BUILD
++++ b/tools/platforms/BUILD
+@@ -59,6 +59,11 @@
+ )
+ 
+ alias(
++    name = "riscv64",
++    actual = "@platforms//cpu:riscv64",
++)
++
++alias(
+     name = "os",
+     actual = "@platforms//os:os",
+ )
+@@ -115,6 +120,7 @@
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
+         "@platforms//cpu:mips64",
++        "@platforms//cpu:riscv64",
+     ],
+     host_platform = True,
+     os_constraints = [
+@@ -138,6 +144,7 @@
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
+         "@platforms//cpu:mips64",
++        "@platforms//cpu:riscv64",
+     ],
+     os_constraints = [
+         "@platforms//os:osx",
+--- a/tools/platforms/BUILD.tools
++++ b/tools/platforms/BUILD.tools
+@@ -47,6 +47,11 @@
+ )
+ 
+ alias(
++    name = "riscv64",
++    actual = "@platforms//cpu:riscv64",
++)
++
++alias(
+     name = "os",
+     actual = "@platforms//os:os",
+ )
+@@ -103,6 +108,7 @@
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
+         "@platforms//cpu:mips64",
++        "@platforms//cpu:riscv64",
+     ],
+     host_platform = True,
+     os_constraints = [
+@@ -126,6 +132,7 @@
+         "@platforms//cpu:aarch64",
+         "@platforms//cpu:s390x",
+         "@platforms//cpu:mips64",
++        "@platforms//cpu:riscv64",
+     ],
+     os_constraints = [
+         "@platforms//os:osx",

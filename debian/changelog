@@ -1,8 +1,12 @@
-bazel-bootstrap (3.5.1+ds-3) UNRELEASED; urgency=medium
+bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
 
-  * Add patch to support mips64el and riscv64
+  * Fix FTBFS on mips64el and riscv64
+    - Add patches to support cpus and toolchains
+    - Add patch to increase available javac memory during early build
+    - Add Dockerfiles for architecture-specific test builds
+  * Update autopkgtests
 
- -- Olek Wojnar <olek@debian.org>  Sat, 09 Jan 2021 23:44:44 -0500
+ -- Olek Wojnar <olek@debian.org>  Sat, 23 Jan 2021 18:21:43 -0500
 
 bazel-bootstrap (3.5.1+ds-2) unstable; urgency=high
 
