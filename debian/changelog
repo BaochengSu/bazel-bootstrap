@@ -1,5 +1,6 @@
-bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
+bazel-bootstrap (3.5.1+ds-3~exp3) experimental; urgency=high
 
+  * Ephemeral upload to experimental to test fix
   * Fix FTBFS on mips64el and riscv64
     - Add patches to support cpus and toolchains
     - Add patch to increase available javac memory during early build
