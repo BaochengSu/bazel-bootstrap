@@ -1,5 +1,6 @@
-bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
+bazel-bootstrap (3.5.1+ds-3~exp5) experimental; urgency=high
 
+  * Ephemeral upload to experimental to test fix
   * Fix FTBFS on mips64el and riscv64
     - Add patches to support cpus and toolchains
     - Add patch to increase available javac memory during early build
@@ -9,7 +10,7 @@ bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
     - Add Dockerfiles for architecture-specific test builds
   * Update autopkgtests
 
- -- Olek Wojnar <olek@debian.org>  Fri, 12 Feb 2021 15:08:50 -0500
+ -- Olek Wojnar <olek@debian.org>  Mon, 22 Feb 2021 11:13:44 -0500
 
 bazel-bootstrap (3.5.1+ds-2) unstable; urgency=high
 
