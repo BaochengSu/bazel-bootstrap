@@ -1,0 +1,25 @@
+Description: Add verbose flag to prevent javac build timeouts
+Author: Yun Peng <pcloudy@google.com>
+Forwarded: not-needed
+Last-Update: 2021-02-02
+
+--- a/scripts/bootstrap/compile.sh
++++ b/scripts/bootstrap/compile.sh
+@@ -144,7 +144,7 @@
+   # Useful if your system chooses too small of a max heap for javac.
+   # We intentionally rely on shell word splitting to allow multiple
+   # additional arguments to be passed to javac.
+-  run "${JAVAC}" -classpath "${classpath}" -sourcepath "${sourcepath}" \
++  run "${JAVAC}" -verbose -classpath "${classpath}" -sourcepath "${sourcepath}" \
+       -d "${output}/classes" -source "$JAVA_VERSION" -target "$JAVA_VERSION" \
+       -encoding UTF-8 ${BAZEL_JAVAC_OPTS} "@${paramfile}"
+ 
+@@ -170,7 +170,7 @@
+ 
+   log "Creating $name.jar..."
+   echo "Main-Class: $mainClass" > $output/MANIFEST.MF
+-  run "$JAR" cmf $output/MANIFEST.MF $output/$name.jar $packages "$@"
++  run "$JAR" cmfv $output/MANIFEST.MF $output/$name.jar $packages "$@"
+ }
+ 
+ HOW_TO_BOOTSTRAP='
