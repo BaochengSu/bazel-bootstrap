@@ -1,0 +1,63 @@
+Description: Increase client connect timeout to 1200 seconds
+ Upstream has created a new option to set arbitrary timeouts:
+ https://github.com/bazelbuild/bazel/commit/f1b3a6b7461010f55929b11684347551eaf52be5
+ Upstream's solution will be used for versions >= 4.0.0
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2021-02-12
+
+--- a/src/main/cpp/startup_options.cc
++++ b/src/main/cpp/startup_options.cc
+@@ -353,10 +353,10 @@
+   } else if ((value = GetUnaryOption(arg, next_arg,
+                                      "--connect_timeout_secs")) != NULL) {
+     if (!blaze_util::safe_strto32(value, &connect_timeout_secs) ||
+-        connect_timeout_secs < 1 || connect_timeout_secs > 120) {
++        connect_timeout_secs < 1 || connect_timeout_secs > 1200) {
+       blaze_util::StringPrintf(error,
+           "Invalid argument to --connect_timeout_secs: '%s'.\n"
+-          "Must be an integer between 1 and 120.\n",
++          "Must be an integer between 1 and 1200.\n",
+           value);
+       return blaze_exit_code::BAD_ARGV;
+     }
+--- a/src/main/cpp/blaze.cc
++++ b/src/main/cpp/blaze.cc
+@@ -779,7 +779,7 @@
+   // Give the server two minutes to start up. That's enough to connect with a
+   // debugger.
+   const auto start_time = std::chrono::system_clock::now();
+-  const auto try_until_time = start_time + std::chrono::seconds(120);
++  const auto try_until_time = start_time + std::chrono::seconds(1200);
+   // Print an update at most once every 10 seconds if we are still trying to
+   // connect.
+   const auto min_message_interval = std::chrono::seconds(10);
+@@ -821,7 +821,7 @@
+     }
+   }
+   BAZEL_DIE(blaze_exit_code::INTERNAL_ERROR)
+-      << "couldn't connect to server (" << server_pid << ") after 120 seconds.";
++      << "couldn't connect to server (" << server_pid << ") after 1200 seconds.";
+ }
+ 
+ // Ensures that any server previously associated with `server_dir` is no longer
+@@ -971,7 +971,7 @@
+ 
+     // Now rename the completed installation to its final name.
+     int attempts = 0;
+-    while (attempts < 120) {
++    while (attempts < 1200) {
+       int result = blaze_util::RenameDirectory(tmp_install, install_base);
+       if (result == blaze_util::kRenameDirectorySuccess ||
+           result == blaze_util::kRenameDirectoryFailureNotEmpty) {
+@@ -991,8 +991,8 @@
+       }
+     }
+ 
+-    // Give up renaming after 120 failed attempts / 2 minutes.
+-    if (attempts == 120) {
++    // Give up renaming after 1200 failed attempts / 20 minutes.
++    if (attempts == 1200) {
+       blaze_util::RemoveRecursively(tmp_install);
+       BAZEL_DIE(blaze_exit_code::LOCAL_ENVIRONMENTAL_ERROR)
+           << "install base directory '" << tmp_install

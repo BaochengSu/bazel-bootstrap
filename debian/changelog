@@ -4,10 +4,11 @@ bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
     - Add patches to support cpus and toolchains
     - Add patch to increase available javac memory during early build
     - Add patch to enable verbose javac to prevent build timeouts
+    - Add patch to increase startup timeout
     - Add Dockerfiles for architecture-specific test builds
   * Update autopkgtests
 
- -- Olek Wojnar <olek@debian.org>  Tue, 02 Feb 2021 15:10:49 -0500
+ -- Olek Wojnar <olek@debian.org>  Fri, 12 Feb 2021 15:08:50 -0500
 
 bazel-bootstrap (3.5.1+ds-2) unstable; urgency=high
 
