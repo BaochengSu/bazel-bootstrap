@@ -17,3 +17,4 @@ add_toolchain_support_for_mips64.patch
 increase_heap_size_for_javac.patch
 add_toolchain_support_for_riscv64.patch
 add_verbose_for_java_compilation.patch
+increase-client-timeout.patch
