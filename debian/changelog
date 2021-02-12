@@ -5,6 +5,7 @@ bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
     - Add patch to increase available javac memory during early build
     - Add patch to enable verbose javac to prevent build timeouts
     - Add patch to increase startup timeout
+    - Add patch to debug bash completion creation
     - Add Dockerfiles for architecture-specific test builds
   * Update autopkgtests
 

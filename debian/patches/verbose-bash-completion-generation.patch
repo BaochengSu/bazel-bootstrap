@@ -1,0 +1,16 @@
+Description: Add verbose debug info to bash completion creation
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2021-02-12
+
+--- a/scripts/generate_bash_completion.sh
++++ b/scripts/generate_bash_completion.sh
+@@ -69,7 +69,7 @@
+ server_javabase_flag=
+ [ -z "${javabase}" ] || server_javabase_flag="--server_javabase=${javabase}"
+ "${bazel}" --output_user_root="${tempdir}/root" ${server_javabase_flag} \
+-    help completion >>"${tempdir}/output"
++    --client_debug help completion >>"${tempdir}/output"
+ 
+ [ -z "${append}" ] || cat ${append} >>"${tempdir}/output"
+ 
