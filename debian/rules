@@ -48,7 +48,7 @@ export PROTOC = /usr/bin/protoc
 export GRPC_JAVA_PLUGIN = /usr/bin/grpc_java_plugin
 
 # Prevent Out-of-Memory failures on some architectures
-export BAZEL_JAVAC_OPTS = -J-Xmx4096m
+export BAZEL_JAVAC_OPTS = -J-Xmx4096m -J-zero
 
 %:
 	dh $@ --with python3

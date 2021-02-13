@@ -1,0 +1,17 @@
+Description: Use the Zero Java VM for build
+ May help enable proper build on MIPS
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2021-02-17
+
+--- a/tools/build_rules/java_rules_skylark.bzl
++++ b/tools/build_rules/java_rules_skylark.bzl
+@@ -67,7 +67,7 @@
+ 
+     if ctx.files.srcs or ctx.files.srcjars:
+         cmd += "%s/bin/javac" % java_runtime.java_home
+-        cmd += " -J-Xmx2G " + " ".join(javac_options)
++        cmd += " -J-zero -J-Xmx2G " + " ".join(javac_options)
+         if compile_time_jars:
+             cmd += " -classpath '" + cmd_helper.join_paths(ctx.configuration.host_path_separator, compile_time_jars) + "'"
+         cmd += " -d " + build_output + files + "\n"

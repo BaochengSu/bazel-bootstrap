@@ -19,3 +19,4 @@ add_toolchain_support_for_riscv64.patch
 add_verbose_for_java_compilation.patch
 increase-client-timeout.patch
 verbose-bash-completion-generation.patch
+use-zero-java-vm-for-build.patch
