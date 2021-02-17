@@ -27,6 +27,7 @@ export EXTRA_BAZEL_ARGS = \
 	--define=distribution=debian \
 	--noremote_accept_cached \
 	--verbose_failures \
+	--subcommands \
 	--compilation_mode dbg \
 	--action_env=CCACHE_DISABLE \
 	--action_env=CCACHE_TEMPDIR \
