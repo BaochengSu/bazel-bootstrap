@@ -1,6 +1,5 @@
 usr/libexec/${DEB_HOST_MULTIARCH}/bazel/build-runfiles usr/share/bazel/build-runfiles
 usr/libexec/${DEB_HOST_MULTIARCH}/bazel/daemonize usr/share/bazel/daemonize
-usr/lib/${DEB_HOST_MULTIARCH}/bazel/libunix.so usr/share/bazel/libunix.so
 usr/lib/${DEB_HOST_MULTIARCH}/bazel/libcpu_profiler.so usr/share/bazel/libcpu_profiler.so
 usr/libexec/${DEB_HOST_MULTIARCH}/bazel/linux-sandbox usr/share/bazel/linux-sandbox
 usr/libexec/${DEB_HOST_MULTIARCH}/bazel/process-wrapper usr/share/bazel/process-wrapper

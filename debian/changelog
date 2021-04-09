@@ -4,6 +4,8 @@ bazel-bootstrap (4.0.0+ds-1) UNRELEASED; urgency=medium
     - Update patches for new version
   * Drop jdk.BUILD from bazel-bootstrap-data
     - See upstream bazelbuild/bazel@f259b8abf
+  * Drop libunix.so from bazel-bootstrap-data
+    - See upstream bazelbuild/bazel@7128580b1
 
  -- Jesse Chan <jc@linux.com>  Fri, 09 Apr 2021 22:57:29 +0800
 
