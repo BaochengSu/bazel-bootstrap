@@ -83,14 +83,6 @@ Files-Excluded: derived
                 third_party/py/concurrent/*.py
                 third_party/py/concurrent/*.md
                 third_party/py/concurrent/LICENSE
-                third_party/py/gflags/debian
-                third_party/py/gflags/gflags
-                third_party/py/gflags/A*
-                third_party/py/gflags/C*
-                third_party/py/gflags/M*
-                third_party/py/gflags/P*
-                third_party/py/gflags/R*
-                third_party/py/gflags/*.py
                 third_party/py/mock/docs
                 third_party/py/mock/html
                 third_party/py/mock/mock*
