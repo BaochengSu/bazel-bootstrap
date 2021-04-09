@@ -16,7 +16,7 @@ Last-Update: 2021-01-14
        --java_toolchain=//src/java_tools/buildjar:bootstrap_toolchain \
 --- a/src/conditions/BUILD
 +++ b/src/conditions/BUILD
-@@ -47,6 +47,12 @@
+@@ -65,6 +65,12 @@
  )
  
  config_setting(
@@ -27,11 +27,11 @@ Last-Update: 2021-01-14
 +
 +config_setting(
      name = "linux_x86_64",
-     values = {"cpu": "k8"},
-     visibility = ["//visibility:public"],
+     constraint_values = [
+         "@platforms//os:linux",
 --- a/src/conditions/BUILD.tools
 +++ b/src/conditions/BUILD.tools
-@@ -35,6 +35,12 @@
+@@ -44,6 +44,12 @@
  )
  
  config_setting(
@@ -42,8 +42,8 @@ Last-Update: 2021-01-14
 +
 +config_setting(
      name = "linux_x86_64",
-     values = {"cpu": "k8"},
-     visibility = ["//visibility:public"],
+     constraint_values = [
+         "@platforms//os:linux",
 --- a/src/java_tools/buildjar/BUILD
 +++ b/src/java_tools/buildjar/BUILD
 @@ -63,10 +63,10 @@
@@ -103,7 +103,7 @@ Last-Update: 2021-01-14
    private final String canonicalName;
 --- a/third_party/BUILD
 +++ b/third_party/BUILD
-@@ -556,6 +556,7 @@
+@@ -557,6 +557,7 @@
      "//src/conditions:linux_aarch64": "*.so *.jnilib *.dll",
      "//src/conditions:linux_ppc": "*.so *.jnilib *.dll",
      "//src/conditions:linux_s390x": "*.so *.jnilib *.dll",
@@ -111,7 +111,7 @@ Last-Update: 2021-01-14
      "//src/conditions:freebsd": "*.so *.jnilib *.dll",
      "//src/conditions:openbsd": "*.so *.jnilib *.dll",
      # Default is to play it safe -- better have a big binary than a slow binary
-@@ -754,6 +755,11 @@
+@@ -755,6 +756,11 @@
      values = {"host_cpu": "ppc"},
  )
  
@@ -188,7 +188,7 @@ Last-Update: 2021-01-14
      if result.stdout.strip() in ["aarch64"]:
 --- a/tools/jdk/BUILD
 +++ b/tools/jdk/BUILD
-@@ -137,6 +137,7 @@
+@@ -140,6 +140,7 @@
          "//src/conditions:linux_aarch64": [":jni_md_header-linux"],
          "//src/conditions:linux_ppc64le": [":jni_md_header-linux"],
          "//src/conditions:linux_s390x": [":jni_md_header-linux"],
@@ -196,7 +196,7 @@ Last-Update: 2021-01-14
          "//src/conditions:linux_x86_64": [":jni_md_header-linux"],
          "//src/conditions:darwin": [":jni_md_header-darwin"],
          "//src/conditions:freebsd": [":jni_md_header-freebsd"],
-@@ -148,6 +149,7 @@
+@@ -151,6 +152,7 @@
          "//src/conditions:linux_aarch64": ["include/linux"],
          "//src/conditions:linux_ppc64le": ["include/linux"],
          "//src/conditions:linux_s390x": ["include/linux"],

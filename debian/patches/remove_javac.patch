@@ -5,16 +5,6 @@ Origin: upstream, https://github.com/meteorcloudy/bazel/commit/1c38681aec9dee4ee
 Forwarded: not-needed
 Last-Update: 2020-07-22
 
---- a/src/java_tools/buildjar/BUILD
-+++ b/src/java_tools/buildjar/BUILD
-@@ -61,7 +61,6 @@
-     genclass = ["bootstrap_genclass_deploy.jar"],
-     ijar = ["//third_party/ijar"],
-     javabuilder = ["bootstrap_VanillaJavaBuilder_deploy.jar"],
--    javac = ["//third_party/java/jdk/langtools:javac_jar"],
-     jvm_opts = [
-         # Prevent "Could not reserve enough space for object heap" errors on Windows.
-         "-Xmx512m",
 --- a/src/java_tools/buildjar/java/com/google/devtools/build/buildjar/BUILD
 +++ b/src/java_tools/buildjar/java/com/google/devtools/build/buildjar/BUILD
 @@ -56,7 +56,6 @@
@@ -25,15 +15,7 @@ Last-Update: 2020-07-22
      ],
  )
  
-@@ -94,7 +93,6 @@
-         "//third_party:guava",
-         "//third_party:jsr305",
-         "//third_party/java/jacoco:core",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -165,7 +163,6 @@
+@@ -164,7 +163,6 @@
          "//third_party/grpc:bootstrap-grpc-jars",
          "//third_party:tomcat_annotations_api-jars",
      ],
@@ -84,79 +66,3 @@ Last-Update: 2020-07-22
 -        "//third_party/java/jdk/langtools:javac",
      ],
  )
- 
---- a/src/java_tools/buildjar/java/com/google/devtools/build/java/turbine/javac/BUILD
-+++ b/src/java_tools/buildjar/java/com/google/devtools/build/java/turbine/javac/BUILD
-@@ -25,7 +25,6 @@
-         "//third_party:guava",
-         "//third_party:jsr305",
-         "//third_party:turbine",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -37,7 +36,6 @@
-         "//src/java_tools/buildjar/java/com/google/devtools/build/buildjar/javac/plugins:dependency",
-         "//third_party:guava",
-         "//third_party:jsr305",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -48,7 +46,6 @@
-         ":formatted_diagnostic",
-         "//third_party:guava",
-         "//third_party:jsr305",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -66,7 +63,6 @@
-         "//third_party:guava",
-         "//third_party:jimfs",
-         "//third_party:jsr305",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -79,7 +75,6 @@
-         "//src/java_tools/buildjar/java/com/google/devtools/build/buildjar/javac/plugins:dependency",
-         "//src/java_tools/buildjar/java/com/google/devtools/build/buildjar/javac/statistics",
-         "//third_party:jsr305",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -91,7 +86,6 @@
-         "//third_party:guava",
-         "//third_party:jsr305",
-         "//third_party:turbine",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -100,7 +94,6 @@
-     srcs = ["ZipUtil.java"],
-     deps = [
-         "//third_party:jsr305",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
-@@ -110,16 +103,12 @@
-     deps = [
-         "//third_party:guava",
-         "//third_party:jsr305",
--        "//third_party/java/jdk/langtools:javac",
-     ],
- )
- 
- java_library(
-     name = "formatted_diagnostic",
-     srcs = ["FormattedDiagnostic.java"],
--    deps = [
--        "//third_party/java/jdk/langtools:javac",
--    ],
- )
- 
- filegroup(

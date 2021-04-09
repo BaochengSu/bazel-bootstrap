@@ -10,7 +10,7 @@ Last-Update: 2021-02-22
  server_javabase_flag=
  [ -z "${javabase}" ] || server_javabase_flag="--server_javabase=${javabase}"
  "${bazel}" --output_user_root="${tempdir}/root" ${server_javabase_flag} \
-+    --client_debug --connect_timeout_secs=1200 \
++    --client_debug --local_startup_timeout_secs=1200 \
      help completion >>"${tempdir}/output"
  
  [ -z "${append}" ] || cat ${append} >>"${tempdir}/output"

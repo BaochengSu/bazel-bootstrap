@@ -24,16 +24,16 @@ Last-Update: 2020-11-08
 -  || fail "Could not copy '$bazel_bin_path' to 'output/bazel${EXE_EXT}'"
 -chmod 0755 "output/bazel${EXE_EXT}"
 -BAZEL="$(pwd)/output/bazel${EXE_EXT}"
-+cp -f "$bazel_bin_path" "output/usr/bin/bazel-3" \
++cp -f "$bazel_bin_path" "output/usr/bin/bazel-4" \
 +  || fail "Could not copy '$bazel_bin_path' to 'output/usr/bin/'"
-+chmod 0755 "output/usr/bin/bazel-3"
-+BAZEL="$(pwd)/output/usr/bin/bazel-3"
++chmod 0755 "output/usr/bin/bazel-4"
++BAZEL="$(pwd)/output/usr/bin/bazel-4"
  
  clear_log
  display "Build successful! Binary is here: ${BAZEL}"
 --- a/src/package-bazel.sh
 +++ b/src/package-bazel.sh
-@@ -100,6 +100,10 @@
+@@ -106,6 +106,10 @@
  # Zero timestamps.
  (cd $PACKAGE_DIR; xargs touch -t 198001010000.00) < files.list
  

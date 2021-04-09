@@ -6,7 +6,7 @@ Last-Update: 2021-01-22
 
 --- a/src/conditions/BUILD
 +++ b/src/conditions/BUILD
-@@ -53,6 +53,12 @@
+@@ -71,6 +71,12 @@
  )
  
  config_setting(
@@ -17,11 +17,11 @@ Last-Update: 2021-01-22
 +
 +config_setting(
      name = "linux_x86_64",
-     values = {"cpu": "k8"},
-     visibility = ["//visibility:public"],
+     constraint_values = [
+         "@platforms//os:linux",
 --- a/src/conditions/BUILD.tools
 +++ b/src/conditions/BUILD.tools
-@@ -41,6 +41,12 @@
+@@ -50,6 +50,12 @@
  )
  
  config_setting(
@@ -32,8 +32,8 @@ Last-Update: 2021-01-22
 +
 +config_setting(
      name = "linux_x86_64",
-     values = {"cpu": "k8"},
-     visibility = ["//visibility:public"],
+     constraint_values = [
+         "@platforms//os:linux",
 --- a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
 +++ b/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
 @@ -63,6 +63,8 @@
@@ -77,7 +77,7 @@ Last-Update: 2021-01-22
    private final String canonicalName;
 --- a/third_party/BUILD
 +++ b/third_party/BUILD
-@@ -557,6 +557,7 @@
+@@ -558,6 +558,7 @@
      "//src/conditions:linux_ppc": "*.so *.jnilib *.dll",
      "//src/conditions:linux_s390x": "*.so *.jnilib *.dll",
      "//src/conditions:linux_mips64": "*.so *.jnilib *.dll",
@@ -85,7 +85,7 @@ Last-Update: 2021-01-22
      "//src/conditions:freebsd": "*.so *.jnilib *.dll",
      "//src/conditions:openbsd": "*.so *.jnilib *.dll",
      # Default is to play it safe -- better have a big binary than a slow binary
-@@ -760,6 +761,11 @@
+@@ -761,6 +762,11 @@
      values = {"host_cpu": "mips64"},
  )
  
@@ -162,7 +162,7 @@ Last-Update: 2021-01-22
      if result.stdout.strip() in ["aarch64"]:
 --- a/tools/jdk/BUILD
 +++ b/tools/jdk/BUILD
-@@ -138,6 +138,7 @@
+@@ -141,6 +141,7 @@
          "//src/conditions:linux_ppc64le": [":jni_md_header-linux"],
          "//src/conditions:linux_s390x": [":jni_md_header-linux"],
          "//src/conditions:linux_mips64": [":jni_md_header-linux"],
@@ -170,7 +170,7 @@ Last-Update: 2021-01-22
          "//src/conditions:linux_x86_64": [":jni_md_header-linux"],
          "//src/conditions:darwin": [":jni_md_header-darwin"],
          "//src/conditions:freebsd": [":jni_md_header-freebsd"],
-@@ -150,6 +151,7 @@
+@@ -153,6 +154,7 @@
          "//src/conditions:linux_ppc64le": ["include/linux"],
          "//src/conditions:linux_s390x": ["include/linux"],
          "//src/conditions:linux_mips64": ["include/linux"],

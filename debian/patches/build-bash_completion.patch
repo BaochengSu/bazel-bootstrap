@@ -23,9 +23,9 @@ Last-Update: 2020-08-11
    || fail "Could not find freshly built Bazel binary at '$bazel_bin_path'"
 +cp -f "$bash_completion_path" "output/bazel-complete.bash" \
 +  || fail "Could not copy '$bash_completion_path' to 'output/bazel-complete.bash'"
- cp -f "$bazel_bin_path" "output/usr/bin/bazel-3" \
+ cp -f "$bazel_bin_path" "output/usr/bin/bazel-4" \
    || fail "Could not copy '$bazel_bin_path' to 'output/usr/bin/'"
- chmod 0755 "output/usr/bin/bazel-3"
+ chmod 0755 "output/usr/bin/bazel-4"
 --- a/scripts/BUILD
 +++ b/scripts/BUILD
 @@ -12,7 +12,7 @@

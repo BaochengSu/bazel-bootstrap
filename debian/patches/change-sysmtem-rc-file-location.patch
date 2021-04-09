@@ -7,7 +7,7 @@ Last-Update: 2020-08-17
 
 --- a/src/main/cpp/BUILD
 +++ b/src/main/cpp/BUILD
-@@ -171,7 +171,7 @@
+@@ -162,7 +162,7 @@
          # For posix platforms, this can include environment variables in the
          # form ${var_name}. Braces are required.
          "//conditions:default": [

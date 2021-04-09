@@ -44,7 +44,7 @@ Last-Update: 2020-08-10
      <!-- Custom stylesheet -->
 --- a/site/_layouts/documentation.html
 +++ b/site/_layouts/documentation.html
-@@ -405,9 +405,6 @@
+@@ -417,9 +417,6 @@
        </div>
      </div>
  

@@ -5,7 +5,7 @@ Last-Update: 2021-02-02
 
 --- a/scripts/bootstrap/compile.sh
 +++ b/scripts/bootstrap/compile.sh
-@@ -144,7 +144,7 @@
+@@ -139,7 +139,7 @@
    # Useful if your system chooses too small of a max heap for javac.
    # We intentionally rely on shell word splitting to allow multiple
    # additional arguments to be passed to javac.
@@ -14,7 +14,7 @@ Last-Update: 2021-02-02
        -d "${output}/classes" -source "$JAVA_VERSION" -target "$JAVA_VERSION" \
        -encoding UTF-8 ${BAZEL_JAVAC_OPTS} "@${paramfile}"
  
-@@ -170,7 +170,7 @@
+@@ -165,7 +165,7 @@
  
    log "Creating $name.jar..."
    echo "Main-Class: $mainClass" > $output/MANIFEST.MF
