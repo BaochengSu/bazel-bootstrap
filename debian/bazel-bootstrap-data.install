@@ -3,7 +3,6 @@ etc/bazel/bazelrc
 usr/share/bazel/A-server.jar
 usr/share/bazel/build-label.txt
 usr/share/bazel/install_base_key
-usr/share/bazel/jdk.BUILD
 usr/share/bazel/platforms/*
 usr/share/bazel/embedded_tools/tools/build_defs/pkg/README.md => usr/share/doc/bazel-bootstrap/README-build_defs.md
 usr/share/bazel/embedded_tools/tools/config/README.md => usr/share/doc/bazel-bootstrap/README-config.md
