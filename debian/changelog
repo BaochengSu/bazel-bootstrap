@@ -8,6 +8,8 @@ bazel-bootstrap (4.0.0+ds-1) UNRELEASED; urgency=medium
     - See upstream bazelbuild/bazel@7128580b1
   * Drop unused "third_party/py/gflags" exclusion
     - See upstream bazelbuild/bazel@a9bf09324
+  * Add builtins_bzl/* to bazel-bootstrap-data
+    - See upstream bazelbuild/bazel@de1babee3
 
  -- Jesse Chan <jc@linux.com>  Fri, 09 Apr 2021 22:57:29 +0800
 
