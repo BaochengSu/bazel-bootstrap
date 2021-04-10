@@ -10,6 +10,9 @@ bazel-bootstrap (4.0.0+ds-1) UNRELEASED; urgency=medium
     - See upstream bazelbuild/bazel@a9bf09324
   * Add builtins_bzl/* to bazel-bootstrap-data
     - See upstream bazelbuild/bazel@de1babee3
+  * Add "Bypass ccache" flags to host env as well
+    - `--action_env` are only included in the target configuration now
+    - See upstream bazelbuild/bazel@a463d9095
 
  -- Jesse Chan <jc@linux.com>  Fri, 09 Apr 2021 22:57:29 +0800
 
