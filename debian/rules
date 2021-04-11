@@ -7,6 +7,7 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export VERBOSE = yes
 export BAZDIR = ${CURDIR}/debian/bazel-bootstrap
 export BAZDATADIR = ${CURDIR}/debian/bazel-bootstrap-data
+export BAZSRCDIR = ${CURDIR}/debian/bazel-bootstrap-source
 
 # Bypass ccache
 export CCACHE_DISABLE = 1
@@ -64,10 +65,16 @@ override_dh_auto_clean:
 	rm -rf bazel-*
 
 override_dh_install:
-	mkdir -p debian/tmp
+	mkdir -p debian/tmp/usr/src/bazel-bootstrap
+	ls | sed -r '/(debian|derived|examples|output|site|bazel-)/d' | \
+		xargs cp -r -t debian/tmp/usr/src/bazel-bootstrap
+	rm -f debian/tmp/usr/src/bazel-bootstrap/scripts/packages/chocolatey/.gitignore
+	rm -rf mock_repos
 	rm -f output/usr/share/bazel/xcode-locator
 	rm -rf output/usr/share/bazel/embedded_tools/tools/jdk/nosystemjdk
-	mv output/* debian/tmp
+	mv output/etc debian/tmp
+	mv output/usr/bin debian/tmp/usr
+	mv output/usr/share debian/tmp/usr
 	dh_install
 	rm -rf ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/zip/zipper
 
@@ -75,7 +82,10 @@ override_dh_installdocs-arch:
 	dh_installdocs --package=bazel-bootstrap -XREADME.Debian
 
 override_dh_installdocs-indep:
-	dh_installdocs --package=bazel-bootstrap-data --doc-main-package=bazel-bootstrap
+	dh_installdocs --package=bazel-bootstrap-data \
+		--doc-main-package=bazel-bootstrap
+	dh_installdocs --package=bazel-bootstrap-source \
+		--doc-main-package=bazel-bootstrap -XREADME.Debian
 
 override_dh_link-indep:
 	jdupes -rl ${BAZDATADIR}/usr
@@ -90,6 +100,8 @@ override_dh_link-indep:
 
 override_dh_fixperms-indep:
 	find ${BAZDATADIR}/usr/share -type f -print0 2>/dev/null | xargs -0r chmod a-x
+	find ${BAZSRCDIR}/usr/src -type f -not -name '*.sh' -print0 2>/dev/null | \
+		xargs -0r chmod a-x
 	find ${BAZDATADIR}/usr/share/doc/bazel/examples -type f \
 		-not -name '*.sh' -print0 2>/dev/null | xargs -0r chmod a-x
 	find ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools \

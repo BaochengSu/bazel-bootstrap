@@ -119,3 +119,18 @@ Description: Tool to automate software builds and tests (data files)
  This package contains architecture-independent data for the bootstrap variant
  of Bazel and should only be used on systems that do not have the full version
  of Bazel built yet.
+
+Package: bazel-bootstrap-source
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends},
+Description: Tool to automate software builds and tests (source code)
+ Supported build tasks include running compilers and linkers to produce
+ executable programs and libraries, and assembling deployable packages
+ for Android, iOS and other target environments. Bazel is similar to
+ other tools like Make, Ant, Gradle, Buck, Pants and Maven.
+ .
+ This package contains the source code for the bootstrap variant of Bazel and
+ should only be used on systems that do not have the full version of Bazel
+ built yet. This package is required for building certain packages that
+ require Bazel source code in their build process.

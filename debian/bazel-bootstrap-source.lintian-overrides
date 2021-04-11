@@ -1,0 +1,19 @@
+# False positive, bug reported at:
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=968071
+bazel-bootstrap-source: arch-independent-package-contains-binary-or-object
+# Required test data
+bazel-bootstrap-source: broken-zip
+# Required test data
+bazel-bootstrap-source: compressed-duplicate
+# Required test data
+bazel-bootstrap-source: executable-not-elf-or-script
+# Verbatim source code tree
+bazel-bootstrap-source: font-in-non-font-package
+# Verbatim source code tree
+bazel-bootstrap-source: font-outside-font-dir
+# Verbatim source code tree
+bazel-bootstrap-source: package-contains-documentation-outside-usr-share-doc
+# Verbatim source code tree
+bazel-bootstrap-source: extra-license-file
+# Path is correct
+bazel-bootstrap-source: repeated-path-segment
