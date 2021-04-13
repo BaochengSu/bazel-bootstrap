@@ -115,7 +115,3 @@ override_dh_fixperms-indep:
 	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/objc/protobuf_support
 	chmod a+x ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/python/pywrapper_template.txt
 	dh_fixperms
-
-#dh_bash-completion is not correctly annotating that it has installed files
-override_dh_missing:
-	dh_missing -Xbazel-complete.bash

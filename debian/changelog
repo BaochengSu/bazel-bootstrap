@@ -1,8 +1,9 @@
 bazel-bootstrap (3.5.1+ds-4) unstable; urgency=medium
 
   * Enable -source binary package build
+  * Fix generation of bash completion
 
- -- Olek Wojnar <olek@debian.org>  Sun, 11 Apr 2021 18:10:18 -0400
+ -- Olek Wojnar <olek@debian.org>  Tue, 13 Apr 2021 18:45:55 -0400
 
 bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
 

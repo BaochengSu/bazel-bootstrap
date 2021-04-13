@@ -1,1 +1,1 @@
-debian/tmp/bazel-complete.bash bazel
+output/bazel-complete.bash bazel
