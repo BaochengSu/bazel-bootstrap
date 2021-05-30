@@ -6,7 +6,7 @@ Last-Update: 2021-01-22
 
 --- a/src/conditions/BUILD
 +++ b/src/conditions/BUILD
-@@ -71,6 +71,12 @@
+@@ -73,6 +73,12 @@
  )
  
  config_setting(
@@ -36,7 +36,7 @@ Last-Update: 2021-01-22
          "@platforms//os:linux",
 --- a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
 +++ b/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
-@@ -63,6 +63,8 @@
+@@ -70,6 +70,8 @@
                return "s390x";
              case MIPS64:
                return "mips64";
@@ -45,7 +45,7 @@ Last-Update: 2021-01-22
              default:
                return "unknown";
            }
-@@ -104,6 +106,8 @@
+@@ -111,6 +113,8 @@
        return Pair.of(CPU.S390X, OS.LINUX);
      } else if (input.equals("mips64")) {
        return Pair.of(CPU.MIPS64, OS.LINUX);
@@ -77,7 +77,7 @@ Last-Update: 2021-01-22
    private final String canonicalName;
 --- a/third_party/BUILD
 +++ b/third_party/BUILD
-@@ -558,6 +558,7 @@
+@@ -570,6 +570,7 @@
      "//src/conditions:linux_ppc": "*.so *.jnilib *.dll",
      "//src/conditions:linux_s390x": "*.so *.jnilib *.dll",
      "//src/conditions:linux_mips64": "*.so *.jnilib *.dll",
@@ -85,7 +85,7 @@ Last-Update: 2021-01-22
      "//src/conditions:freebsd": "*.so *.jnilib *.dll",
      "//src/conditions:openbsd": "*.so *.jnilib *.dll",
      # Default is to play it safe -- better have a big binary than a slow binary
-@@ -761,6 +762,11 @@
+@@ -773,6 +774,11 @@
      values = {"host_cpu": "mips64"},
  )
  
@@ -151,7 +151,7 @@ Last-Update: 2021-01-22
      all_files = ":empty",
 --- a/tools/cpp/lib_cc_configure.bzl
 +++ b/tools/cpp/lib_cc_configure.bzl
-@@ -197,6 +197,8 @@
+@@ -199,6 +199,8 @@
          return "s390x"
      if result.stdout.strip() in ["mips64"]:
          return "mips64"
