@@ -22,3 +22,4 @@ add_include_for_limits.patch
 fix_bashisms.patch
 fix_longlines.patch
 debian_rxjava.patch
+remove_skylib.patch
