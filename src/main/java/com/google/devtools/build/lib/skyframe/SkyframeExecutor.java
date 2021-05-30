@@ -2630,19 +2630,25 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory, Configur
 
   /**
    * Initializes and syncs the graph with the given options, readying it for the next evaluation.
+   *
+   * <p>Returns precomputed information about the workspace if it is available at this stage. This
+   * is an optimization allowing implementations which have such information to make it available
+   * early in the build.
    */
-  public void sync(
+  @Nullable
+  public WorkspaceInfoFromDiff sync(
       ExtendedEventHandler eventHandler,
       PackageOptions packageOptions,
       PathPackageLocator pathPackageLocator,
       BuildLanguageOptions buildLanguageOptions,
       UUID commandId,
       Map<String, String> clientEnv,
+      Map<String, String> repoEnvOption,
       TimestampGranularityMonitor tsgm,
       OptionsProvider options)
       throws InterruptedException, AbruptExitException {
     getActionEnvFromOptions(options.getOptions(CoreOptions.class));
-    setRepoEnv(options.getOptions(CoreOptions.class));
+    PrecomputedValue.REPO_ENV.set(injectable(), new LinkedHashMap<>(repoEnvOption));
     RemoteOptions remoteOptions = options.getOptions(RemoteOptions.class);
     setRemoteExecutionEnabled(remoteOptions != null && remoteOptions.isRemoteExecutionEnabled());
     syncPackageLoading(
@@ -2657,6 +2663,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory, Configur
       dropConfiguredTargetsNow(eventHandler);
       lastAnalysisDiscarded = false;
     }
+    return null;
   }
 
   protected void syncPackageLoading(
@@ -2705,16 +2712,6 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory, Configur
   @VisibleForTesting
   public void setActionEnv(Map<String, String> actionEnv) {
     PrecomputedValue.ACTION_ENV.set(injectable(), actionEnv);
-  }
-
-  private void setRepoEnv(CoreOptions opt) {
-    LinkedHashMap<String, String> repoEnv = new LinkedHashMap<>();
-    if (opt != null) {
-      for (Map.Entry<String, String> v : opt.repositoryEnvironment) {
-        repoEnv.put(v.getKey(), v.getValue());
-      }
-    }
-    PrecomputedValue.REPO_ENV.set(injectable(), repoEnv);
   }
 
   public PathPackageLocator createPackageLocator(
