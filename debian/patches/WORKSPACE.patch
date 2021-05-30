@@ -10,7 +10,7 @@ Last-Update: 2020-07-22
 
 --- a/WORKSPACE
 +++ b/WORKSPACE
-@@ -442,24 +442,6 @@
+@@ -466,24 +466,6 @@
      ],
  )
  
@@ -35,7 +35,7 @@ Last-Update: 2020-07-22
  # Creates toolchain configuration for remote execution with BuildKite CI
  # for rbe_ubuntu1604.
  # To run the tests with RBE on BuildKite CI uncomment the two lines below
-@@ -1104,18 +1086,6 @@
+@@ -1188,18 +1170,6 @@
  
  stardoc_repositories()
  
@@ -54,7 +54,7 @@ Last-Update: 2020-07-22
  register_execution_platforms("//:default_host_platform")  # buildozer: disable=positional-args
  
  # Tools for building deb, rpm and tar files.
-@@ -1157,20 +1127,6 @@
+@@ -1241,20 +1211,6 @@
      ],
  )
  

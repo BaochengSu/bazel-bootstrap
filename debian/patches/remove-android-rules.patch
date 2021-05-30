@@ -46,8 +46,8 @@ Last-Update: 2020-11-05
            com.google.devtools.build.lib.remote.RemoteModule.class,
 --- a/src/main/java/com/google/devtools/build/lib/bazel/BazelRepositoryModule.java
 +++ b/src/main/java/com/google/devtools/build/lib/bazel/BazelRepositoryModule.java
-@@ -38,10 +38,6 @@
- import com.google.devtools.build.lib.bazel.repository.downloader.UrlRewriter;
+@@ -39,10 +39,6 @@
+ import com.google.devtools.build.lib.bazel.repository.downloader.UrlRewriterParseException;
  import com.google.devtools.build.lib.bazel.repository.starlark.StarlarkRepositoryFunction;
  import com.google.devtools.build.lib.bazel.repository.starlark.StarlarkRepositoryModule;
 -import com.google.devtools.build.lib.bazel.rules.android.AndroidNdkRepositoryFunction;
@@ -57,7 +57,7 @@ Last-Update: 2020-11-05
  import com.google.devtools.build.lib.cmdline.RepositoryName;
  import com.google.devtools.build.lib.events.Event;
  import com.google.devtools.build.lib.pkgcache.PackageOptions;
-@@ -154,8 +150,6 @@
+@@ -155,8 +151,6 @@
      return ImmutableMap.<String, RepositoryFunction>builder()
          .put(LocalRepositoryRule.NAME, new LocalRepositoryFunction())
          .put(NewLocalRepositoryRule.NAME, new NewLocalRepositoryFunction())

@@ -16,7 +16,7 @@ Last-Update: 2021-01-14
        --java_toolchain=//src/java_tools/buildjar:bootstrap_toolchain \
 --- a/src/conditions/BUILD
 +++ b/src/conditions/BUILD
-@@ -65,6 +65,12 @@
+@@ -67,6 +67,12 @@
  )
  
  config_setting(
@@ -62,7 +62,7 @@ Last-Update: 2021-01-14
      source_version = "8",
 --- a/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
 +++ b/src/main/java/com/google/devtools/build/lib/analysis/config/AutoCpuConverter.java
-@@ -61,6 +61,8 @@
+@@ -68,6 +68,8 @@
                return "aarch64";
              case S390X:
                return "s390x";
@@ -71,7 +71,7 @@ Last-Update: 2021-01-14
              default:
                return "unknown";
            }
-@@ -100,6 +102,8 @@
+@@ -107,6 +109,8 @@
        return Pair.of(CPU.ARM, OS.LINUX);
      } else if (input.equals("s390x")) {
        return Pair.of(CPU.S390X, OS.LINUX);
@@ -103,7 +103,7 @@ Last-Update: 2021-01-14
    private final String canonicalName;
 --- a/third_party/BUILD
 +++ b/third_party/BUILD
-@@ -557,6 +557,7 @@
+@@ -569,6 +569,7 @@
      "//src/conditions:linux_aarch64": "*.so *.jnilib *.dll",
      "//src/conditions:linux_ppc": "*.so *.jnilib *.dll",
      "//src/conditions:linux_s390x": "*.so *.jnilib *.dll",
@@ -111,7 +111,7 @@ Last-Update: 2021-01-14
      "//src/conditions:freebsd": "*.so *.jnilib *.dll",
      "//src/conditions:openbsd": "*.so *.jnilib *.dll",
      # Default is to play it safe -- better have a big binary than a slow binary
-@@ -755,6 +756,11 @@
+@@ -767,6 +768,11 @@
      values = {"host_cpu": "ppc"},
  )
  
@@ -177,7 +177,7 @@ Last-Update: 2021-01-14
      all_files = ":empty",
 --- a/tools/cpp/lib_cc_configure.bzl
 +++ b/tools/cpp/lib_cc_configure.bzl
-@@ -195,6 +195,8 @@
+@@ -197,6 +197,8 @@
          return "ppc"
      if result.stdout.strip() in ["s390x"]:
          return "s390x"
