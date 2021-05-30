@@ -102,6 +102,8 @@ Files-Excluded: derived
                 third_party/py/six/P*
                 third_party/py/six/R*
                 third_party/py/six/setup*
+                third_party/reactive_streams
+                third_party/rxjava3
                 third_party/tomcat_annotations_api
                 third_party/truth
                 third_party/truth8
