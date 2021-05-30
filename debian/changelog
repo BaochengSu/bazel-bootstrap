@@ -1,3 +1,15 @@
+bazel-bootstrap (4.1.0+ds-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+    - Update patches for new version
+  * Patch to use debian "reactive_streams" and "rxjava3"
+    - See upstream bazelbuild/bazel@325eb956c
+  * Patch to remove not useful dependency on "bazel_skylib"
+    - Only used to support darwin-arm64 host platform
+    - It is not useful for us to have this dependency
+
+ -- Jesse Chan <jc@linux.com>  Sun, 30 May 2021 03:46:47 +0000
+
 bazel-bootstrap (4.0.0+ds-1) unstable; urgency=medium
 
   [ Jesse Chan ]
