@@ -1,4 +1,4 @@
-bazel-bootstrap (4.0.0+ds-1) UNRELEASED; urgency=medium
+bazel-bootstrap (4.1.0+ds-1) UNRELEASED; urgency=medium
 
   * New upstream release
     - Update patches for new version
@@ -13,8 +13,13 @@ bazel-bootstrap (4.0.0+ds-1) UNRELEASED; urgency=medium
   * Add "Bypass ccache" flags to host env as well
     - `--action_env` are only included in the target configuration now
     - See upstream bazelbuild/bazel@a463d9095
+  * Patch to use debian "reactive_streams" and "rxjava3"
+    - See upstream bazelbuild/bazel@325eb956c
+  * Patch to remove not useful dependency on "bazel_skylib"
+    - Only used to support darwin-arm64 host platform
+    - It is not useful for us to have this dependency
 
- -- Jesse Chan <jc@linux.com>  Fri, 09 Apr 2021 22:57:29 +0800
+ -- Jesse Chan <jc@linux.com>  Sun, 30 May 2021 03:46:47 +0000
 
 bazel-bootstrap (3.5.1+ds-3) unstable; urgency=high
 
