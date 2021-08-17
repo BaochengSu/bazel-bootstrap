@@ -1,5 +1,5 @@
 version=4
 opts="pgpsigurlmangle=s%$%.sig%, \
   dversionmangle=s/\+ds\d*$//, repacksuffix=+ds" \
-  https://github.com/bazelbuild/bazel/releases/ \
-  .*/bazel-(\d[\d\.]*)-dist@ARCHIVE_EXT@ debian uupdate
+  https://github.com/bazelbuild/bazel/releases?after=5.0.0-pre.20210516.1 \
+  .*/bazel-@ANY_VERSION@-dist@ARCHIVE_EXT@ debian uupdate
