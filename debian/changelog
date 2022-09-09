@@ -7,6 +7,7 @@ bazel-bootstrap (3.5.1+ds-5) unstable; urgency=medium
     - Once the -source package is available, these can be built/uploaded
     - Bazel source code is primarily Java and none of it is currently packaged
     - Bazel development in Debian stalled since April 2021 lacking -source
+  * Add patch to #include <limits> to enable ijar build (Closes: #983982)
 
  -- Olek Wojnar <olek@debian.org>  Fri, 09 Sep 2022 13:30:42 -0400
 

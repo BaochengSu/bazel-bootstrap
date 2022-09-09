@@ -1,0 +1,15 @@
+Description: Add include for <limits> to allow correct build of ijar binaries
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2022-09-09
+
+--- a/third_party/ijar/common.h
++++ b/third_party/ijar/common.h
+@@ -21,6 +21,7 @@
+ #include <stddef.h>
+ #include <stdint.h>
+ #include <string.h>
++#include <limits>
+ 
+ #ifdef _WIN32
+ #define PATH_MAX 4096
