@@ -1,3 +1,15 @@
+bazel-bootstrap (3.5.1+ds-5) unstable; urgency=medium
+
+  * Add d/changelog clarification requested by FTP Team
+    - New -source package required to build new Bazel ecosystem packages
+    - Certain Bazel packages require Bazel source code to build
+    - Some of these have been packaged but cannot be built/uploaded
+    - Once the -source package is available, these can be built/uploaded
+    - Bazel source code is primarily Java and none of it is currently packaged
+    - Bazel development in Debian stalled since April 2021 lacking -source
+
+ -- Olek Wojnar <olek@debian.org>  Fri, 09 Sep 2022 13:30:42 -0400
+
 bazel-bootstrap (3.5.1+ds-4) unstable; urgency=medium
 
   * Enable -source binary package build
