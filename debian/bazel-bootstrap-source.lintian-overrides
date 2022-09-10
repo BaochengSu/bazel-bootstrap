@@ -7,6 +7,8 @@ bazel-bootstrap-source: broken-zip
 bazel-bootstrap-source: compressed-duplicate
 # Required test data
 bazel-bootstrap-source: executable-not-elf-or-script
+# Required test data
+bazel-bootstrap-source: no-code-sections
 # Verbatim source code tree
 bazel-bootstrap-source: font-in-non-font-package
 # Verbatim source code tree
