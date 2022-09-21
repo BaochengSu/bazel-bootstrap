@@ -9,10 +9,13 @@ bazel-bootstrap (3.5.1+ds-5) unstable; urgency=medium
     - Bazel development in Debian stalled since April 2021 lacking -source
   * Add patch to #include <limits> to enable ijar build (Closes: #983982)
   * Add patch to fix bashisms in sh scripts
+  * Resolve long line issues
+    - Add patch to fix actual long lines
+    - Add lintian override to fix false positives
   * Add lintian overrides to -data and -source for no-code-sections
     - Required test data
 
- -- Olek Wojnar <olek@debian.org>  Wed, 21 Sep 2022 12:23:23 -0400
+ -- Olek Wojnar <olek@debian.org>  Wed, 21 Sep 2022 13:58:34 -0400
 
 bazel-bootstrap (3.5.1+ds-4) unstable; urgency=medium
 

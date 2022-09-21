@@ -21,3 +21,4 @@ increase-client-timeout.patch
 verbose-bash-completion-generation.patch
 add_include_for_limits.patch
 fix_bashisms.patch
+fix_longlines.patch
