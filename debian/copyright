@@ -236,7 +236,7 @@ License: Apache-2.0 and RSA_Make_Use
   documentation and/or software.
 
 Files: debian/*
-Copyright: 2020-2021 Olek Wojnar <olek@debian.org>
+Copyright: 2020-2022 Olek Wojnar <olek@debian.org>
            2020-2021 Yun Peng <pcloudy@google.com>
            2020 Michael R. Crusoe <crusoe@debian.org>
 License: Apache-2.0

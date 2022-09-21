@@ -14,8 +14,9 @@ bazel-bootstrap (3.5.1+ds-5) unstable; urgency=medium
     - Add lintian override to fix false positives
   * Add lintian overrides to -data and -source for no-code-sections
     - Required test data
+  * Update standards to 4.6.1 (no changes)
 
- -- Olek Wojnar <olek@debian.org>  Wed, 21 Sep 2022 13:58:34 -0400
+ -- Olek Wojnar <olek@debian.org>  Wed, 21 Sep 2022 14:08:21 -0400
 
 bazel-bootstrap (3.5.1+ds-4) unstable; urgency=medium
 
