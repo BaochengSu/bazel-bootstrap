@@ -20,3 +20,4 @@ add_verbose_for_java_compilation.patch
 increase-client-timeout.patch
 verbose-bash-completion-generation.patch
 add_include_for_limits.patch
+fix_bashisms.patch
