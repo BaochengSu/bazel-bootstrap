@@ -1,5 +1,6 @@
-bazel-bootstrap (4.0.0+ds-1) UNRELEASED; urgency=medium
+bazel-bootstrap (4.0.0+ds-1) unstable; urgency=medium
 
+  [ Jesse Chan ]
   * New upstream release
     - Update patches for new version
   * Drop jdk.BUILD from bazel-bootstrap-data
@@ -13,8 +14,10 @@ bazel-bootstrap (4.0.0+ds-1) UNRELEASED; urgency=medium
   * Add "Bypass ccache" flags to host env as well
     - `--action_env` are only included in the target configuration now
     - See upstream bazelbuild/bazel@a463d9095
+  [ Olek Wojnar ]
+  * Add Jesse Chan to d/copyright
 
- -- Jesse Chan <jc@linux.com>  Fri, 09 Apr 2021 22:57:29 +0800
+ -- Olek Wojnar <olek@debian.org>  Sun, 25 Sep 2022 16:24:34 -0400
 
 bazel-bootstrap (3.5.1+ds-5) unstable; urgency=medium
 

@@ -233,6 +233,7 @@ Files: debian/*
 Copyright: 2020-2022 Olek Wojnar <olek@debian.org>
            2020-2021 Yun Peng <pcloudy@google.com>
            2020 Michael R. Crusoe <crusoe@debian.org>
+           2021 Jesse Chan <jc@linux.com>
 License: Apache-2.0
 
 License: Apache-2.0
