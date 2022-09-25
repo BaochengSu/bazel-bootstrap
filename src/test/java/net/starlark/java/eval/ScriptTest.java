@@ -24,14 +24,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.starlark.java.annot.Param;
-import net.starlark.java.annot.StarlarkGlobalLibrary;
 import net.starlark.java.annot.StarlarkMethod;
 import net.starlark.java.syntax.FileOptions;
 import net.starlark.java.syntax.ParserInput;
 import net.starlark.java.syntax.SyntaxError;
 
 /** Script-based tests of Starlark evaluator. */
-@StarlarkGlobalLibrary
 public final class ScriptTest {
 
   // Tests for Starlark.
@@ -149,6 +147,10 @@ public final class ScriptTest {
         } catch (SyntaxError.Exception ex) {
           // parser/resolver errors
           for (SyntaxError err : ex.errors()) {
+            // TODO(adonovan): don't allow expectations to match static errors;
+            // they should be a different test suite. It is dangerous to mix
+            // them in a chunk otherwise the presence of a static error causes
+            // the program not to run the dynamic assertions.
             if (!expected(expectations, err.message())) {
               System.err.println(err); // includes location
               ok = false;

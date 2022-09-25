@@ -14,19 +14,20 @@
 
 package com.google.devtools.build.lib.starlarkbuildapi;
 
+import com.google.devtools.build.docgen.annot.DocCategory;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
-import com.google.devtools.build.lib.syntax.Dict;
-import com.google.devtools.build.lib.syntax.EvalException;
-import com.google.devtools.build.lib.syntax.Sequence;
-import com.google.devtools.build.lib.syntax.StarlarkFunction;
-import com.google.devtools.build.lib.syntax.StarlarkThread;
-import com.google.devtools.build.lib.syntax.StarlarkValue;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.ParamType;
 import net.starlark.java.annot.StarlarkBuiltin;
-import net.starlark.java.annot.StarlarkDocumentationCategory;
 import net.starlark.java.annot.StarlarkMethod;
+import net.starlark.java.eval.Dict;
+import net.starlark.java.eval.EvalException;
+import net.starlark.java.eval.Sequence;
+import net.starlark.java.eval.StarlarkFunction;
+import net.starlark.java.eval.StarlarkInt;
+import net.starlark.java.eval.StarlarkThread;
+import net.starlark.java.eval.StarlarkValue;
 
 /**
  * The "attr" module of the Build API.
@@ -36,7 +37,7 @@ import net.starlark.java.annot.StarlarkMethod;
  */
 @StarlarkBuiltin(
     name = "attr",
-    category = StarlarkDocumentationCategory.TOP_LEVEL_TYPE,
+    category = DocCategory.TOP_LEVEL_TYPE,
     doc =
         "This is a top-level module for defining the attribute schemas of a rule or aspect. Each "
             + "function returns an object representing the schema of a single attribute. These "
@@ -90,8 +91,9 @@ public interface StarlarkAttrModuleApi extends StarlarkValue {
   String CONFIGURATION_ARG = "cfg";
   // TODO(b/151742236): Update when new Starlark-based configuration framework is implemented.
   String CONFIGURATION_DOC =
-      "<a href=\"../rules.$DOC_EXT#configurations\">Configuration</a> of the attribute. It can be "
-          + "either <code>\"host\"</code> or <code>\"target\"</code>.";
+      "<a href=\"https://docs.bazel.build/versions/master/skylark/rules.html#configurations\">"
+          + "Configuration</a> of the attribute. It can be either <code>\"host\"</code>, "
+          + "<code>\"exec\"</code>, or <code>\"target\"</code>.";
 
   String DEFAULT_ARG = "default";
   // A trailing space is required because it's often prepended to other sentences
@@ -138,11 +140,13 @@ public interface StarlarkAttrModuleApi extends StarlarkValue {
 
   @StarlarkMethod(
       name = "int",
-      doc = "Creates a schema for an integer attribute.",
+      doc =
+          "Creates a schema for an integer attribute. The value must be in the signed 32-bit"
+              + " range.",
       parameters = {
         @Param(
             name = DEFAULT_ARG,
-            type = Integer.class,
+            type = StarlarkInt.class,
             defaultValue = "0",
             doc = DEFAULT_DOC,
             named = true,
@@ -164,7 +168,7 @@ public interface StarlarkAttrModuleApi extends StarlarkValue {
         @Param(
             name = VALUES_ARG,
             type = Sequence.class,
-            generic1 = Integer.class,
+            generic1 = StarlarkInt.class,
             defaultValue = "[]",
             doc = VALUES_DOC,
             named = true,
@@ -172,7 +176,7 @@ public interface StarlarkAttrModuleApi extends StarlarkValue {
       },
       useStarlarkThread = true)
   Descriptor intAttribute(
-      Integer defaultValue,
+      StarlarkInt defaultValue,
       String doc,
       Boolean mandatory,
       Sequence<?> values,
@@ -390,7 +394,9 @@ public interface StarlarkAttrModuleApi extends StarlarkValue {
 
   @StarlarkMethod(
       name = "int_list",
-      doc = "Creates a schema for a list-of-integers attribute.",
+      doc =
+          "Creates a schema for a list-of-integers attribute. Each element must be in the signed"
+              + " 32-bit range.",
       parameters = {
         @Param(
             name = MANDATORY_ARG,
@@ -407,7 +413,7 @@ public interface StarlarkAttrModuleApi extends StarlarkValue {
         @Param(
             name = DEFAULT_ARG,
             type = Sequence.class,
-            generic1 = Integer.class,
+            generic1 = StarlarkInt.class,
             defaultValue = "[]",
             doc = DEFAULT_DOC,
             named = true,
@@ -844,7 +850,7 @@ public interface StarlarkAttrModuleApi extends StarlarkValue {
   /** An attribute descriptor. */
   @StarlarkBuiltin(
       name = "Attribute",
-      category = StarlarkDocumentationCategory.BUILTIN,
+      category = DocCategory.BUILTIN,
       doc =
           "Representation of a definition of an attribute. Use the <a href=\"attr.html\">attr</a> "
               + "module to create an Attribute. They are only for use with a "

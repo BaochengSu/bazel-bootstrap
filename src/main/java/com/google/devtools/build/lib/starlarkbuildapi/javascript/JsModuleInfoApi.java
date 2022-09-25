@@ -14,24 +14,24 @@
 
 package com.google.devtools.build.lib.starlarkbuildapi.javascript;
 
+import com.google.devtools.build.docgen.annot.DocCategory;
+import com.google.devtools.build.docgen.annot.StarlarkConstructor;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.starlarkbuildapi.FileApi;
 import com.google.devtools.build.lib.starlarkbuildapi.core.ProviderApi;
 import com.google.devtools.build.lib.starlarkbuildapi.core.StructApi;
-import com.google.devtools.build.lib.syntax.EvalException;
-import com.google.devtools.build.lib.syntax.Sequence;
-import com.google.devtools.build.lib.syntax.StarlarkValue;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.StarlarkBuiltin;
-import net.starlark.java.annot.StarlarkConstructor;
-import net.starlark.java.annot.StarlarkDocumentationCategory;
 import net.starlark.java.annot.StarlarkMethod;
+import net.starlark.java.eval.EvalException;
+import net.starlark.java.eval.Sequence;
+import net.starlark.java.eval.StarlarkValue;
 
 /** Info object propagating information about protocol buffer sources. */
 @StarlarkBuiltin(
     name = "JsModuleInfo",
-    category = StarlarkDocumentationCategory.PROVIDER,
+    category = DocCategory.PROVIDER,
     doc =
         "Encapsulates information provided by js_module, a unit of JavaScript code that is part of"
             + " a bigger whole (a js_module_binary), but is not necessarily loaded at start-up.")
@@ -100,7 +100,7 @@ public interface JsModuleInfoApi<FileT extends FileApi> extends StructApi {
         },
         selfCall = true,
         enableOnlyWithFlag = BuildLanguageOptions.EXPERIMENTAL_GOOGLE_LEGACY_API)
-    @StarlarkConstructor(objectType = JsModuleInfoApi.class, receiverNameForDoc = "JsModuleInfo")
+    @StarlarkConstructor
     JsModuleInfoApi<?> jsModuleInfo(
         Label label,
         String wrapper,

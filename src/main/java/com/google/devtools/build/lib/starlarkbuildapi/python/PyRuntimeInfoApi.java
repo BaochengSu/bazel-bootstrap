@@ -14,18 +14,18 @@
 
 package com.google.devtools.build.lib.starlarkbuildapi.python;
 
+import com.google.devtools.build.docgen.annot.DocCategory;
+import com.google.devtools.build.docgen.annot.StarlarkConstructor;
 import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.starlarkbuildapi.FileApi;
 import com.google.devtools.build.lib.starlarkbuildapi.core.ProviderApi;
-import com.google.devtools.build.lib.syntax.EvalException;
-import com.google.devtools.build.lib.syntax.StarlarkThread;
-import com.google.devtools.build.lib.syntax.StarlarkValue;
 import javax.annotation.Nullable;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.StarlarkBuiltin;
-import net.starlark.java.annot.StarlarkConstructor;
-import net.starlark.java.annot.StarlarkDocumentationCategory;
 import net.starlark.java.annot.StarlarkMethod;
+import net.starlark.java.eval.EvalException;
+import net.starlark.java.eval.StarlarkThread;
+import net.starlark.java.eval.StarlarkValue;
 
 /** Provider instance for {@code py_runtime}. */
 @StarlarkBuiltin(
@@ -40,7 +40,7 @@ import net.starlark.java.annot.StarlarkMethod;
             + "interpreter. In both cases, an \"interpreter\" is really any executable binary or "
             + "wrapper script that is capable of running a Python script passed on the command "
             + "line, following the same conventions as the standard CPython interpreter.",
-    category = StarlarkDocumentationCategory.PROVIDER)
+    category = DocCategory.PROVIDER)
 public interface PyRuntimeInfoApi<FileT extends FileApi> extends StarlarkValue {
 
   @StarlarkMethod(
@@ -136,7 +136,7 @@ public interface PyRuntimeInfoApi<FileT extends FileApi> extends StarlarkValue {
         },
         useStarlarkThread = true,
         selfCall = true)
-    @StarlarkConstructor(objectType = PyRuntimeInfoApi.class, receiverNameForDoc = "PyRuntimeInfo")
+    @StarlarkConstructor
     PyRuntimeInfoApi<?> constructor(
         Object interpreterPathUncast,
         Object interpreterUncast,

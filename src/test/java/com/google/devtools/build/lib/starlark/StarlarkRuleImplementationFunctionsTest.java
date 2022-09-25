@@ -57,12 +57,6 @@ import com.google.devtools.build.lib.packages.Provider;
 import com.google.devtools.build.lib.packages.StarlarkProvider;
 import com.google.devtools.build.lib.packages.StructImpl;
 import com.google.devtools.build.lib.starlark.util.BazelEvaluationTestCase;
-import com.google.devtools.build.lib.syntax.EvalException;
-import com.google.devtools.build.lib.syntax.Printer;
-import com.google.devtools.build.lib.syntax.Sequence;
-import com.google.devtools.build.lib.syntax.Starlark;
-import com.google.devtools.build.lib.syntax.StarlarkList;
-import com.google.devtools.build.lib.syntax.StarlarkThread;
 import com.google.devtools.build.lib.testutil.MoreAsserts;
 import com.google.devtools.build.lib.util.Fingerprint;
 import com.google.devtools.build.lib.util.OsUtils;
@@ -75,8 +69,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import net.starlark.java.annot.Param;
-import net.starlark.java.annot.StarlarkGlobalLibrary;
 import net.starlark.java.annot.StarlarkMethod;
+import net.starlark.java.eval.EvalException;
+import net.starlark.java.eval.Printer;
+import net.starlark.java.eval.Sequence;
+import net.starlark.java.eval.Starlark;
+import net.starlark.java.eval.StarlarkInt;
+import net.starlark.java.eval.StarlarkList;
+import net.starlark.java.eval.StarlarkThread;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -86,7 +86,6 @@ import org.junit.runners.JUnit4;
 
 /** Tests for Starlark functions relating to rule implementation. */
 @RunWith(JUnit4.class)
-@StarlarkGlobalLibrary // needed for CallUtils.getBuiltinCallable, sadly
 public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
 
   private final BazelEvaluationTestCase ev = new BazelEvaluationTestCase();
@@ -204,7 +203,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
     assertThat(e).hasMessageThat().contains(errorSubstring);
   }
 
-  // TODO(adonovan): move these tests of the interpreter core into lib.syntax.
+  // TODO(adonovan): move these tests of Starlark interpreter core into net/starlark/java.
 
   @Test
   public void testStarlarkFunctionPosArgs() throws Exception {
@@ -802,8 +801,8 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
    * parameter of the template_action function contains a hack that assumes its input is a UTF-8
    * encoded string which has been ingested as Latin 1. The hack converts the string to its
    * "correct" UTF-8 value. Once Blaze starts calling {@link
-   * com.google.devtools.build.lib.syntax.ParserInput#fromUTF8} instead of {@code fromLatin1} and
-   * the hack for the substituations parameter is removed, this test will fail.
+   * net.starlark.java.syntax.ParserInput#fromUTF8} instead of {@code fromLatin1} and the hack for
+   * the substituations parameter is removed, this test will fail.
    */
   @Test
   public void testCreateTemplateActionWithWrongEncoding() throws Exception {
@@ -1513,7 +1512,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
         .isEqualTo(
             new StarlarkProvider.Key(
                 Label.parseAbsolute("//test:foo.bzl", ImmutableMap.of()), "foo_provider"));
-    assertThat(((StructImpl) provider).getValue("a")).isEqualTo(123);
+    assertThat(((StructImpl) provider).getValue("a")).isEqualTo(StarlarkInt.of(123));
   }
 
   @Test
@@ -2313,15 +2312,15 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
   public void testArgsAddInvalidTypesForArgAndValues() throws Exception {
     setRuleContext(createRuleContext("//foo:foo"));
     ev.checkEvalErrorContains(
-        "expected value of type 'string' for arg name, got 'Integer'",
+        "expected value of type 'string' for arg name, got 'int'",
         "args = ruleContext.actions.args()",
         "args.add(1, 'value')");
     ev.checkEvalErrorContains(
-        "expected value of type 'string' for arg name, got 'Integer'",
+        "expected value of type 'string' for arg name, got 'int'",
         "args = ruleContext.actions.args()",
         "args.add_all(1, [1, 2])");
     ev.checkEvalErrorContains(
-        "expected value of type 'sequence or depset' for values, got 'Integer'",
+        "expected value of type 'sequence or depset' for values, got 'int'",
         "args = ruleContext.actions.args()",
         "args.add_all(1)");
     ev.checkEvalErrorContains(
@@ -2419,7 +2418,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
     CommandLineExpansionException e =
         assertThrows(CommandLineExpansionException.class, () -> action.getArguments());
     assertThat(e.getMessage())
-        .contains("Expected map_each to return string, None, or list of strings, found Integer");
+        .contains("Expected map_each to return string, None, or list of strings, found int");
   }
 
   @Test

@@ -145,7 +145,7 @@ public final class StarlarkMethodProcessorTest {
                 + " StarlarkThread");
     // Also reports:
     // - annotated type java.lang.String of parameter 'one' is not assignable
-    //   to variable of type com.google.devtools.build.lib.events.StarlarkThread
+    //   to variable of type net.starlark.java.eval.StarlarkThread
     // - annotated type java.lang.Integer of parameter 'two' is not assignable
     //   to variable of type java.lang.String
   }
@@ -342,7 +342,7 @@ public final class StarlarkMethodProcessorTest {
         .failsToCompile()
         .withErrorContaining(
             "parameter 'one' has generic type "
-                + "com.google.devtools.build.lib.syntax.Sequence<java.lang.String>");
+                + "net.starlark.java.eval.Sequence<java.lang.String>");
   }
 
   @Test
@@ -354,17 +354,5 @@ public final class StarlarkMethodProcessorTest {
         .withErrorContaining(
             "Expected type 'Object' but got type 'java.lang.String' "
                 + "for noneable parameter 'aParameter'.");
-  }
-
-  @Test
-  public void testDoesntImplementStarlarkValue() throws Exception {
-    assertAbout(javaSource())
-        .that(getFile("DoesntImplementStarlarkValue.java"))
-        .processedWith(new StarlarkMethodProcessor())
-        .failsToCompile()
-        .withErrorContaining(
-            "method x has StarlarkMethod annotation but enclosing class"
-                + " DoesntImplementStarlarkValue does not implement StarlarkValue nor has"
-                + " StarlarkGlobalLibrary annotation");
   }
 }

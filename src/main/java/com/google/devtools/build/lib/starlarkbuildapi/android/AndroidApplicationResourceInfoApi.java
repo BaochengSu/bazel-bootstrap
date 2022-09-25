@@ -13,14 +13,14 @@
 // limitations under the License.
 package com.google.devtools.build.lib.starlarkbuildapi.android;
 
+import com.google.devtools.build.docgen.annot.StarlarkConstructor;
 import com.google.devtools.build.lib.starlarkbuildapi.FileApi;
 import com.google.devtools.build.lib.starlarkbuildapi.core.ProviderApi;
 import com.google.devtools.build.lib.starlarkbuildapi.core.StructApi;
-import com.google.devtools.build.lib.syntax.EvalException;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.StarlarkBuiltin;
-import net.starlark.java.annot.StarlarkConstructor;
 import net.starlark.java.annot.StarlarkMethod;
+import net.starlark.java.eval.EvalException;
 
 /** Supplies a resource apk file (".ap_") and related info. */
 @StarlarkBuiltin(
@@ -166,7 +166,7 @@ public interface AndroidApplicationResourceInfoApi<FileT extends FileApi> extend
               defaultValue = "None"),
         },
         selfCall = true)
-    @StarlarkConstructor(objectType = AndroidApplicationResourceInfoApi.class)
+    @StarlarkConstructor
     AndroidApplicationResourceInfoApi<FileT> createInfo(
         Object resourceApk,
         Object resourceJavaSrcJar,

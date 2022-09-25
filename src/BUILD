@@ -12,7 +12,7 @@ md5_cmd = "set -e -o pipefail && %s $(SRCS) | %s | %s > $@"
     name = "install_base_key-file" + suffix,
     srcs = [
         "//src/main/java/com/google/devtools/build/lib/bazel:BazelServer_deploy.jar",
-        "//src/main/java/com/google/devtools/build/lib/syntax:cpu_profiler",
+        "//src/main/java/net/starlark/java/eval:cpu_profiler",
         # TODO(brandjon): ensure we haven't forgotten any package-zip items,
         # otherwise bazel won't correctly reextract modified files.
         "//src/main/cpp:client",
@@ -336,12 +336,11 @@ filegroup(
         "install_base_key" + suffix,
         ":platforms_archive",
         # Ordinary items follow:
-        "//src/main/java/com/google/devtools/build/lib/syntax:cpu_profiler",
+        "//src/main/java/net/starlark/java/eval:cpu_profiler",
         "//src/main/native:target-os-unix-native-lib",
         "//src/main/native/windows:target-os-native-lib",
         "//src/main/tools:build-runfiles",
         "//src/main/tools:process-wrapper",
-        "//src/main/tools:jdk-support",
         "//src/main/tools:linux-sandbox",
         "//tools/osx:xcode-locator",
     ] + select({
@@ -571,9 +570,7 @@ JAVA_TOOLS_DEPLOY_JARS = [
     "//conditions:default": [],
 })
 
-JAVA_VERSIONS = ("11", "14")
-
-# TODO(davido): Hard code the javac 11 for now; it is required for default toolchain.
+JAVA_VERSIONS = ("11",)
 
 [
     genrule(
@@ -764,9 +761,6 @@ filegroup(
         "@remote_java_tools_javac11_test_darwin//:WORKSPACE",
         "@remote_java_tools_javac11_test_linux//:WORKSPACE",
         "@remote_java_tools_javac11_test_windows//:WORKSPACE",
-        "@remote_java_tools_javac14_test_darwin//:WORKSPACE",
-        "@remote_java_tools_javac14_test_linux//:WORKSPACE",
-        "@remote_java_tools_javac14_test_windows//:WORKSPACE",
         "@remote_java_tools_linux_for_testing//:WORKSPACE",
         "@remote_java_tools_windows_for_testing//:WORKSPACE",
         "@remotejdk11_linux_aarch64_for_testing//:WORKSPACE",
