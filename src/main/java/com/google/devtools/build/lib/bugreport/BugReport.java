@@ -39,7 +39,7 @@ import javax.annotation.Nullable;
  * Utility methods for handling crashes: we log the crash, optionally send a bug report, and then
  * terminate the jvm.
  *
- * <p> Note, code in this class must be extremely robust. There's nothing worse than a crash-handler
+ * <p>Note, code in this class must be extremely robust. There's nothing worse than a crash-handler
  * that itself crashes!
  */
 public abstract class BugReport {
@@ -151,9 +151,9 @@ public abstract class BugReport {
    *
    * <p>Has no effect if another crash has already been handled by {@link BugReport}.
    */
-  public static void handleCrashWithoutSendingBugReport(
+  public static RuntimeException handleCrashWithoutSendingBugReport(
       Throwable throwable, ExitCode exitCode, String... args) {
-    handleCrash(
+    throw handleCrash(
         throwable,
         /*sendBugReport=*/ false,
         DetailedExitCode.of(exitCode, CrashFailureDetails.forThrowable(throwable)),
@@ -166,8 +166,9 @@ public abstract class BugReport {
    *
    * <p>Has no effect if another crash has already been handled by {@link BugReport}.
    */
-  public static void handleCrash(Throwable throwable, ExitCode exitCode, String... args) {
-    handleCrash(
+  public static RuntimeException handleCrash(
+      Throwable throwable, ExitCode exitCode, String... args) {
+    throw handleCrash(
         throwable,
         /*sendBugReport=*/ true,
         DetailedExitCode.of(exitCode, CrashFailureDetails.forThrowable(throwable)),
@@ -205,11 +206,12 @@ public abstract class BugReport {
         } else {
           logThrowableToConsole(throwable);
         }
+        // TODO(b/167592709): remove verbose logging when bug resolved.
+        logger.atInfo().log("Finished logging crash, runtime: %s", runtime);
         try {
           if (runtime != null) {
             runtime.cleanUpForCrash(detailedExitCode);
           }
-          // TODO(b/167592709): remove verbose logging when bug resolved.
           logger.atInfo().log("Finished runtime cleanup");
           CustomExitCodePublisher.maybeWriteExitStatusFile(numericExitCode);
           logger.atInfo().log("Wrote exit status file");
@@ -314,11 +316,11 @@ public abstract class BugReport {
     logger.atSevere().withCause(exception).log("Exception");
     // The preamble is used in the crash watcher, so don't change it
     // unless you know what you're doing.
-    String preamble = getProductName()
-        + (exception instanceof OutOfMemoryError ? " OOMError: " : " crashed with args: ");
+    String preamble =
+        getProductName()
+            + (exception instanceof OutOfMemoryError ? " OOMError: " : " crashed with args: ");
 
-    LoggingUtil.logToRemote(Level.SEVERE, preamble + Joiner.on(' ').join(args), exception,
-        values);
+    LoggingUtil.logToRemote(Level.SEVERE, preamble + Joiner.on(' ').join(args), exception, values);
   }
 
   private static class DefaultBugReporter implements BugReporter {

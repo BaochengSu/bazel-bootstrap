@@ -58,8 +58,6 @@ import com.google.devtools.build.lib.rules.cpp.Link.LinkTargetType;
 import com.google.devtools.build.lib.shell.ShellUtils;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec.VisibleForSerialization;
-import com.google.devtools.build.lib.syntax.EvalException;
-import com.google.devtools.build.lib.syntax.Starlark;
 import com.google.devtools.build.lib.util.FileType;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.vfs.PathFragment;
@@ -72,6 +70,8 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
+import net.starlark.java.eval.EvalException;
+import net.starlark.java.eval.Starlark;
 
 /**
  * Common parts of the implementation of cc rules.
@@ -304,9 +304,8 @@ public final class CcCommon {
   }
 
   /**
-   * Returns the files from headers and does some sanity checks. Note that this method reports
-   * warnings to the {@link RuleContext} as a side effect, and so should only be called once for any
-   * given rule.
+   * Returns the files from headers and does some checks. Note that this method reports warnings to
+   * the {@link RuleContext} as a side effect, and so should only be called once for any given rule.
    */
   public static List<Pair<Artifact, Label>> getHeaders(RuleContext ruleContext) {
     Map<Artifact, Label> map = Maps.newLinkedHashMap();
@@ -352,9 +351,8 @@ public final class CcCommon {
   }
 
   /**
-   * Returns the files from headers and does some sanity checks. Note that this method reports
-   * warnings to the {@link RuleContext} as a side effect, and so should only be called once for any
-   * given rule.
+   * Returns the files from headers and does some checks. Note that this method reports warnings to
+   * the {@link RuleContext} as a side effect, and so should only be called once for any given rule.
    */
   public List<Pair<Artifact, Label>> getHeaders() {
     return getHeaders(ruleContext);
@@ -599,7 +597,7 @@ public final class CcCommon {
     List<PathFragment> result = new ArrayList<>();
     PackageIdentifier packageIdentifier = ruleContext.getLabel().getPackageIdentifier();
     PathFragment packageExecPath = packageIdentifier.getExecPath(siblingRepositoryLayout);
-    PathFragment packageSourceRoot = packageIdentifier.getSourceRoot();
+    PathFragment packageSourceRoot = packageIdentifier.getPackagePath();
     for (String includesAttr : ruleContext.getExpander().list("includes")) {
       if (includesAttr.startsWith("/")) {
         ruleContext.attributeWarning("includes",
@@ -925,6 +923,10 @@ public final class CcCommon {
     }
     if (cppConfiguration.getFdoPrefetchHintsLabel() != null) {
       allRequestedFeaturesBuilder.add(CppRuleClasses.FDO_PREFETCH_HINTS);
+    }
+
+    if (cppConfiguration.getPropellerOptimizeLabel() != null) {
+      allRequestedFeaturesBuilder.add(CppRuleClasses.PROPELLER_OPTIMIZE);
     }
 
     for (String feature : allFeatures.build()) {

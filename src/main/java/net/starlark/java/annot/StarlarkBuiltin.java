@@ -51,15 +51,13 @@ import java.lang.annotation.Target;
  * StarlarkValue} without using the annotation mechanism defined in this package. {@code
  * StarlarkFunction} is one example.)
  */
+// TODO(adonovan): rename to StarlarkType now that that name is available again.
 @Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface StarlarkBuiltin {
 
-  /** A type name that may be used in stringification and error messages. */
+  /** The name of this data type, as returned by the Starlark expression {@code type(x)}. */
   String name();
-
-  /** A title for the documentation page generated for this type. */
-  String title() default "";
 
   /** Module documentation in HTML. May be empty only if {@code !documented()}. */
   String doc() default "";
@@ -67,5 +65,10 @@ public @interface StarlarkBuiltin {
   /** Whether the module should appear in the documentation. */
   boolean documented() default true;
 
-  StarlarkDocumentationCategory category() default StarlarkDocumentationCategory.TOP_LEVEL_TYPE;
+  /**
+   * The category of the documentation to which this data type belongs. Applications may use this
+   * field as they wish for their documentation tools. The core data types of the Starlark
+   * interpreter all have category "core".
+   */
+  String category() default "";
 }

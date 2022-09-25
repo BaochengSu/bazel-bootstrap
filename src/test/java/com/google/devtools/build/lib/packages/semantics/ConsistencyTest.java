@@ -23,11 +23,11 @@ import com.google.devtools.build.lib.skyframe.serialization.DeserializationConte
 import com.google.devtools.build.lib.skyframe.serialization.DynamicCodec;
 import com.google.devtools.build.lib.skyframe.serialization.SerializationContext;
 import com.google.devtools.build.lib.skyframe.serialization.testutils.TestUtils;
-import com.google.devtools.build.lib.syntax.StarlarkSemantics;
 import com.google.devtools.common.options.Options;
 import com.google.devtools.common.options.OptionsParser;
 import java.util.Arrays;
 import java.util.Random;
+import net.starlark.java.eval.StarlarkSemantics;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -156,8 +156,7 @@ public class ConsistencyTest {
         "--incompatible_restrict_string_escapes=" + rand.nextBoolean(),
         "--incompatible_use_cc_configure_from_rules_cc=" + rand.nextBoolean(),
         "--internal_starlark_flag_test_canary=" + rand.nextBoolean(),
-        "--max_computation_steps=" + rand.nextLong(),
-        "--record_rule_instantiation_callstack=" + rand.nextBoolean());
+        "--max_computation_steps=" + rand.nextLong());
   }
 
   /**
@@ -217,7 +216,6 @@ public class ConsistencyTest {
             BuildLanguageOptions.INCOMPATIBLE_USE_CC_CONFIGURE_FROM_RULES_CC, rand.nextBoolean())
         .setBool(StarlarkSemantics.PRINT_TEST_MARKER, rand.nextBoolean())
         .set(BuildLanguageOptions.MAX_COMPUTATION_STEPS, rand.nextLong())
-        .setBool(BuildLanguageOptions.RECORD_RULE_INSTANTIATION_CALLSTACK, rand.nextBoolean())
         .build();
   }
 

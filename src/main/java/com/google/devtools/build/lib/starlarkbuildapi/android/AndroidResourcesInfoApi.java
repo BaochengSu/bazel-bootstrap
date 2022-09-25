@@ -13,17 +13,17 @@
 // limitations under the License.
 package com.google.devtools.build.lib.starlarkbuildapi.android;
 
+import com.google.devtools.build.docgen.annot.DocCategory;
+import com.google.devtools.build.docgen.annot.StarlarkConstructor;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.starlarkbuildapi.FileApi;
 import com.google.devtools.build.lib.starlarkbuildapi.core.ProviderApi;
 import com.google.devtools.build.lib.starlarkbuildapi.core.StructApi;
-import com.google.devtools.build.lib.syntax.EvalException;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.StarlarkBuiltin;
-import net.starlark.java.annot.StarlarkConstructor;
-import net.starlark.java.annot.StarlarkDocumentationCategory;
 import net.starlark.java.annot.StarlarkMethod;
+import net.starlark.java.eval.EvalException;
 
 /** A provider that supplies resource information from its transitive closure. */
 @StarlarkBuiltin(
@@ -33,7 +33,7 @@ import net.starlark.java.annot.StarlarkMethod;
             + "you will be broken when it is removed."
             + "Android resources provided by a rule",
     documented = false,
-    category = StarlarkDocumentationCategory.PROVIDER)
+    category = DocCategory.PROVIDER)
 public interface AndroidResourcesInfoApi<
         FileT extends FileApi,
         ValidatedAndroidDataT extends ValidatedAndroidDataApi<?, ?>,
@@ -221,7 +221,7 @@ public interface AndroidResourcesInfoApi<
               generic1 = FileApi.class),
         },
         selfCall = true)
-    @StarlarkConstructor(objectType = AndroidResourcesInfoApi.class, receiverNameForDoc = NAME)
+    @StarlarkConstructor
     AndroidResourcesInfoApi<FileT, ValidatedAndroidDataT, AndroidManifestInfoT> createInfo(
         Label label,
         AndroidManifestInfoT manifest,

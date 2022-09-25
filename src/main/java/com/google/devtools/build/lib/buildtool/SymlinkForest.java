@@ -29,9 +29,6 @@ import com.google.devtools.build.lib.concurrent.ThreadSafety;
 import com.google.devtools.build.lib.server.FailureDetails;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.server.FailureDetails.SymlinkForest.Code;
-import com.google.devtools.build.lib.syntax.Location;
-import com.google.devtools.build.lib.syntax.Sequence;
-import com.google.devtools.build.lib.syntax.StarlarkThread;
 import com.google.devtools.build.lib.util.AbruptExitException;
 import com.google.devtools.build.lib.util.DetailedExitCode;
 import com.google.devtools.build.lib.util.ExitCode;
@@ -43,6 +40,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import net.starlark.java.eval.Sequence;
+import net.starlark.java.eval.StarlarkThread;
+import net.starlark.java.syntax.Location;
 
 /** Creates a symlink forest based on a package path map. */
 public class SymlinkForest {
@@ -114,11 +114,23 @@ public class SymlinkForest {
   @VisibleForTesting
   @ThreadSafety.ThreadSafe
   void deleteTreesBelowNotPrefixed(Path dir, String prefix) throws IOException {
+
     for (Path p : dir.getDirectoryEntries()) {
-      if (!p.getBaseName().startsWith(prefix)
-          && !notSymlinkedInExecrootDirectories.contains(p.getBaseName())) {
-        p.deleteTree();
+
+      if (p.getBaseName().startsWith(prefix)) {
+        continue;
       }
+
+      // If the path in question is a toplevel output directory, then it should not be deleted
+      // from the execroot here because it was not created as part of symlink forest creation,
+      // unless it is a symlink. If the path in question is a toplevel output directory and it is
+      // a symlink, then this means that it was created as part of a previous build where it was
+      // not a toplevel output directory at the time, and should be deleted.
+      if (notSymlinkedInExecrootDirectories.contains(p.getBaseName()) && !p.isSymbolicLink()) {
+        continue;
+      }
+
+      p.deleteTree();
     }
   }
 

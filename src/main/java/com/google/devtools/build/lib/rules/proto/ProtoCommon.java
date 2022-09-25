@@ -32,12 +32,11 @@ import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
 import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
-import com.google.devtools.build.lib.syntax.Location;
-import com.google.devtools.build.lib.syntax.StarlarkSemantics;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import javax.annotation.Nullable;
+import net.starlark.java.syntax.Location;
 
 /**
  * Utility functions for proto_library and proto aspect implementations.
@@ -266,53 +265,20 @@ public class ProtoCommon {
     }
 
     PathFragment stripImportPrefix;
-    PathFragment importPrefix;
-
-    StarlarkSemantics starlarkSemantics =
-        ruleContext.getAnalysisEnvironment().getStarlarkSemantics();
-    boolean siblingRepositoryLayout =
-        starlarkSemantics.getBool(BuildLanguageOptions.EXPERIMENTAL_SIBLING_REPOSITORY_LAYOUT);
-    if (stripImportPrefixAttribute != null || importPrefixAttribute != null) {
-      if (stripImportPrefixAttribute == null) {
-        stripImportPrefix =
-            PathFragment.create(ruleContext.getLabel().getWorkspaceRoot(starlarkSemantics));
-      } else if (stripImportPrefixAttribute.isAbsolute()) {
-        stripImportPrefix =
-            ruleContext
-                .getLabel()
-                .getPackageIdentifier()
-                .getRepository()
-                .getExecPath(siblingRepositoryLayout)
-                .getRelative(stripImportPrefixAttribute.toRelative());
-      } else {
-        stripImportPrefix =
-            ruleContext
-                .getLabel()
-                .getPackageIdentifier()
-                .getExecPath(siblingRepositoryLayout)
-                .getRelative(stripImportPrefixAttribute);
-      }
-
-      if (importPrefixAttribute != null) {
-        importPrefix = importPrefixAttribute;
-      } else {
-        importPrefix = PathFragment.EMPTY_FRAGMENT;
-      }
-
-      if (importPrefix.isAbsolute()) {
-        ruleContext.attributeError("import_prefix", "should be a relative path");
-        return null;
-      }
+    if (stripImportPrefixAttribute == null) {
+      stripImportPrefix = PathFragment.EMPTY_FRAGMENT;
+    } else if (stripImportPrefixAttribute.isAbsolute()) {
+      stripImportPrefix = stripImportPrefixAttribute.toRelative();
     } else {
-      // Has generated sources, but neither strip_import_prefix nor import_prefix
       stripImportPrefix =
-          ruleContext
-              .getLabel()
-              .getPackageIdentifier()
-              .getRepository()
-              .getDerivedArtifactSourceRoot();
+          ruleContext.getLabel().getPackageFragment().getRelative(stripImportPrefixAttribute);
+    }
 
-      importPrefix = PathFragment.EMPTY_FRAGMENT;
+    PathFragment importPrefix =
+        importPrefixAttribute != null ? importPrefixAttribute : PathFragment.EMPTY_FRAGMENT;
+    if (importPrefix.isAbsolute()) {
+      ruleContext.attributeError("import_prefix", "should be a relative path");
+      return null;
     }
 
     ImmutableList.Builder<Artifact> symlinks = ImmutableList.builder();
@@ -321,9 +287,7 @@ public class ProtoCommon {
     PathFragment sourceRootPath = ruleContext.getUniqueDirectory("_virtual_imports");
 
     for (Artifact realProtoSource : protoSources) {
-      if (siblingRepositoryLayout && realProtoSource.isSourceArtifact()
-          ? !realProtoSource.getExecPath().startsWith(stripImportPrefix)
-          : !realProtoSource.getRootRelativePath().startsWith(stripImportPrefix)) {
+      if (!realProtoSource.getRepositoryRelativePath().startsWith(stripImportPrefix)) {
         ruleContext.ruleError(
             String.format(
                 ".proto file '%s' is not under the specified strip prefix '%s'",
@@ -332,13 +296,7 @@ public class ProtoCommon {
       }
       Pair<PathFragment, Artifact> importsPair =
           computeImports(
-              ruleContext,
-              realProtoSource,
-              sourceRootPath,
-              importPrefix,
-              stripImportPrefix,
-              starlarkSemantics.getBool(
-                  BuildLanguageOptions.EXPERIMENTAL_SIBLING_REPOSITORY_LAYOUT));
+              ruleContext, realProtoSource, sourceRootPath, importPrefix, stripImportPrefix);
       protoSourceImportPair.add(new Pair<>(realProtoSource, importsPair.first.toString()));
       symlinks.add(importsPair.second);
     }
@@ -357,29 +315,21 @@ public class ProtoCommon {
       Artifact realProtoSource,
       PathFragment sourceRootPath,
       PathFragment importPrefix,
-      PathFragment stripImportPrefix,
-      boolean siblingRepositoryLayout) {
-    PathFragment importPath;
-
-    if (siblingRepositoryLayout && realProtoSource.isSourceArtifact()) {
-      importPath =
-          importPrefix.getRelative(realProtoSource.getExecPath().relativeTo(stripImportPrefix));
-    } else {
-      importPath =
-          importPrefix.getRelative(
-              realProtoSource.getRootRelativePath().relativeTo(stripImportPrefix));
-    }
+      PathFragment stripImportPrefix) {
+    PathFragment importPath =
+        importPrefix.getRelative(
+            realProtoSource.getRepositoryRelativePath().relativeTo(stripImportPrefix));
 
     Artifact virtualProtoSource =
         ruleContext.getDerivedArtifact(
             sourceRootPath.getRelative(importPath), ruleContext.getBinOrGenfilesDirectory());
 
-      ruleContext.registerAction(
-          SymlinkAction.toArtifact(
-              ruleContext.getActionOwner(),
-              realProtoSource,
-              virtualProtoSource,
-              "Symlinking virtual .proto sources for " + ruleContext.getLabel()));
+    ruleContext.registerAction(
+        SymlinkAction.toArtifact(
+            ruleContext.getActionOwner(),
+            realProtoSource,
+            virtualProtoSource,
+            "Symlinking virtual .proto sources for " + ruleContext.getLabel()));
 
     return Pair.of(importPath, virtualProtoSource);
   }
@@ -582,7 +532,7 @@ public class ProtoCommon {
     ArtifactRoot genfiles =
         ruleContext.getConfiguration().getGenfilesDirectory(ruleContext.getRule().getRepository());
     for (Artifact src : protoSources) {
-      PathFragment srcPath = src.getRootRelativePath();
+      PathFragment srcPath = src.getOutputDirRelativePath();
       if (pythonNames) {
         srcPath = srcPath.replaceName(srcPath.getBaseName().replace('-', '_'));
       }

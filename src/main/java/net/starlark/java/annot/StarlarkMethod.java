@@ -21,20 +21,13 @@ import java.lang.annotation.Target;
 /**
  * Annotates a Java method that can be called from Starlark.
  *
- * <p>This annotation is only allowed to appear on methods of classes that are directly annotated
- * with {@link StarlarkBuiltin} or {@link StarlarkGlobalLibrary}. Since subtypes can't add new
- * Starlark-accessible methods unless they have their own {{@link StarlarkBuiltin} annotation, this
- * implies that you can always determine the complete set of Starlark entry points for a given
- * {@link StarlarkValue} type by looking at the ancestor class or interface from which it inherits
- * its {@link StarlarkBuiltin}.
- *
- * <p>If a method is annotated with {@code @StarlarkCallable}, it is not allowed to have any
- * overloads or hide any static or default methods. Overriding is allowed, but the
- * {@code @StarlarkMethod} annotation itself must not be repeated on the override. This ensures
- * that given a method, we can always determine its corresponding {@code @StarlarkMethod}
- * annotation, if it has one, by scanning all methods of the same name in its class hierarchy,
- * without worrying about complications like overloading or generics. The lookup functionality is
- * implemented by {@link StarlarkInterfaceUtils#getStarlarkMethod}.
+ * <p>A method annotated with {@code @StarlarkMethod} may not have overloads or hide any static or
+ * default methods. Overriding is allowed, but the {@code @StarlarkMethod} annotation itself must
+ * not be repeated on the override. This ensures that given a method, we can always determine its
+ * corresponding {@code @StarlarkMethod} annotation, if it has one, by scanning all methods of the
+ * same name in its class hierarchy, without worrying about complications like overloading or
+ * generics. The lookup functionality is implemented by {@link
+ * StarlarkInterfaceUtils#getStarlarkMethod}.
  *
  * <p>Methods having this annotation must satisfy the following requirements, which are enforced at
  * compile time by {@link StarlarkMethodProcessor}:
@@ -70,6 +63,15 @@ import java.lang.annotation.Target;
  *   <li>Noneable parameter variables must be declared with type Object, as the actual value may be
  *       either {@code None} or some other value, which do not share a superclass other than Object
  *       (or StarlarkValue, which is typically no more descriptive than Object).
+ *   <li>A parameter may have type Integer, or have a {@link Param#type} or {@link
+ *       Param#allowedTypes} annotation that includes Integer.class, even though Integer is not a
+ *       legal Starlark value type. When called from Starlark code, such a parameter accepts
+ *       StarlarkInt values, but only in the signed 32-bit value range. These values are "reboxed"
+ *       to Integer. Note that reboxing will still occur in the case where the annotation-declared
+ *       types include Integer.class but the parameter's type is Object. This means the parameter's
+ *       value cannot be assumed to be a legal Starlark value and should not be freely passed to
+ *       other functions in the Starlark API that require a legal value. To avoid the range and
+ *       legality limitations of reboxing, simply use StarlarkInt in place of Integer.
  *   <li>Parameter variables whose class is generic must be declared using wildcard types. For
  *       example, {@code Sequence<?>} is allowed but {@code Sequence<String>} is forbidden. This is
  *       because the call-time dynamic checks verify the class but cannot verify the type

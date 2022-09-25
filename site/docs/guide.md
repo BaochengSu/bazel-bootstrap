@@ -725,7 +725,7 @@ the use of a long-running server process doesn't interfere with proper
 versioning.
 
 
-<a id="bazelrc></a>
+<a id="bazelrc"></a>
 
 ## `.bazelrc`, the Bazel configuration file
 
@@ -938,7 +938,7 @@ that use other build systems. Place a file called
 and add the directories you want Bazel to ignore, one per
 line. Entries are relative to the workspace root.
 
-<a id="global_bazelrc"</a>
+<a id="global_bazelrc"></a>
 
 ### The global bazelrc file
 
@@ -1213,27 +1213,6 @@ You can use the following options to display more detailed information:
     1|5|0|869955040|0||PHASE|Load packages
     [...]
     ```
-
--   <a id="dump-html-format"></a>[`--html`](user-manual.html#flag--html)
-
-    This option writes a file called `<profile-file>.html` in the directory of
-    the profile file. Open it in your browser to see the visualization of the
-    actions in your build. Note that the file can be quite large and may push
-    the capabilities of your browser &ndash; please wait for the file to load.
-
-    In most cases, the HTML output from [`--html`](user-manual.html#flag--html)
-    is easier to read than the [`--dump`](user-manual.html#flag--dump) output.
-    It includes a Gantt chart that displays time on the horizontal axis and
-    threads of execution along the vertical axis. If you click on the Statistics
-    link in the top right corner of the page, you will jump to a section that
-    lists summary analysis information from your build.
-
-    *   [`--html_details`](user-manual.html#flag--html_details)
-
-        Additionally passing this option will render a more detailed execution
-        chart and additional tables on the performance of built-in and
-        user-defined Starlark functions. Beware that this increases the file
-        size and the load on the browser considerably.
 
 If Bazel appears to be hung, you can hit <kbd>Ctrl-&#92;</kbd> or send
 Bazel a `SIGQUIT` signal (`kill -3 $(bazel info server_pid)`) to get a thread
