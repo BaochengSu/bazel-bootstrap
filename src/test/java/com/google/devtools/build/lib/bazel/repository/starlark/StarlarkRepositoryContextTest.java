@@ -35,6 +35,7 @@ import com.google.devtools.build.lib.packages.RuleClass;
 import com.google.devtools.build.lib.packages.RuleClass.Builder.RuleClassType;
 import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.packages.WorkspaceFactoryHelper;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
 import com.google.devtools.build.lib.rules.repository.RepositoryFunction.RepositoryFunctionException;
 import com.google.devtools.build.lib.runtime.RepositoryRemoteExecutor;
@@ -42,12 +43,12 @@ import com.google.devtools.build.lib.runtime.RepositoryRemoteExecutor.ExecutionR
 import com.google.devtools.build.lib.skyframe.BazelSkyframeExecutorConstants;
 import com.google.devtools.build.lib.syntax.Dict;
 import com.google.devtools.build.lib.syntax.EvalException;
-import com.google.devtools.build.lib.syntax.EvalUtils;
 import com.google.devtools.build.lib.syntax.FileOptions;
 import com.google.devtools.build.lib.syntax.Location;
 import com.google.devtools.build.lib.syntax.Module;
 import com.google.devtools.build.lib.syntax.Mutability;
 import com.google.devtools.build.lib.syntax.ParserInput;
+import com.google.devtools.build.lib.syntax.Starlark;
 import com.google.devtools.build.lib.syntax.StarlarkFunction;
 import com.google.devtools.build.lib.syntax.StarlarkList;
 import com.google.devtools.build.lib.syntax.StarlarkSemantics;
@@ -101,13 +102,13 @@ public final class StarlarkRepositoryContextTest {
     }
     ruleClassBuilder.setWorkspaceOnly();
     ruleClassBuilder.setConfiguredTargetFunction(
-        (StarlarkFunction) execAndEval("def test(ctx): pass", "test"));
+        (StarlarkFunction) exec("def test(ctx): pass", "test"));
     return ruleClassBuilder.build();
   }
 
-  private static Object execAndEval(String... lines) {
+  private static Object exec(String... lines) {
     try {
-      return EvalUtils.exec(
+      return Starlark.execFile(
           ParserInput.fromLines(lines), FileOptions.DEFAULT, Module.create(), thread);
     } catch (Exception ex) { // SyntaxError | EvalException | InterruptedException
       throw new AssertionError("exec failed", ex);
@@ -404,7 +405,9 @@ public final class StarlarkRepositoryContextTest {
     setUpContextForRule(
         attrValues,
         ImmutableSet.of(),
-        StarlarkSemantics.builderWithDefaults().experimentalRepoRemoteExec(true).build(),
+        StarlarkSemantics.builder()
+            .setBool(BuildLanguageOptions.EXPERIMENTAL_REPO_REMOTE_EXEC, true)
+            .build(),
         repoRemoteExecutor,
         Attribute.attr("$remotable", Type.BOOLEAN).build(),
         Attribute.attr("exec_properties", Type.STRING_DICT).build());

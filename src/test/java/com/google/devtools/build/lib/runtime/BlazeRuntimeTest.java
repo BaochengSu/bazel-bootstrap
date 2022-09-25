@@ -26,6 +26,7 @@ import com.google.devtools.build.lib.server.FailureDetails.Crash;
 import com.google.devtools.build.lib.server.FailureDetails.Crash.Code;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.util.DetailedExitCode;
+import com.google.devtools.build.lib.vfs.DigestHashFunction;
 import com.google.devtools.build.lib.vfs.FileSystem;
 import com.google.devtools.build.lib.vfs.inmemoryfs.InMemoryFileSystem;
 import com.google.devtools.common.options.OptionsBase;
@@ -100,7 +101,7 @@ public class BlazeRuntimeTest {
 
   @Test
   public void crashTest() throws Exception {
-    FileSystem fs = new InMemoryFileSystem();
+    FileSystem fs = new InMemoryFileSystem(DigestHashFunction.SHA256);
     ServerDirectories serverDirectories =
         new ServerDirectories(
             fs.getPath("/install"), fs.getPath("/output"), fs.getPath("/output_user"));
@@ -149,5 +150,58 @@ public class BlazeRuntimeTest {
                 .setCrash(Crash.newBuilder().setCode(Code.CRASH_UNKNOWN))
                 .build());
     assertThat(runtime.afterCommand(env, mainThreadCrash).getDetailedExitCode()).isEqualTo(oom);
+  }
+
+  @Test
+  public void addsCommandsFromModules() throws Exception {
+    FileSystem fs = new InMemoryFileSystem(DigestHashFunction.SHA256);
+    ServerDirectories serverDirectories =
+        new ServerDirectories(
+            fs.getPath("/install"), fs.getPath("/output"), fs.getPath("/output_user"));
+    BlazeRuntime runtime =
+        new BlazeRuntime.Builder()
+            .addBlazeModule(new FooCommandModule())
+            .addBlazeModule(new BarCommandModule())
+            .setFileSystem(fs)
+            .setProductName("bazel")
+            .setServerDirectories(serverDirectories)
+            .setStartupOptionsProvider(Mockito.mock(OptionsParsingResult.class))
+            .build();
+
+    assertThat(runtime.getCommandMap().keySet()).containsExactly("foo", "bar").inOrder();
+    assertThat(runtime.getCommandMap().get("foo")).isInstanceOf(FooCommandModule.FooCommand.class);
+    assertThat(runtime.getCommandMap().get("bar")).isInstanceOf(BarCommandModule.BarCommand.class);
+  }
+
+  private static class FooCommandModule extends BlazeModule {
+    @Command(name = "foo", shortDescription = "", help = "")
+    private static class FooCommand implements BlazeCommand {
+
+      @Override
+      public BlazeCommandResult exec(CommandEnvironment env, OptionsParsingResult options) {
+        return null;
+      }
+    }
+
+    @Override
+    public void serverInit(OptionsParsingResult startupOptions, ServerBuilder builder) {
+      builder.addCommands(new FooCommand());
+    }
+  }
+
+  private static class BarCommandModule extends BlazeModule {
+    @Command(name = "bar", shortDescription = "", help = "")
+    private static class BarCommand implements BlazeCommand {
+
+      @Override
+      public BlazeCommandResult exec(CommandEnvironment env, OptionsParsingResult options) {
+        return null;
+      }
+    }
+
+    @Override
+    public void serverInit(OptionsParsingResult startupOptions, ServerBuilder builder) {
+      builder.addCommands(new BarCommand());
+    }
   }
 }

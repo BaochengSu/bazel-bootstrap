@@ -229,6 +229,9 @@ filegroup(
         "//src/conditions:linux_ppc64le": [
             "@openjdk_linux_ppc64le_vanilla//file",
         ],
+        "//src/conditions:linux_s390x": [
+            "@openjdk_linux_s390x_vanilla//file",
+        ],
         "//conditions:default": [
             "@openjdk_linux_vanilla//file",
         ],
@@ -489,6 +492,7 @@ genrule(
         "//src/main/protobuf:dist_jars",
         "//src/main/java/com/google/devtools/build/lib/buildeventstream/proto:dist_jars",
         "//src/main/java/com/google/devtools/build/lib/bazel/debug:dist_jars",
+        "//src/main/java/com/google/devtools/build/lib/packages/metrics:dist_jars",
         "//src/main/java/com/google/devtools/build/lib/skyframe/proto:dist_jars",
         "//src/main/java/com/google/devtools/build/lib/starlarkdebug/proto:dist_jars",
         "//src/main/java/com/google/devtools/build/skydoc/rendering/proto:dist_jars",
@@ -768,6 +772,7 @@ filegroup(
         "@remotejdk11_linux_aarch64_for_testing//:WORKSPACE",
         "@remotejdk11_linux_for_testing//:WORKSPACE",
         "@remotejdk11_linux_ppc64le_for_testing//:WORKSPACE",
+        "@remotejdk11_linux_s390x_for_testing//:WORKSPACE",
         "@remotejdk11_macos_for_testing//:WORKSPACE",
         "@remotejdk11_win_for_testing//:WORKSPACE",
         "@remotejdk14_linux_for_testing//:WORKSPACE",

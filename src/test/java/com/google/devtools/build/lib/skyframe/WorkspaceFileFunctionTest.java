@@ -31,6 +31,7 @@ import com.google.devtools.build.lib.packages.PackageFactory.EnvironmentExtensio
 import com.google.devtools.build.lib.packages.Rule;
 import com.google.devtools.build.lib.packages.WorkspaceFileValue;
 import com.google.devtools.build.lib.packages.WorkspaceFileValue.WorkspaceFileKey;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.rules.repository.ManagedDirectoriesKnowledgeImpl;
 import com.google.devtools.build.lib.rules.repository.ManagedDirectoriesKnowledgeImpl.ManagedDirectoriesListener;
 import com.google.devtools.build.lib.skyframe.util.SkyframeExecutorTestUtils;
@@ -75,7 +76,7 @@ public class WorkspaceFileFunctionTest extends BuildViewTestCase {
   }
 
   private static Label getLabelMapping(Package pkg, String name) throws NoSuchTargetException {
-    return (Label) ((Rule) pkg.getTarget(name)).getAttributeContainer().getAttr("actual");
+    return (Label) ((Rule) pkg.getTarget(name)).getAttr("actual");
   }
 
   private RootedPath createWorkspaceFile(String... contents) throws IOException {
@@ -474,7 +475,9 @@ public class WorkspaceFileFunctionTest extends BuildViewTestCase {
 
     try {
       StarlarkSemantics semanticsWithNinjaActions =
-          StarlarkSemantics.builderWithDefaults().experimentalNinjaActions(true).build();
+          StarlarkSemantics.builder()
+              .setBool(BuildLanguageOptions.EXPERIMENTAL_NINJA_ACTIONS, true)
+              .build();
       PrecomputedValue.STARLARK_SEMANTICS.set(injectable, semanticsWithNinjaActions);
 
       assertThat(

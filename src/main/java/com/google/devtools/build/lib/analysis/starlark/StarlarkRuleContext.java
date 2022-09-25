@@ -46,7 +46,6 @@ import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.Runfiles;
 import com.google.devtools.build.lib.analysis.RunfilesProvider;
 import com.google.devtools.build.lib.analysis.ShToolchain;
-import com.google.devtools.build.lib.analysis.TransitionMode;
 import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
 import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
 import com.google.devtools.build.lib.analysis.config.FragmentCollection;
@@ -74,13 +73,13 @@ import com.google.devtools.build.lib.packages.StructProvider;
 import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.packages.Type.ConversionException;
 import com.google.devtools.build.lib.packages.Type.LabelClass;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.shell.ShellUtils;
 import com.google.devtools.build.lib.shell.ShellUtils.TokenizationException;
 import com.google.devtools.build.lib.starlarkbuildapi.StarlarkRuleContextApi;
 import com.google.devtools.build.lib.syntax.ClassObject;
 import com.google.devtools.build.lib.syntax.Dict;
 import com.google.devtools.build.lib.syntax.EvalException;
-import com.google.devtools.build.lib.syntax.EvalUtils;
 import com.google.devtools.build.lib.syntax.Printer;
 import com.google.devtools.build.lib.syntax.Sequence;
 import com.google.devtools.build.lib.syntax.Starlark;
@@ -529,21 +528,21 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
     return splitAttributes;
   }
 
-  /** See {@link RuleContext#getExecutablePrerequisite(String, TransitionMode)}. */
+  /** See {@link RuleContext#getExecutablePrerequisite(String)}. */
   @Override
   public StructImpl getExecutable() throws EvalException {
     checkMutable("executable");
     return attributesCollection.getExecutable();
   }
 
-  /** See {@link RuleContext#getPrerequisiteArtifact(String, TransitionMode)}. */
+  /** See {@link RuleContext#getPrerequisiteArtifact(String)}. */
   @Override
   public StructImpl getFile() throws EvalException {
     checkMutable("file");
     return attributesCollection.getFile();
   }
 
-  /** See {@link RuleContext#getPrerequisiteArtifacts(String, TransitionMode)}. */
+  /** See {@link RuleContext#getPrerequisiteArtifacts(String)}. */
   @Override
   public StructImpl getFiles() throws EvalException {
     checkMutable("files");
@@ -952,7 +951,7 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
       command =
           helper.resolveCommandAndExpandLabels(command, attribute, /*allowDataInLabel=*/ false);
     }
-    if (!EvalUtils.isNullOrNone(makeVariablesUnchecked)) {
+    if (!Starlark.isNullOrNone(makeVariablesUnchecked)) {
       Map<String, String> makeVariables =
           Type.STRING_DICT.convert(makeVariablesUnchecked, "make_variables", ruleLabel);
       command = expandMakeVariables(attribute, command, makeVariables);
@@ -1041,7 +1040,7 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
 
   private static void checkDeprecated(String newApi, String oldApi, StarlarkSemantics semantics)
       throws EvalException {
-    if (semantics.incompatibleNewActionsApi()) {
+    if (semantics.getBool(BuildLanguageOptions.INCOMPATIBLE_NEW_ACTIONS_API)) {
       throw Starlark.errorf(
           "Use %s instead of %s. \n"
               + "Use --incompatible_new_actions_api=false to temporarily disable this check.",

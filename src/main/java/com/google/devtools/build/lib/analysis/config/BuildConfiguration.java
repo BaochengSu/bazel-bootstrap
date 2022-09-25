@@ -660,10 +660,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
     return options.experimentalForwardInstrumentedFilesInfoByDefault;
   }
 
-  public boolean experimentalIgnoreDeprecatedInstrumentationSpec() {
-    return options.experimentalIgnoreDeprecatedInstrumentationSpec;
-  }
-
   public RunUnder getRunUnder() {
     return options.runUnder;
   }

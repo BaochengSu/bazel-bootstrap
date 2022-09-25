@@ -19,7 +19,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableMap;
-import com.google.devtools.build.lib.analysis.skylark.annotations.StarlarkConfigurationField;
+import com.google.devtools.build.lib.analysis.starlark.annotations.StarlarkConfigurationField;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.packages.Attribute.AbstractLabelLateBoundDefault;
 import com.google.devtools.build.lib.packages.Attribute.LateBoundDefault;
@@ -124,7 +124,7 @@ public class StarlarkLateBoundDefault<FragmentT> extends AbstractLabelLateBoundD
 
   @Override
   public void repr(Printer printer) {
-    printer.format("<late-bound default>");
+    printer.append("<late-bound default>");
   }
 
   /** For use by @AutoCodec since the {@link #defaultValue} field is hard for it to process. */

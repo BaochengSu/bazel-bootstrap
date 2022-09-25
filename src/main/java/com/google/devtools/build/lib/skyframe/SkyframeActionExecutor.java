@@ -73,6 +73,7 @@ import com.google.devtools.build.lib.actions.StoppedScanningActionEvent;
 import com.google.devtools.build.lib.actions.UserExecException;
 import com.google.devtools.build.lib.actions.cache.MetadataHandler;
 import com.google.devtools.build.lib.actions.cache.MetadataInjector;
+import com.google.devtools.build.lib.analysis.config.CoreOptions;
 import com.google.devtools.build.lib.buildtool.BuildRequestOptions;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
@@ -285,6 +286,10 @@ public final class SkyframeActionExecutor {
 
   Path getExecRoot() {
     return executorEngine.getExecRoot();
+  }
+
+  boolean useArchivedTreeArtifacts() {
+    return options.getOptions(CoreOptions.class).sendArchivedTreeArtifactInputs;
   }
 
   /** REQUIRES: {@link #actionFileSystemType()} to be not {@code DISABLED}. */
@@ -589,8 +594,9 @@ public final class SkyframeActionExecutor {
         //  better to integrate them with the action cache and rerun the action when they change.
         String actionKey = action.getKey(actionKeyContext, artifactExpander);
         FileOutErr fileOutErr = actionLogBufferPathGenerator.persistent(actionKey, pathResolver);
-        // Set the mightHaveOutput bit in FileOutErr. Otherwise hasRecordedOutput() doesn't check if
-        // the file exists and just returns false.
+        // getOutputPath and getErrorPath cause the FileOutErr to be marked as "dirty" which
+        // invalidates any prior in-memory state it had. Need to do this so that hasRecordedOutput()
+        // checks for file existence again.
         fileOutErr.getOutputPath();
         fileOutErr.getErrorPath();
         if (fileOutErr.hasRecordedOutput()) {
@@ -1271,7 +1277,7 @@ public final class SkyframeActionExecutor {
     while (!curDir.asFragment().equals(root)) {
       // Fast path: Somebody already checked that this is a regular directory this invocation.
       if (knownRegularDirectories.contains(curDir.asFragment())) {
-        return;
+        break;
       }
       if (!curDir.isDirectory(Symlinks.NOFOLLOW)) {
         throw new IOException(curDir + " is not a regular directory");

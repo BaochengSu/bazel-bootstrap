@@ -14,7 +14,7 @@
 
 package com.google.devtools.build.lib.starlarkbuildapi;
 
-import com.google.devtools.build.lib.syntax.StarlarkSemantics.FlagIdentifier;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.syntax.StarlarkValue;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.StarlarkBuiltin;
@@ -31,10 +31,8 @@ import net.starlark.java.annot.StarlarkMethod;
     name = "config",
     category = StarlarkDocumentationCategory.BUILTIN,
     doc =
-        "Note: This API is experimental and may change at any time."
-            + ""
-            + "<p>This is a top-level module for creating build setting descriptors which describe "
-            + "what kind of build setting (if any) a rule is. "
+        "This is a top-level module for creating configuration transitions and build "
+            + "setting descriptors which describe what kind of build setting (if any) a rule is. "
             + ""
             + "<p>ex: the following rule is marked as a build setting by setting the "
             + "<code>build_setting</code> parameter of the <code>rule()</code> function. "
@@ -120,7 +118,7 @@ public interface StarlarkConfigApi extends StarlarkValue {
   @StarlarkMethod(
       name = "exec",
       doc = "<i>experimental</i> Creates an execution transition.",
-      enableOnlyWithFlag = FlagIdentifier.EXPERIMENTAL_EXEC_GROUPS,
+      enableOnlyWithFlag = BuildLanguageOptions.EXPERIMENTAL_EXEC_GROUPS,
       parameters = {
         @Param(
             name = "exec_group",

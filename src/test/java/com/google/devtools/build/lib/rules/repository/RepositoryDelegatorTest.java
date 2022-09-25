@@ -22,6 +22,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.hash.HashFunction;
 import com.google.devtools.build.lib.actions.FileStateValue;
 import com.google.devtools.build.lib.actions.FileValue;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
@@ -94,9 +95,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.mockito.Mockito;
 
-/**
- * Tests for {@link RepositoryDelegatorFunction}
- */
+/** Tests for {@link RepositoryDelegatorFunction} */
 @RunWith(JUnit4.class)
 public class RepositoryDelegatorTest extends FoundationTestCase {
   private RepositoryDelegatorFunction delegatorFunction;
@@ -138,10 +137,11 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
                 rootPath,
                 ImmutableList.of(Root.fromPath(rootPath)),
                 BazelSkyframeExecutorConstants.BUILD_FILES_BY_PRIORITY));
-    ExternalFilesHelper externalFilesHelper = ExternalFilesHelper.createForTesting(
-        pkgLocator,
-        ExternalFileAction.DEPEND_ON_EXTERNAL_PKG_FOR_EXTERNAL_REPO_PATHS,
-        directories);
+    ExternalFilesHelper externalFilesHelper =
+        ExternalFilesHelper.createForTesting(
+            pkgLocator,
+            ExternalFileAction.DEPEND_ON_EXTERNAL_PKG_FOR_EXTERNAL_REPO_PATHS,
+            directories);
     differencer = new SequencedRecordingDifferencer();
 
     ConfiguredRuleClassProvider.Builder builder = new ConfiguredRuleClassProvider.Builder();
@@ -156,6 +156,7 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
             .getPackageFactoryBuilderForTesting(directories)
             .build(ruleClassProvider, fileSystem);
 
+    HashFunction hashFunction = fileSystem.getDigestFunction().getHashFunction();
     MemoizingEvaluator evaluator =
         new InMemoryMemoizingEvaluator(
             ImmutableMap.<SkyFunctionName, SkyFunction>builder()
@@ -197,14 +198,11 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
                 .put(SkyFunctions.PRECOMPUTED, new PrecomputedFunction())
                 .put(
                     SkyFunctions.AST_FILE_LOOKUP,
-                    new ASTFileLookupFunction(ruleClassProvider, fileSystem.getDigestFunction()))
+                    new ASTFileLookupFunction(pkgFactory, hashFunction))
                 .put(
                     SkyFunctions.BZL_LOAD,
                     BzlLoadFunction.create(
-                        ruleClassProvider,
-                        pkgFactory,
-                        fileSystem.getDigestFunction(),
-                        CacheBuilder.newBuilder().build()))
+                        pkgFactory, hashFunction, CacheBuilder.newBuilder().build()))
                 .put(SkyFunctions.CONTAINING_PACKAGE_LOOKUP, new ContainingPackageLookupFunction())
                 .put(
                     SkyFunctions.IGNORED_PACKAGE_PREFIXES,
