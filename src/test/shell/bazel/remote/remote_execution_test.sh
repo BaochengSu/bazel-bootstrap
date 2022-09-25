@@ -192,7 +192,7 @@ EOF
       --remote_executor=grpc://localhost:${worker_port} \
       //a:test >& $TEST_log \
       || fail "Failed to build //a:test with remote execution"
-  expect_log "2 processes: 2 remote"
+  expect_log "6 processes: 4 internal, 2 remote"
   diff bazel-bin/a/test ${TEST_TMPDIR}/test_expected \
       || fail "Remote execution generated different result"
 }
@@ -398,7 +398,7 @@ EOF
       || fail "Expected success"
 
   mv gen1.log $TEST_log
-  expect_log "1 process: 1 local"
+  expect_log "2 processes: 1 internal, 1 local"
 }
 
 function test_local_fallback_with_sandbox_strategy_lists() {
@@ -421,7 +421,7 @@ EOF
       || fail "Expected success"
 
   mv gen1.log $TEST_log
-  expect_log "1 process: 1 .*-sandbox"
+  expect_log "2 processes: 1 internal, 1 .*-sandbox"
 }
 
 function test_local_fallback_to_sandbox_by_default() {
@@ -443,7 +443,7 @@ EOF
       || fail "Expected success"
 
   mv gen1.log $TEST_log
-  expect_log "1 process: 1 .*-sandbox"
+  expect_log "2 processes: 1 internal, 1 .*-sandbox"
 }
 
 function test_local_fallback_works_with_sandboxed_strategy() {
@@ -854,13 +854,13 @@ function test_treeartifact_in_runfiles() {
 load(":output_directory.bzl", "gen_output_dir", "gen_output_dir_test")
 
 gen_output_dir(
-    name = "skylark_output_dir",
+    name = "starlark_output_dir",
     outdir = "dir",
 )
 
 gen_output_dir_test(
-    name = "skylark_output_dir_test",
-    dir = ":skylark_output_dir",
+    name = "starlark_output_dir_test",
+    dir = ":starlark_output_dir",
 )
 EOF
      cat > a/output_directory.bzl <<'EOF'
@@ -908,14 +908,14 @@ EOF
      # a test into the sandboxing module.
      bazel test \
            --spawn_strategy=sandboxed \
-           //a:skylark_output_dir_test \
-           || fail "Failed to run //a:skylark_output_dir_test with sandboxing"
+           //a:starlark_output_dir_test \
+           || fail "Failed to run //a:starlark_output_dir_test with sandboxing"
 
      bazel test \
            --spawn_strategy=remote \
            --remote_executor=grpc://localhost:${worker_port} \
-           //a:skylark_output_dir_test \
-           || fail "Failed to run //a:skylark_output_dir_test with remote execution"
+           //a:starlark_output_dir_test \
+           || fail "Failed to run //a:starlark_output_dir_test with remote execution"
 }
 
 function test_downloads_minimal() {
@@ -1034,7 +1034,7 @@ EOF
     --remote_download_minimal \
     //a:remote >& $TEST_log || fail "Failed to build //a:remote"
 
-  expect_log "1 process: 1 remote"
+  expect_log "2 processes: 1 internal, 1 remote"
 
   bazel build \
     --genrule_strategy=remote \
@@ -1044,7 +1044,7 @@ EOF
 
   # Changing --remote_download_outputs to "all" should invalidate SkyFrames in-memory
   # caching and make it re-run the action.
-  expect_log "1 process: 1 remote"
+  expect_log "2 processes: 1 remote cache hit, 1 internal"
 }
 
 function test_downloads_minimal_native_prefetch() {
@@ -1099,7 +1099,7 @@ EOF
 
   # The genrule //a:generate-template should run remotely and //a:substitute-buchgr
   # should be a native action running locally.
-  expect_log "1 process: 1 remote"
+  expect_log "3 processes: 2 internal, 1 remote"
 
   outtxt="bazel-bin/a/substitute-buchgr.txt"
   [[ $(< ${outtxt}) == "Hello buchgr!" ]] \
@@ -1151,7 +1151,7 @@ EOF
     --remote_download_toplevel \
     //a:foobar >& $TEST_log || fail "Failed to build //a:foobar"
 
-  expect_log "1 process: 1 remote cache hit"
+  expect_log "2 processes: 1 remote cache hit, 1 internal"
 
   [[ -f bazel-bin/a/foobar.txt ]] \
   || fail "Expected toplevel output bazel-bin/a/foobar.txt to be re-downloaded"
@@ -1541,6 +1541,12 @@ EOF
   assert_contains "test_case succeeded" "$TESTXML"
 }
 
+# Regression test that Bazel does not crash if remote execution is disabled,
+# but --remote_download_toplevel is enabled.
+function test_download_toplevel_no_remote_execution() {
+  bazel build --remote_download_toplevel \
+      || fail "Failed to run bazel build --remote_download_toplevel"
+}
 
 function test_tag_no_remote_cache() {
   mkdir -p a
@@ -1656,7 +1662,7 @@ EOF
     --remote_default_exec_properties="build=1234" \
     //test:test >& $TEST_log || fail "Failed to build //a:remote"
 
-  expect_log "1 process: 1 remote"
+  expect_log "2 processes: 1 internal, 1 remote"
 
   bazel build \
     --remote_executor=grpc://localhost:${worker_port} \
@@ -1665,7 +1671,7 @@ EOF
 
   # Changing --remote_default_platform_properties value should invalidate SkyFrames in-memory
   # caching and make it re-run the action.
-  expect_log "1 process: 1 remote"
+  expect_log "2 processes: 1 internal, 1 remote"
 
   bazel  build \
     --remote_executor=grpc://localhost:${worker_port} \
@@ -1674,7 +1680,7 @@ EOF
 
   # The same value of --remote_default_platform_properties should NOT invalidate SkyFrames in-memory cache
   #  and make the action should not be re-run.
-  expect_log "0 processes"
+  expect_log "1 process: 1 internal"
 
   bazel shutdown
 
@@ -1685,7 +1691,7 @@ EOF
 
   # The same value of --remote_default_platform_properties should NOT invalidate SkyFrames od-disk cache
   #  and the action should not be re-run.
-  expect_log "0 processes"
+  expect_log "1 process: 1 internal"
 
   bazel build\
     --remote_executor=grpc://localhost:${worker_port} \

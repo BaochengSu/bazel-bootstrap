@@ -23,6 +23,7 @@ import com.google.devtools.build.lib.cmdline.LabelValidator.BadLabelException;
 import com.google.devtools.build.lib.concurrent.BlazeInterners;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.syntax.Printer;
 import com.google.devtools.build.lib.syntax.StarlarkSemantics;
@@ -373,11 +374,10 @@ public final class Label
               + " \"external/repo\"</pre>",
       useStarlarkSemantics = true)
   public String getWorkspaceRoot(StarlarkSemantics semantics) {
-    if (semantics.experimentalSiblingRepositoryLayout()) {
-      return packageIdentifier.getRepository().getExecPath(true).toString();
-    } else {
-      return packageIdentifier.getRepository().getSourceRoot().toString();
-    }
+    return packageIdentifier
+        .getRepository()
+        .getExecPath(semantics.getBool(BuildLanguageOptions.EXPERIMENTAL_SIBLING_REPOSITORY_LAYOUT))
+        .toString();
   }
 
   /**

@@ -300,6 +300,7 @@ EOF
         "remotejdk11_linux_for_testing"
         "remotejdk11_linux_aarch64_for_testing"
         "remotejdk11_linux_ppc64le_for_testing"
+        "remotejdk11_linux_s390x_for_testing"
         "remotejdk11_macos_for_testing"
         "remotejdk11_win_for_testing"
         "remotejdk14_linux_for_testing"
@@ -439,7 +440,7 @@ toolchain(
 EOF
 }
 
-function setup_skylark_javatest_support() {
+function setup_starlark_javatest_support() {
   setup_javatest_common
   grep -q "name = \"junit4-jars\"" third_party/BUILD \
     || cat <<EOF >>third_party/BUILD

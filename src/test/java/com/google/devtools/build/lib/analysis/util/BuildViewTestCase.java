@@ -128,8 +128,8 @@ import com.google.devtools.build.lib.packages.PackageFactory.EnvironmentExtensio
 import com.google.devtools.build.lib.packages.PackageValidator;
 import com.google.devtools.build.lib.packages.RawAttributeMapper;
 import com.google.devtools.build.lib.packages.Rule;
-import com.google.devtools.build.lib.packages.StarlarkSemanticsOptions;
 import com.google.devtools.build.lib.packages.Target;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.packages.util.MockToolsConfig;
 import com.google.devtools.build.lib.pkgcache.LoadingOptions;
 import com.google.devtools.build.lib.pkgcache.PackageManager;
@@ -216,7 +216,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
 
   protected OptionsParser optionsParser;
   private PackageOptions packageOptions;
-  private StarlarkSemanticsOptions starlarkSemanticsOptions;
+  private BuildLanguageOptions starlarkSemanticsOptions;
   protected PackageFactory pkgFactory;
 
   protected MockToolsConfig mockToolsConfig;
@@ -263,7 +263,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     initializeMockClient();
 
     packageOptions = parsePackageOptions();
-    starlarkSemanticsOptions = parseStarlarkSemanticsOptions();
+    starlarkSemanticsOptions = parseBuildLanguageOptions();
     workspaceStatusActionFactory = new AnalysisTestUtil.DummyWorkspaceStatusActionFactory();
     mutableActionGraph = new MapBasedActionGraph(actionKeyContext);
     ruleClassProvider = createRuleClassProvider();
@@ -307,7 +307,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
             .setManagedDirectoriesKnowledge(getManagedDirectoriesKnowledge())
             .build();
     if (usesInliningBzlLoadFunction()) {
-      injectInliningBzlLoadFunction(skyframeExecutor, ruleClassProvider, pkgFactory);
+      injectInliningBzlLoadFunction(skyframeExecutor, pkgFactory);
     }
     SkyframeExecutorTestHelper.process(skyframeExecutor);
     skyframeExecutor.injectExtraPrecomputedValues(extraPrecomputedValues);
@@ -335,14 +335,12 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
 
   private static void injectInliningBzlLoadFunction(
       SkyframeExecutor skyframeExecutor,
-      ConfiguredRuleClassProvider ruleClassProvider,
       PackageFactory packageFactory) {
     ImmutableMap<SkyFunctionName, ? extends SkyFunction> skyFunctions =
         ((InMemoryMemoizingEvaluator) skyframeExecutor.getEvaluatorForTesting())
             .getSkyFunctionsForTesting();
     BzlLoadFunction bzlLoadFunction =
         BzlLoadFunction.createForInlining(
-            ruleClassProvider,
             packageFactory,
             // Use a cache size of 2 for testing to balance coverage for where loads are present and
             // aren't present in the cache.
@@ -501,8 +499,8 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     setUpSkyframe();
   }
 
-  protected void setStarlarkSemanticsOptions(String... options) throws Exception {
-    starlarkSemanticsOptions = parseStarlarkSemanticsOptions(options);
+  protected void setBuildLanguageOptions(String... options) throws Exception {
+    starlarkSemanticsOptions = parseBuildLanguageOptions(options);
     setUpSkyframe();
   }
 
@@ -513,12 +511,12 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     return parser.getOptions(PackageOptions.class);
   }
 
-  private static StarlarkSemanticsOptions parseStarlarkSemanticsOptions(String... options)
+  private static BuildLanguageOptions parseBuildLanguageOptions(String... options)
       throws Exception {
     OptionsParser parser =
-        OptionsParser.builder().optionsClasses(StarlarkSemanticsOptions.class).build();
+        OptionsParser.builder().optionsClasses(BuildLanguageOptions.class).build();
     parser.parse(options);
-    return parser.getOptions(StarlarkSemanticsOptions.class);
+    return parser.getOptions(BuildLanguageOptions.class);
   }
 
   /** Used by skyframe-only tests. */

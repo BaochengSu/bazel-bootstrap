@@ -16,7 +16,8 @@ it.
 
 Install Bazel on Ubuntu using one of the following methods:
 
-*   [Use our custom APT repository (recommended)](#install-on-ubuntu)
+*   [Use Bazelisk (recommended)](install-bazelisk.md)
+*   [Use our custom APT repository](#install-on-ubuntu)
 *   [Use the binary installer](#install-with-installer-ubuntu)
 *   [Compile Bazel from source](install-compile-source.md)
 
@@ -69,6 +70,13 @@ This will install Bazel 1.0.0 as `/usr/bin/bazel-1.0.0` on your system. This
 can be useful if you need a specific version of Bazel to build a project, e.g.
 because it uses a `.bazelversion` file to explicitly state with which Bazel
 version it should be built.
+
+Optionally, you can set `bazel` to a specific version by creating a symlink:
+
+```shell
+sudo ln -s /usr/bin/bazel-1.0.0 /usr/bin/bazel
+bazel --version  # 1.0.0
+```
 
 ### Step 3: Install a JDK (optional)
 

@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.hash.HashCode;
 import com.google.devtools.build.lib.actions.ExecutionRequirements.WorkerProtocolFormat;
+import com.google.devtools.build.lib.vfs.DigestHashFunction;
 import com.google.devtools.build.lib.vfs.FileSystem;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.inmemoryfs.InMemoryFileSystem;
@@ -31,7 +32,7 @@ import org.junit.runners.JUnit4;
 /** Tests for {@link WorkerKey}. */
 @RunWith(JUnit4.class)
 public class WorkerKeyTest {
-  final FileSystem fs = new InMemoryFileSystem();
+  final FileSystem fs = new InMemoryFileSystem(DigestHashFunction.SHA256);
 
   Path workerBaseDir = fs.getPath("/outputbase/bazel-workers");
   WorkerKey workerKey =
@@ -52,8 +53,8 @@ public class WorkerKeyTest {
     assertThat(workerKey.getProxied()).isEqualTo(true);
     assertThat(WorkerKey.makeWorkerTypeName(false)).isEqualTo("worker");
     assertThat(WorkerKey.makeWorkerTypeName(true)).isEqualTo("multiplex-worker");
-    // Hash code contains args, env, execRoot, and mnemonic.
-    assertThat(workerKey.hashCode()).isEqualTo(322455166);
+    // Hash code contains args, env, execRoot, proxied, and mnemonic.
+    assertThat(workerKey.hashCode()).isEqualTo(1434805936);
     assertThat(workerKey.getProtocolFormat()).isEqualTo(WorkerProtocolFormat.PROTO);
   }
 }
