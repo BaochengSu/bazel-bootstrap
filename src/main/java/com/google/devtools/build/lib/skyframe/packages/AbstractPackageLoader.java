@@ -410,11 +410,7 @@ public abstract class AbstractPackageLoader implements PackageLoader {
       return (NoSuchPackageException) e;
     }
     throw new IllegalStateException(
-        "Unexpected Exception type from PackageValue for '"
-            + pkgId
-            + "'' with root causes: "
-            + error.getRootCauses().toList().toString(),
-        e);
+        "Unexpected Exception type from PackageValue for '" + pkgId + "'' with error: " + error, e);
   }
 
   private BuildDriver makeFreshDriver() {
@@ -488,7 +484,8 @@ public abstract class AbstractPackageLoader implements PackageLoader {
         .put(SkyFunctions.STARLARK_BUILTINS, new StarlarkBuiltinsFunction(pkgFactory))
         .put(
             SkyFunctions.BZL_LOAD,
-            BzlLoadFunction.create(pkgFactory, hashFunction, CacheBuilder.newBuilder().build()))
+            BzlLoadFunction.create(
+                pkgFactory, directories, hashFunction, CacheBuilder.newBuilder().build()))
         .put(SkyFunctions.WORKSPACE_NAME, new WorkspaceNameFunction())
         .put(
             WorkspaceFileValue.WORKSPACE_FILE,

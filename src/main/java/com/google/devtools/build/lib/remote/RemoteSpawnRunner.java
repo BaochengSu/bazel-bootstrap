@@ -66,8 +66,9 @@ import com.google.devtools.build.lib.exec.SpawnRunner;
 import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.ProfilerTask;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
-import com.google.devtools.build.lib.remote.GrpcRemoteExecutor.ExecuteOperationUpdateReceiver;
+import com.google.devtools.build.lib.remote.common.OperationObserver;
 import com.google.devtools.build.lib.remote.common.RemoteCacheClient.ActionKey;
+import com.google.devtools.build.lib.remote.common.RemoteExecutionClient;
 import com.google.devtools.build.lib.remote.merkletree.MerkleTree;
 import com.google.devtools.build.lib.remote.options.RemoteOptions;
 import com.google.devtools.build.lib.remote.options.RemoteOutputsMode;
@@ -76,6 +77,7 @@ import com.google.devtools.build.lib.remote.util.NetworkTime;
 import com.google.devtools.build.lib.remote.util.TracingMetadataUtils;
 import com.google.devtools.build.lib.remote.util.Utils;
 import com.google.devtools.build.lib.remote.util.Utils.InMemoryOutput;
+import com.google.devtools.build.lib.sandbox.SandboxHelpers;
 import com.google.devtools.build.lib.server.FailureDetails;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.util.ExitCode;
@@ -95,7 +97,6 @@ import io.grpc.Context;
 import io.grpc.Status.Code;
 import io.grpc.protobuf.StatusProto;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -152,7 +153,7 @@ public class RemoteSpawnRunner implements SpawnRunner {
 
   @Nullable private final Reporter cmdlineReporter;
   private final RemoteExecutionCache remoteCache;
-  @Nullable private final GrpcRemoteExecutor remoteExecutor;
+  private final RemoteExecutionClient remoteExecutor;
   private final RemoteRetrier retrier;
   private final String buildRequestId;
   private final String commandId;
@@ -177,7 +178,7 @@ public class RemoteSpawnRunner implements SpawnRunner {
       String buildRequestId,
       String commandId,
       RemoteExecutionCache remoteCache,
-      GrpcRemoteExecutor remoteExecutor,
+      RemoteExecutionClient remoteExecutor,
       ListeningScheduledExecutorService retryService,
       DigestUtil digestUtil,
       Path logDir,
@@ -202,7 +203,7 @@ public class RemoteSpawnRunner implements SpawnRunner {
     return "remote";
   }
 
-  class ExecutingStatusReporter implements ExecuteOperationUpdateReceiver {
+  class ExecutingStatusReporter implements OperationObserver {
     private boolean reportedExecuting = false;
     private final SpawnExecutionContext context;
 
@@ -211,7 +212,7 @@ public class RemoteSpawnRunner implements SpawnRunner {
     }
 
     @Override
-    public void onNextOperation(Operation o) throws IOException {
+    public void onNext(Operation o) throws IOException {
       if (!reportedExecuting) {
         if (o.getMetadata().is(ExecuteOperationMetadata.class)) {
           ExecuteOperationMetadata metadata =
@@ -538,13 +539,7 @@ public class RemoteSpawnRunner implements SpawnRunner {
       if (actionInput instanceof ParamFileActionInput) {
         ParamFileActionInput paramFileActionInput = (ParamFileActionInput) actionInput;
         Path outputPath = execRoot.getRelative(paramFileActionInput.getExecPath());
-        if (outputPath.exists()) {
-          outputPath.delete();
-        }
-        outputPath.getParentDirectory().createDirectoryAndParents();
-        try (OutputStream out = outputPath.getOutputStream()) {
-          paramFileActionInput.writeTo(out);
-        }
+        SandboxHelpers.atomicallyWriteVirtualInput(paramFileActionInput, outputPath, ".remote");
       }
     }
   }

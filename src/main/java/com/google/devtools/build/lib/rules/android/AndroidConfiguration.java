@@ -15,16 +15,15 @@ package com.google.devtools.build.lib.rules.android;
 
 import com.google.common.base.Ascii;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.google.devtools.build.lib.analysis.Allowlist;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
-import com.google.devtools.build.lib.analysis.config.ConfigurationFragmentFactory;
 import com.google.devtools.build.lib.analysis.config.CoreOptionConverters.EmptyToNullLabelConverter;
 import com.google.devtools.build.lib.analysis.config.CoreOptionConverters.LabelConverter;
 import com.google.devtools.build.lib.analysis.config.Fragment;
 import com.google.devtools.build.lib.analysis.config.FragmentOptions;
 import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
+import com.google.devtools.build.lib.analysis.config.RequiresOptions;
 import com.google.devtools.build.lib.analysis.starlark.annotations.StarlarkConfigurationField;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
@@ -43,6 +42,7 @@ import javax.annotation.Nullable;
 
 /** Configuration fragment for Android rules. */
 @Immutable
+@RequiresOptions(options = {AndroidConfiguration.Options.class})
 public class AndroidConfiguration extends Fragment implements AndroidConfigurationApi {
 
   /**
@@ -672,6 +672,21 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
     public boolean dataBindingUpdatedArgs;
 
     @Option(
+        name = "android_databinding_use_androidx",
+        defaultValue = "false",
+        documentationCategory = OptionDocumentationCategory.OUTPUT_PARAMETERS,
+        effectTags = {
+          OptionEffectTag.AFFECTS_OUTPUTS,
+          OptionEffectTag.LOADING_AND_ANALYSIS,
+          OptionEffectTag.LOSES_INCREMENTAL_STATE,
+        },
+        metadataTags = OptionMetadataTag.EXPERIMENTAL,
+        help =
+            "Generate AndroidX-compatible data-binding files. "
+                + "This is only used with databinding v2.")
+    public boolean dataBindingAndroidX;
+
+    @Option(
         name = "experimental_android_library_exports_manifest_default",
         defaultValue = "false",
         documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
@@ -935,24 +950,6 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
     }
   }
 
-  /** Configuration loader for the Android fragment. */
-  public static class Loader implements ConfigurationFragmentFactory {
-    @Override
-    public Fragment create(BuildOptions buildOptions) throws InvalidConfigurationException {
-      return new AndroidConfiguration(buildOptions.get(Options.class));
-    }
-
-    @Override
-    public Class<? extends Fragment> creates() {
-      return AndroidConfiguration.class;
-    }
-
-    @Override
-    public ImmutableSet<Class<? extends FragmentOptions>> requiredOptions() {
-      return ImmutableSet.of(Options.class);
-    }
-  }
-
   private final Label sdk;
   private final String cpu;
   private final ConfigurationDistinguisher configurationDistinguisher;
@@ -989,6 +986,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
   private final boolean oneVersionEnforcementUseTransitiveJarsForBinaryUnderTest;
   private final boolean dataBindingV2;
   private final boolean dataBindingUpdatedArgs;
+  private final boolean dataBindingAndroidX;
   private final boolean persistentBusyboxTools;
   private final boolean filterRJarsFromAndroidTest;
   private final boolean removeRClassesFromInstrumentationTestJar;
@@ -999,7 +997,8 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
   private final boolean disableInstrumentationManifestMerging;
   private final boolean incompatibleUseToolchainResolution;
 
-  private AndroidConfiguration(Options options) throws InvalidConfigurationException {
+  public AndroidConfiguration(BuildOptions buildOptions) throws InvalidConfigurationException {
+    Options options = buildOptions.get(Options.class);
     this.sdk = options.sdk;
     this.cpu = options.cpu;
     this.configurationDistinguisher = options.configurationDistinguisher;
@@ -1043,6 +1042,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         options.oneVersionEnforcementUseTransitiveJarsForBinaryUnderTest;
     this.dataBindingV2 = options.dataBindingV2;
     this.dataBindingUpdatedArgs = options.dataBindingUpdatedArgs;
+    this.dataBindingAndroidX = options.dataBindingAndroidX;
     this.persistentBusyboxTools = options.persistentBusyboxTools;
     this.filterRJarsFromAndroidTest = options.filterRJarsFromAndroidTest;
     this.removeRClassesFromInstrumentationTestJar =
@@ -1274,6 +1274,11 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
   @Override
   public boolean useDataBindingUpdatedArgs() {
     return dataBindingUpdatedArgs;
+  }
+
+  @Override
+  public boolean useDataBindingAndroidX() {
+    return dataBindingAndroidX;
   }
 
   @Override

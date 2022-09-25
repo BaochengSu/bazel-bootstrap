@@ -23,6 +23,7 @@ import com.google.devtools.build.lib.actions.cache.ActionCache;
 import com.google.devtools.build.lib.analysis.AnalysisOptions;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.config.CoreOptions;
+import com.google.devtools.build.lib.clock.Clock;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.Reporter;
 import com.google.devtools.build.lib.exec.SingleBuildFileCache;
@@ -41,7 +42,6 @@ import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
 import com.google.devtools.build.lib.skyframe.TopDownActionCache;
 import com.google.devtools.build.lib.util.AbruptExitException;
 import com.google.devtools.build.lib.util.DetailedExitCode;
-import com.google.devtools.build.lib.util.ExitCode;
 import com.google.devtools.build.lib.util.io.OutErr;
 import com.google.devtools.build.lib.util.io.TimestampGranularityMonitor;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
@@ -252,7 +252,6 @@ public class CommandEnvironment {
       if (clientCwd.containsUplevelReferences()) {
         throw new AbruptExitException(
             DetailedExitCode.of(
-                ExitCode.COMMAND_LINE_ERROR,
                 FailureDetail.newBuilder()
                     .setMessage("Client cwd '" + clientCwd + "' contains uplevel references")
                     .setClientEnvironment(
@@ -264,7 +263,6 @@ public class CommandEnvironment {
       if (clientCwd.isAbsolute() && !clientCwd.startsWith(workspace.asFragment())) {
         throw new AbruptExitException(
             DetailedExitCode.of(
-                ExitCode.COMMAND_LINE_ERROR,
                 FailureDetail.newBuilder()
                     .setMessage(
                         String.format(
@@ -308,6 +306,14 @@ public class CommandEnvironment {
 
   public BlazeRuntime getRuntime() {
     return runtime;
+  }
+
+  public Clock getClock() {
+    return getRuntime().getClock();
+  }
+
+  public OptionsProvider getStartupOptionsProvider() {
+    return getRuntime().getStartupOptionsProvider();
   }
 
   public BlazeWorkspace getBlazeWorkspace() {

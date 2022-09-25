@@ -21,7 +21,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.cmdline.Label;
-import com.google.devtools.build.lib.cmdline.LabelConstants;
 import com.google.devtools.build.lib.cmdline.LabelValidator;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
@@ -29,7 +28,6 @@ import com.google.devtools.build.lib.concurrent.NamedForkJoinPool;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
-import com.google.devtools.build.lib.events.ExtendedEventHandler.Postable;
 import com.google.devtools.build.lib.events.StoredEventHandler;
 import com.google.devtools.build.lib.packages.Globber.BadGlobException;
 import com.google.devtools.build.lib.packages.Package.Builder.PackageSettings;
@@ -44,14 +42,11 @@ import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.server.FailureDetails.PackageLoading;
 import com.google.devtools.build.lib.server.FailureDetails.PackageLoading.Code;
 import com.google.devtools.build.lib.util.DetailedExitCode;
-import com.google.devtools.build.lib.util.ExitCode;
 import com.google.devtools.build.lib.vfs.FileSystem;
-import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.lib.vfs.UnixGlob;
-import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -77,7 +72,6 @@ import net.starlark.java.syntax.Argument;
 import net.starlark.java.syntax.CallExpression;
 import net.starlark.java.syntax.DefStatement;
 import net.starlark.java.syntax.Expression;
-import net.starlark.java.syntax.FileOptions;
 import net.starlark.java.syntax.ForStatement;
 import net.starlark.java.syntax.Identifier;
 import net.starlark.java.syntax.IfStatement;
@@ -85,7 +79,6 @@ import net.starlark.java.syntax.IntLiteral;
 import net.starlark.java.syntax.ListExpression;
 import net.starlark.java.syntax.Location;
 import net.starlark.java.syntax.NodeVisitor;
-import net.starlark.java.syntax.ParserInput;
 import net.starlark.java.syntax.Program;
 import net.starlark.java.syntax.StarlarkFile;
 import net.starlark.java.syntax.StringLiteral;
@@ -154,7 +147,7 @@ public final class PackageFactory {
   private final ImmutableMap<String, Object> uninjectedBuildBzlEnv;
   /** The top-level predeclared symbols for a WORKSPACE-loaded bzl module. */
   private final ImmutableMap<String, Object> workspaceBzlEnv;
-  /** The top-level predeclared symbols for a bzl module in the {@code @builtins} pseudo-repo. */
+  /** The top-level predeclared symbols for a bzl module in the {@code @_builtins} pseudo-repo. */
   private final ImmutableMap<String, Object> builtinsBzlEnv;
 
   /** Builder for {@link PackageFactory} instances. Intended to only be used by unit tests. */
@@ -326,7 +319,7 @@ public final class PackageFactory {
     return workspaceBzlEnv;
   }
 
-  /** Returns the environment for bzl files in the {@code @builtins} pseudo-repository. */
+  /** Returns the environment for bzl files in the {@code @_builtins} pseudo-repository. */
   public ImmutableMap<String, Object> getBuiltinsBzlEnv() {
     return builtinsBzlEnv;
   }
@@ -376,7 +369,7 @@ public final class PackageFactory {
       }
 
       @Override
-      public Object call(StarlarkThread thread, Tuple<Object> args, Dict<String, Object> kwargs)
+      public Object call(StarlarkThread thread, Tuple args, Dict<String, Object> kwargs)
           throws EvalException {
         if (!args.isEmpty()) {
           throw new EvalException("unexpected positional arguments");
@@ -436,7 +429,7 @@ public final class PackageFactory {
   /** A callable Starlark value that creates Rules for native RuleClasses. */
   // TODO(adonovan): why is this distinct from RuleClass itself?
   // Make RuleClass implement StarlarkCallable directly.
-  private static class BuiltinRuleFunction implements StarlarkCallable, RuleFunction {
+  private static class BuiltinRuleFunction implements RuleFunction {
     private final RuleClass ruleClass;
 
     BuiltinRuleFunction(RuleClass ruleClass) {
@@ -444,7 +437,7 @@ public final class PackageFactory {
     }
 
     @Override
-    public NoneType call(StarlarkThread thread, Tuple<Object> args, Dict<String, Object> kwargs)
+    public NoneType call(StarlarkThread thread, Tuple args, Dict<String, Object> kwargs)
         throws EvalException, InterruptedException {
       if (!args.isEmpty()) {
         throw Starlark.errorf("unexpected positional arguments");
@@ -489,7 +482,18 @@ public final class PackageFactory {
     }
   }
 
-  // Exposed to skyframe.PackageFunction.
+  /**
+   * Creates and populates a Package.Builder by executing the specified BUILD file.
+   *
+   * <p>This is the sole entrypoint for package creation in production and tests. Do not add others!
+   * It is exposed for the benefit of skyframe.PackageFunction, which is logically part of the
+   * loading phase, and should in due course be moved to lib.packages, but that cannot happen until
+   * skyframe's core interfaces have been separated.
+   *
+   * <p>Do not call it from elsewhere! It is not in any meaningful sense a public API. In tests, use
+   * BuildViewTestCase or PackageLoadingTestCase instead. TODO(adonovan): move PackageFunction into
+   * this package and develop a rational API.
+   */
   public Package.Builder createPackageFromAst(
       String workspaceName,
       ImmutableMap<RepositoryName, RepositoryName> repositoryMapping,
@@ -503,8 +507,8 @@ public final class PackageFactory {
       Globber globber)
       throws InterruptedException {
     try {
-      // At this point the package is guaranteed to exist.  It may have parse or
-      // evaluation errors, resulting in a diminished number of rules.
+      // At this point the package is guaranteed to exist,
+      // though it may have parse or evaluation errors.
       return evaluateBuildFile(
           workspaceName,
           packageId,
@@ -524,15 +528,16 @@ public final class PackageFactory {
     }
   }
 
-  @VisibleForTesting
+  @VisibleForTesting // exposed to WorkspaceFileFunction
   public Package.Builder newExternalPackageBuilder(
       RootedPath workspacePath, String workspaceName, StarlarkSemantics starlarkSemantics) {
     return Package.newExternalPackageBuilder(
         packageSettings, workspacePath, workspaceName, starlarkSemantics);
   }
 
-  @VisibleForTesting
-  public Package.Builder newPackageBuilder(
+  // Do not make this public!
+  // TODO(adonovan): refactor Rule{Class,Factory}Test not to need this.
+  Package.Builder newPackageBuilder(
       PackageIdentifier packageId, String workspaceName, StarlarkSemantics starlarkSemantics) {
     return new Package.Builder(
         packageSettings,
@@ -542,93 +547,14 @@ public final class PackageFactory {
         Package.Builder.EMPTY_REPOSITORY_MAPPING);
   }
 
-  @VisibleForTesting
-  public Package createPackageForTesting(
-      PackageIdentifier packageId,
-      RootedPath buildFile,
-      CachingPackageLocator locator,
-      ExtendedEventHandler eventHandler)
-      throws NoSuchPackageException, InterruptedException {
-    Package externalPkg =
-        newExternalPackageBuilder(
-                RootedPath.toRootedPath(
-                    buildFile.getRoot(),
-                    buildFile
-                        .getRootRelativePath()
-                        .getRelative(LabelConstants.WORKSPACE_FILE_NAME)),
-                "TESTING",
-                StarlarkSemantics.DEFAULT)
-            .build();
-    return createPackageForTesting(
-        packageId, externalPkg, buildFile, locator, eventHandler, StarlarkSemantics.DEFAULT);
-  }
-
-  /**
-   * Same as createPackage, but does the required validation of "packageName" first, throwing a
-   * {@link NoSuchPackageException} if the name is invalid.
-   */
-  @VisibleForTesting
-  public Package createPackageForTesting(
-      PackageIdentifier packageId,
-      Package externalPkg,
-      RootedPath buildFile,
-      CachingPackageLocator locator,
-      ExtendedEventHandler eventHandler,
-      StarlarkSemantics semantics)
-      throws NoSuchPackageException, InterruptedException {
-    String error =
-        LabelValidator.validatePackageName(packageId.getPackageFragment().getPathString());
-    if (error != null) {
-      throw new BuildFileNotFoundException(
-          packageId, "illegal package name: '" + packageId + "' (" + error + ")");
-    }
-    byte[] buildFileBytes = maybeGetBuildFileBytes(buildFile.asPath(), eventHandler);
-    if (buildFileBytes == null) {
-      throw new BuildFileContainsErrorsException(packageId, "IOException occurred");
-    }
-
-    Globber globber =
-        createLegacyGlobber(
-            buildFile.asPath().getParentDirectory(), packageId, ImmutableSet.of(), locator);
-    ParserInput input = ParserInput.fromLatin1(buildFileBytes, buildFile.asPath().toString());
-    // Options for processing BUILD files. (No prelude, so recordScope(true) is safe.)
-    FileOptions options =
-        FileOptions.builder()
-            .requireLoadStatementsFirst(false)
-            .allowToplevelRebinding(true)
-            .restrictStringEscapes(
-                semantics.getBool(BuildLanguageOptions.INCOMPATIBLE_RESTRICT_STRING_ESCAPES))
-            .build();
-    StarlarkFile file = StarlarkFile.parse(input, options);
-    Package.Builder packageBuilder =
-        createPackageFromAst(
-            externalPkg.getWorkspaceName(),
-            /*repositoryMapping=*/ ImmutableMap.of(),
-            packageId,
-            buildFile,
-            file,
-            /*preludeModule=*/ null,
-            /*loadedModules=*/ ImmutableMap.of(),
-            /*defaultVisibility=*/ ConstantRuleVisibility.PUBLIC,
-            semantics,
-            globber);
-    Package result = packageBuilder.build();
-
-    for (Postable post : packageBuilder.getPosts()) {
-      eventHandler.post(post);
-    }
-    Event.replayEventsOn(eventHandler, packageBuilder.getEvents());
-
-    return result;
-  }
-
   /** Returns a new {@link LegacyGlobber}. */
+  // Exposed to skyframe.PackageFunction.
   public LegacyGlobber createLegacyGlobber(
       Path packageDirectory,
       PackageIdentifier packageId,
       ImmutableSet<PathFragment> ignoredGlobPrefixes,
       CachingPackageLocator locator) {
-    return createLegacyGlobber(
+    return new LegacyGlobber(
         new GlobCache(
             packageDirectory,
             packageId,
@@ -637,21 +563,6 @@ public final class PackageFactory {
             syscalls,
             executor,
             maxDirectoriesToEagerlyVisitInGlobbing));
-  }
-
-  /** Returns a new {@link LegacyGlobber}. */
-  public static LegacyGlobber createLegacyGlobber(GlobCache globCache) {
-    return new LegacyGlobber(globCache);
-  }
-
-  @Nullable
-  private byte[] maybeGetBuildFileBytes(Path buildFile, ExtendedEventHandler eventHandler) {
-    try {
-      return FileSystemUtils.readWithKnownFileSize(buildFile, buildFile.getFileSize());
-    } catch (IOException e) {
-      eventHandler.handle(Event.error(Location.fromFile(buildFile.toString()), e.getMessage()));
-      return null;
-    }
   }
 
   /**
@@ -723,11 +634,6 @@ public final class PackageFactory {
     Map<String, Object> env = new HashMap<>();
     env.putAll(ruleClassProvider.getEnvironment());
 
-    // TODO(#11437): We *should* be able to uncomment the following line, but the native module is
-    // added prematurely (without its rule-logic fields) and overridden unconditionally. There's no
-    // reason for this now that ASTFileLookupFunction observes the correct predeclared env.
-    // Preconditions.checkState(!predeclared.containsKey("native"));
-
     // Determine the "native" module.
     // TODO(#11954): Use the same "native" object for both BUILD- and WORKSPACE-loaded .bzls, and
     // just have it be a dynamic error to call the wrong thing at the wrong time. This is a breaking
@@ -756,9 +662,6 @@ public final class PackageFactory {
 
     // Clear out rule-specific symbols like CcInfo.
     env.keySet().removeAll(ruleClassProvider.getNativeRuleSpecificBindings().keySet());
-    // TODO(#11437): We shouldn't have to delete the (not fully formed) "native" object here; see
-    // above TODO in createUninjectedBuildBzlEnv().
-    env.remove("native");
 
     // TODO(#11437): To support inspection of StarlarkSemantics via _internal, we'll have to let
     // this method be parameterized by the StarlarkSemantics, which means it'll need to be computed
@@ -882,7 +785,6 @@ public final class PackageFactory {
           pkg.getPackageIdentifier(),
           message,
           DetailedExitCode.of(
-              ExitCode.BUILD_FAILURE,
               FailureDetail.newBuilder()
                   .setMessage(message)
                   .setPackageLoading(

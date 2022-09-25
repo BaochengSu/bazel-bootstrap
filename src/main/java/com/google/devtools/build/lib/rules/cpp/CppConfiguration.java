@@ -14,11 +14,9 @@
 
 package com.google.devtools.build.lib.rules.cpp;
 
-import com.google.common.base.Preconditions;
 import com.google.common.base.Verify;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.devtools.build.lib.analysis.config.AutoCpuConverter;
 import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
 import com.google.devtools.build.lib.analysis.config.CompilationMode;
@@ -26,6 +24,7 @@ import com.google.devtools.build.lib.analysis.config.CoreOptions;
 import com.google.devtools.build.lib.analysis.config.Fragment;
 import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
 import com.google.devtools.build.lib.analysis.config.PerLabelOptions;
+import com.google.devtools.build.lib.analysis.config.RequiresOptions;
 import com.google.devtools.build.lib.analysis.starlark.annotations.StarlarkConfigurationField;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.LabelSyntaxException;
@@ -43,6 +42,7 @@ import net.starlark.java.annot.StarlarkMethod;
  * architecture, target architecture, compiler version, and a standard library version.
  */
 @Immutable
+@RequiresOptions(options = {CppOptions.class})
 public final class CppConfiguration extends Fragment
     implements CppConfigurationApi<InvalidConfigurationException> {
   /**
@@ -64,6 +64,7 @@ public final class CppConfiguration extends Fragment
     GCOV("gcov"),
     GCOVTOOL("gcov-tool"),
     LD("ld"),
+    LLVM_COV("llvm-cov"),
     NM("nm"),
     OBJCOPY("objcopy"),
     OBJDUMP("objdump"),
@@ -138,12 +139,11 @@ public final class CppConfiguration extends Fragment
    */
   public static final String FDO_STAMP_MACRO = "BUILD_FDO_TYPE";
 
-  private final String transformedCpuFromOptions;
-  // TODO(lberki): desiredCpu *should* be always the same as targetCpu, except that we don't check
-  // that the CPU we get from the toolchain matches CoreOptions.cpu . So we store
-  // it here so that the output directory doesn't depend on the CToolchain. When we will eventually
-  // verify that the two are the same, we can remove one of desiredCpu and targetCpu.
-  private final String desiredCpu;
+  // TODO(lberki): This is only used for determining the output directory name.
+  // Unfortunately, we can't move it easily to OutputDirectories.buildMnemonic() because the CPU is
+  // currently in the middle of the name of the configuration directory (e.g. it comes after the
+  // Android configuration)
+  private final String cpu;
 
   private final PathFragment fdoPath;
   private final Label fdoOptimizeLabel;
@@ -171,8 +171,7 @@ public final class CppConfiguration extends Fragment
 
   private final CoreOptions.FatApkSplitSanitizer fatApkSplitSanitizer;
 
-  static CppConfiguration create(CpuTransformer cpuTransformer, BuildOptions options)
-      throws InvalidConfigurationException {
+  public CppConfiguration(BuildOptions options) throws InvalidConfigurationException {
     CppOptions cppOptions = options.get(CppOptions.class);
 
     CoreOptions commonOptions = options.get(CoreOptions.class);
@@ -220,69 +219,29 @@ public final class CppConfiguration extends Fragment
       }
     }
 
-    return new CppConfiguration(
-        cppOptions.doNotUseCpuTransformer
-            ? commonOptions.cpu
-            : cpuTransformer.getTransformer().apply(commonOptions.cpu),
-        Preconditions.checkNotNull(commonOptions.cpu),
-        fdoPath,
-        fdoProfileLabel,
-        csFdoAbsolutePath,
-        ImmutableList.copyOf(cppOptions.conlyoptList),
-        ImmutableList.copyOf(cppOptions.coptList),
-        ImmutableList.copyOf(cppOptions.cxxoptList),
-        linkoptsBuilder.build(),
-        ImmutableList.copyOf(cppOptions.ltoindexoptList),
-        ImmutableList.copyOf(cppOptions.ltobackendoptList),
-        cppOptions,
-        (cppOptions.stripBinaries == StripMode.ALWAYS
-            || (cppOptions.stripBinaries == StripMode.SOMETIMES
-                && compilationMode == CompilationMode.FASTBUILD)),
-        compilationMode,
-        commonOptions.collectCodeCoverage,
-        commonOptions.isHost || commonOptions.isExec,
-        (cppOptions.appleGenerateDsym
-            || (cppOptions.appleEnableAutoDsymDbg && compilationMode == CompilationMode.DBG)),
-        commonOptions.fatApkSplitSanitizer);
-  }
-
-  private CppConfiguration(
-      String transformedCpuFromOptions,
-      String desiredCpu,
-      PathFragment fdoPath,
-      Label fdoOptimizeLabel,
-      PathFragment csFdoAbsolutePath,
-      ImmutableList<String> conlyopts,
-      ImmutableList<String> copts,
-      ImmutableList<String> cxxopts,
-      ImmutableList<String> linkopts,
-      ImmutableList<String> ltoindexOptions,
-      ImmutableList<String> ltobackendOptions,
-      CppOptions cppOptions,
-      boolean stripBinaries,
-      CompilationMode compilationMode,
-      boolean collectCodeCoverage,
-      boolean isToolConfiguration,
-      boolean appleGenerateDsym,
-      CoreOptions.FatApkSplitSanitizer fatApkSplitSanitizer) {
-    this.transformedCpuFromOptions = transformedCpuFromOptions;
-    this.desiredCpu = desiredCpu;
+    this.cpu = commonOptions.cpu;
     this.fdoPath = fdoPath;
-    this.fdoOptimizeLabel = fdoOptimizeLabel;
+    this.fdoOptimizeLabel = fdoProfileLabel;
     this.csFdoAbsolutePath = csFdoAbsolutePath;
-    this.conlyopts = conlyopts;
-    this.copts = copts;
-    this.cxxopts = cxxopts;
-    this.linkopts = linkopts;
-    this.ltoindexOptions = ltoindexOptions;
-    this.ltobackendOptions = ltobackendOptions;
+    this.conlyopts = ImmutableList.copyOf(cppOptions.conlyoptList);
+    this.copts = ImmutableList.copyOf(cppOptions.coptList);
+    this.cxxopts = ImmutableList.copyOf(cppOptions.cxxoptList);
+    this.linkopts = linkoptsBuilder.build();
+    this.ltoindexOptions = ImmutableList.copyOf(cppOptions.ltoindexoptList);
+    this.ltobackendOptions = ImmutableList.copyOf(cppOptions.ltobackendoptList);
     this.cppOptions = cppOptions;
-    this.stripBinaries = stripBinaries;
+    this.stripBinaries =
+        cppOptions.stripBinaries == StripMode.ALWAYS
+            || (cppOptions.stripBinaries == StripMode.SOMETIMES
+                && compilationMode == CompilationMode.FASTBUILD);
     this.compilationMode = compilationMode;
-    this.collectCodeCoverage = collectCodeCoverage;
-    this.isToolConfigurationDoNotUseWillBeRemovedFor129045294 = isToolConfiguration;
-    this.appleGenerateDsym = appleGenerateDsym;
-    this.fatApkSplitSanitizer = fatApkSplitSanitizer;
+    this.collectCodeCoverage = commonOptions.collectCodeCoverage;
+    this.isToolConfigurationDoNotUseWillBeRemovedFor129045294 =
+        commonOptions.isHost || commonOptions.isExec;
+    this.appleGenerateDsym =
+        (cppOptions.appleGenerateDsym
+            || (cppOptions.appleEnableAutoDsymDbg && compilationMode == CompilationMode.DBG));
+    this.fatApkSplitSanitizer = commonOptions.fatApkSplitSanitizer;
   }
 
   /** Returns the label of the <code>cc_compiler</code> rule for the C++ configuration. */
@@ -416,14 +375,6 @@ public final class CppConfiguration extends Fragment
     return cppOptions.useStartEndLib;
   }
 
-  /**
-   * @return value from the --cpu option transformed using {@link CpuTransformer}. If it was not
-   *     passed explicitly, {@link AutoCpuConverter} will try to guess something reasonable.
-   */
-  public String getTransformedCpuFromOptions() {
-    return transformedCpuFromOptions;
-  }
-
   /** @return value from --compiler option, null if the option was not passed. */
   @Nullable
   public String getCompilerFromOptions() {
@@ -532,15 +483,15 @@ public final class CppConfiguration extends Fragment
 
   @Override
   public String getOutputDirectoryName() {
-    String toolchainPrefix = desiredCpu;
+    String result = cpu;
     if (fatApkSplitSanitizer.feature != null) {
-      toolchainPrefix += "-" + fatApkSplitSanitizer.feature;
+      result += "-" + fatApkSplitSanitizer.feature;
     }
     if (!cppOptions.outputDirectoryTag.isEmpty()) {
-      toolchainPrefix += "-" + cppOptions.outputDirectoryTag;
+      result += "-" + cppOptions.outputDirectoryTag;
     }
 
-    return toolchainPrefix;
+    return result;
   }
 
   /**
@@ -760,5 +711,18 @@ public final class CppConfiguration extends Fragment
 
   public boolean strictHeaderCheckingFromStarlark() {
     return cppOptions.forceStrictHeaderCheckFromStarlark;
+  }
+
+  public boolean useCppCompileHeaderMnemonic() {
+    return cppOptions.useCppCompileHeaderMnemonic;
+  }
+
+  public boolean generateLlvmLCov() {
+    return cppOptions.generateLlvmLcov;
+  }
+
+  @Override
+  public boolean macosSetInstallName() {
+    return cppOptions.macosSetInstallName;
   }
 }

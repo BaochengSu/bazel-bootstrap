@@ -14,6 +14,7 @@ filegroup(
     srcs = glob(["**"]) + [
         "//src/test/java/com/google/devtools/build/lib/actions:srcs",
         "//src/test/java/com/google/devtools/build/lib/analysis:srcs",
+        "//src/test/java/com/google/devtools/build/lib/authandtls:srcs",
         "//src/test/java/com/google/devtools/build/lib/bazel:srcs",
         "//src/test/java/com/google/devtools/build/lib/blackbox:srcs",
         "//src/test/java/com/google/devtools/build/lib/buildeventservice:srcs",
@@ -111,7 +112,7 @@ java_test(
 
 java_test(
     name = "concurrent_test",
-    size = "small",
+    size = "medium",
     srcs = glob(["concurrent/*.java"]),
     flaky = True,
     tags = [
@@ -270,6 +271,7 @@ java_test(
         "//src/main/java/com/google/devtools/build/lib/packages",
         "//src/main/java/com/google/devtools/build/lib/packages/semantics",
         "//src/main/java/com/google/devtools/build/lib/pkgcache",
+        "//src/main/java/com/google/devtools/build/lib/pkgcache:QueryTransitivePackagePreloader",
         "//src/main/java/com/google/devtools/build/lib/rules:repository/repository_function",
         "//src/main/java/com/google/devtools/build/lib/skyframe:diff_awareness",
         "//src/main/java/com/google/devtools/build/lib/skyframe:pattern_expanding_error",
@@ -299,6 +301,7 @@ java_test(
         "//src/test/java/com/google/devtools/build/lib/testutil:JunitUtils",
         "//src/test/java/com/google/devtools/build/lib/testutil:SkyframeExecutorTestHelper",
         "//src/test/java/com/google/devtools/build/lib/testutil:TestConstants",
+        "//src/test/java/com/google/devtools/build/skyframe:testutil",
         "//third_party:guava",
         "//third_party:guava-testlib",
         "//third_party:jsr305",
@@ -406,6 +409,7 @@ java_test(
         "//src/main/java/com/google/devtools/build/lib/exec:execution_options",
         "//src/main/java/com/google/devtools/build/lib/packages",
         "//src/main/java/com/google/devtools/build/lib/packages/semantics",
+        "//src/main/java/com/google/devtools/build/lib/profiler",
         "//src/main/java/com/google/devtools/build/lib/query2",
         "//src/main/java/com/google/devtools/build/lib/query2/common:abstract-blaze-query-env",
         "//src/main/java/com/google/devtools/build/lib/query2/engine",

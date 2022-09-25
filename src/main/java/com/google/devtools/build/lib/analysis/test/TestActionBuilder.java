@@ -52,7 +52,6 @@ import javax.annotation.Nullable;
  * Helper class to create test actions.
  */
 public final class TestActionBuilder {
-
   private static final String CC_CODE_COVERAGE_SCRIPT = "CC_CODE_COVERAGE_SCRIPT";
   private static final String LCOV_MERGER = "LCOV_MERGER";
   // The coverage tool Bazel uses to generate a code coverage report for C++.
@@ -85,7 +84,7 @@ public final class TestActionBuilder {
    *
    * @return ordered list of test status artifacts
    */
-  public TestParams build() {
+  public TestParams build() throws InterruptedException {
     Preconditions.checkNotNull(runfilesSupport);
     TestShardingStrategy strategy =
         ruleContext.getConfiguration().getFragment(TestConfiguration.class).testShardingStrategy();
@@ -148,19 +147,19 @@ public final class TestActionBuilder {
   }
 
   /**
-   * Creates a test action and artifacts for the given rule. The test action will
-   * use the specified executable and runfiles.
+   * Creates a test action and artifacts for the given rule. The test action will use the specified
+   * executable and runfiles.
    *
-   * @return ordered list of test artifacts, one per action. These are used to drive
-   *    execution in Skyframe, and by AggregatingTestListener and
-   *    TestResultAnalyzer to keep track of completed and pending test runs.
+   * @return ordered list of test artifacts, one per action. These are used to drive execution in
+   *     Skyframe, and by AggregatingTestListener and TestResultAnalyzer to keep track of completed
+   *     and pending test runs.
    */
-  private TestParams createTestAction(int shards) {
+  private TestParams createTestAction(int shards) throws InterruptedException {
     PathFragment targetName = PathFragment.create(ruleContext.getLabel().getName());
     BuildConfiguration config = ruleContext.getConfiguration();
     TestConfiguration testConfiguration = config.getFragment(TestConfiguration.class);
     AnalysisEnvironment env = ruleContext.getAnalysisEnvironment();
-    ArtifactRoot root = config.getTestLogsDirectory(ruleContext.getRule().getRepository());
+    ArtifactRoot root = ruleContext.getTestLogsDirectory();
 
     // TODO(laszlocsomor), TODO(ulfjack): `isExecutedOnWindows` should use the execution platform,
     // not the host platform. Once Bazel can tell apart these platforms, fix the right side of this
@@ -200,6 +199,9 @@ public final class TestActionBuilder {
     TreeMap<String, String> extraTestEnv = new TreeMap<>();
 
     int runsPerTest = testConfiguration.getRunsPerTestForLabel(ruleContext.getLabel());
+
+    NestedSetBuilder<Artifact> lcovMergerFilesToRun = NestedSetBuilder.compileOrder();
+    RunfilesSupplier lcovMergerRunfilesSupplier = null;
 
     TestTargetExecutionSettings executionSettings;
     if (collectCodeCoverage) {
@@ -251,6 +253,12 @@ public final class TestActionBuilder {
         if (lcovFilesToRun != null) {
           extraTestEnv.put(LCOV_MERGER, lcovFilesToRun.getExecutable().getExecPathString());
           inputsBuilder.addTransitive(lcovFilesToRun.getFilesToRun());
+
+          lcovMergerFilesToRun.addTransitive(lcovFilesToRun.getFilesToRun());
+          if (lcovFilesToRun.getRunfilesSupport() != null) {
+            lcovMergerFilesToRun.add(lcovFilesToRun.getRunfilesSupport().getRunfilesMiddleman());
+          }
+          lcovMergerRunfilesSupplier = lcovFilesToRun.getRunfilesSupplier();
         } else {
           NestedSet<Artifact> filesToBuild =
               lcovMerger.getProvider(FileProvider.class).getFilesToBuild();
@@ -259,6 +267,7 @@ public final class TestActionBuilder {
             Artifact lcovMergerArtifact = filesToBuild.getSingleton();
             extraTestEnv.put(LCOV_MERGER, lcovMergerArtifact.getExecPathString());
             inputsBuilder.add(lcovMergerArtifact);
+            lcovMergerFilesToRun.add(lcovMergerArtifact);
           } else {
             ruleContext.attributeError(
                 lcovMergerAttr,
@@ -372,6 +381,7 @@ public final class TestActionBuilder {
           tools.add(executionSettings.getExecutable());
           tools.addAll(additionalTools.build());
         }
+        boolean splitCoveragePostProcessing = testConfiguration.splitCoveragePostProcessing();
         TestRunnerAction testRunnerAction =
             new TestRunnerAction(
                 ruleContext.getActionOwner(),
@@ -385,7 +395,7 @@ public final class TestActionBuilder {
                 coverageArtifact,
                 coverageDirectory,
                 testProperties,
-                extraTestEnv,
+                runfilesSupport.getActionEnvironment().addFixedVariables(extraTestEnv),
                 executionSettings,
                 shard,
                 run,
@@ -396,7 +406,10 @@ public final class TestActionBuilder {
                     ? ShToolchain.getPathOrError(ruleContext)
                     : null,
                 cancelConcurrentTests,
-                tools.build());
+                tools.build(),
+                splitCoveragePostProcessing,
+                lcovMergerFilesToRun,
+                lcovMergerRunfilesSupplier);
 
         testOutputs.addAll(testRunnerAction.getSpawnOutputs());
         testOutputs.addAll(testRunnerAction.getOutputs());

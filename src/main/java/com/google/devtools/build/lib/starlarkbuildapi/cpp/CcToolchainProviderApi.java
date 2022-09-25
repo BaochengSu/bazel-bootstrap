@@ -43,8 +43,7 @@ public interface CcToolchainProviderApi<FeatureConfigurationT extends FeatureCon
             name = "feature_configuration",
             doc = "Feature configuration to be queried.",
             positional = false,
-            named = true,
-            type = FeatureConfigurationApi.class)
+            named = true)
       })
   boolean usePicForDynamicLibrariesFromStarlark(FeatureConfigurationT featureConfigurationApi);
 
@@ -75,8 +74,7 @@ public interface CcToolchainProviderApi<FeatureConfigurationT extends FeatureCon
             name = "feature_configuration",
             doc = "Feature configuration to be queried.",
             positional = false,
-            named = true,
-            type = FeatureConfigurationApi.class)
+            named = true)
       })
   public Depset getStaticRuntimeLibForStarlark(FeatureConfigurationT featureConfiguration)
       throws EvalException;
@@ -94,8 +92,7 @@ public interface CcToolchainProviderApi<FeatureConfigurationT extends FeatureCon
             name = "feature_configuration",
             doc = "Feature configuration to be queried.",
             positional = false,
-            named = true,
-            type = FeatureConfigurationApi.class)
+            named = true)
       })
   public Depset getDynamicRuntimeLibForStarlark(FeatureConfigurationT featureConfiguration)
       throws EvalException;
@@ -116,6 +113,7 @@ public interface CcToolchainProviderApi<FeatureConfigurationT extends FeatureCon
       structField = true,
       doc = "C++ compiler.",
       allowReturnNones = true)
+  @Nullable
   public String getCompiler();
 
   @StarlarkMethod(
@@ -123,6 +121,7 @@ public interface CcToolchainProviderApi<FeatureConfigurationT extends FeatureCon
       structField = true,
       doc = "libc version string.",
       allowReturnNones = true)
+  @Nullable
   public String getTargetLibc();
 
   @StarlarkMethod(
@@ -130,6 +129,7 @@ public interface CcToolchainProviderApi<FeatureConfigurationT extends FeatureCon
       structField = true,
       doc = "Target CPU of the C++ toolchain.",
       allowReturnNones = true)
+  @Nullable
   public String getTargetCpu();
 
   @StarlarkMethod(
@@ -137,5 +137,6 @@ public interface CcToolchainProviderApi<FeatureConfigurationT extends FeatureCon
       structField = true,
       doc = "The GNU System Name.",
       allowReturnNones = true)
+  @Nullable
   public String getTargetGnuSystemName();
 }

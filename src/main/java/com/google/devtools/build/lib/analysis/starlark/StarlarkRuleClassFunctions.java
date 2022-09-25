@@ -40,6 +40,7 @@ import com.google.devtools.build.lib.analysis.TemplateVariableInfo;
 import com.google.devtools.build.lib.analysis.config.ConfigAwareRuleClassBuilder;
 import com.google.devtools.build.lib.analysis.config.HostTransition;
 import com.google.devtools.build.lib.analysis.config.StarlarkDefinedConfigTransition;
+import com.google.devtools.build.lib.analysis.platform.ConstraintValueInfo;
 import com.google.devtools.build.lib.analysis.starlark.StarlarkAttrModule.Descriptor;
 import com.google.devtools.build.lib.analysis.test.TestConfiguration;
 import com.google.devtools.build.lib.cmdline.Label;
@@ -146,6 +147,11 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
                   .allowedFileTypes()
                   .nonconfigurable("Used in toolchain resolution")
                   .value(ImmutableList.of()))
+          .add(
+              attr(RuleClass.TARGET_RESTRICTED_TO_ATTR, LABEL_LIST)
+                  .mandatoryProviders(ConstraintValueInfo.PROVIDER.id())
+                  // This should be configurable to allow for complex types of restrictions.
+                  .allowedFileTypes(FileTypeSet.NO_FILE))
           .build();
 
   /** Parent rule class for executable non-test Starlark rules. */
@@ -558,11 +564,10 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
       }
       if (!Attribute.isImplicit(nativeName) && !Attribute.isLateBound(nativeName)) {
         if (!attribute.checkAllowedValues() || attribute.getType() != Type.STRING) {
-          throw new EvalException(
-              String.format(
-                  "Aspect parameter attribute '%s' must have type 'string' and use the "
-                      + "'values' restriction.",
-                  nativeName));
+          throw Starlark.errorf(
+              "Aspect parameter attribute '%s' must have type 'string' and use the 'values'"
+                  + " restriction.",
+              nativeName);
         }
         if (!hasDefault) {
           requiredParams.add(nativeName);
@@ -570,16 +575,14 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
           PredicateWithMessage<Object> allowed = attribute.getAllowedValues();
           Object defaultVal = attribute.getDefaultValue(null);
           if (!allowed.apply(defaultVal)) {
-            throw new EvalException(
-                String.format(
-                    "Aspect parameter attribute '%s' has a bad default value: %s",
-                    nativeName, allowed.getErrorReason(defaultVal)));
+            throw Starlark.errorf(
+                "Aspect parameter attribute '%s' has a bad default value: %s",
+                nativeName, allowed.getErrorReason(defaultVal));
           }
         }
       } else if (!hasDefault) { // Implicit or late bound attribute
         String starlarkName = "_" + nativeName.substring(1);
-        throw new EvalException(
-            String.format("Aspect attribute '%s' has no default value.", starlarkName));
+        throw Starlark.errorf("Aspect attribute '%s' has no default value.", starlarkName);
       }
       if (attribute.getDefaultValueUnchecked() instanceof StarlarkComputedDefaultTemplate) {
         // Attributes specifying dependencies using computed value are currently not supported.
@@ -589,21 +592,19 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
         // Current logic in StarlarkComputedDefault is not enough,
         // however {Conservative,Precise}AspectResolver can probably be improved to make that work.
         String starlarkName = "_" + nativeName.substring(1);
-        throw new EvalException(
-            String.format(
-                "Aspect attribute '%s' (%s) with computed default value is unsupported.",
-                starlarkName, attribute.getType()));
+        throw Starlark.errorf(
+            "Aspect attribute '%s' (%s) with computed default value is unsupported.",
+            starlarkName, attribute.getType());
       }
       attributes.add(attribute);
     }
 
     for (Object o : providesArg) {
       if (!StarlarkAttrModule.isProvider(o)) {
-        throw new EvalException(
-            String.format(
-                "Illegal argument: element in 'provides' is of unexpected type. "
-                    + "Should be list of providers, but got item of type %s. ",
-                Starlark.type(o)));
+        throw Starlark.errorf(
+            "Illegal argument: element in 'provides' is of unexpected type. "
+                + "Should be list of providers, but got item of type %s. ",
+            Starlark.type(o));
       }
     }
     return new StarlarkDefinedAspect(
@@ -627,8 +628,7 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
    *
    * <p>Exactly one of {@link #builder} or {@link #ruleClass} is null except inside {@link #export}.
    */
-  public static final class StarlarkRuleFunction
-      implements StarlarkCallable, StarlarkExportable, RuleFunction {
+  public static final class StarlarkRuleFunction implements StarlarkExportable, RuleFunction {
     private RuleClass.Builder builder;
 
     private RuleClass ruleClass;
@@ -637,6 +637,10 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
     private final Location definitionLocation;
     private Label starlarkLabel;
 
+    // TODO(adonovan): merge {Starlark,Builtin}RuleFunction and RuleClass,
+    // making the latter a callable, StarlarkExportable value.
+    // (Making RuleClasses first-class values will help us to build a
+    // rich query output mode that includes values from loaded .bzl files.)
     public StarlarkRuleFunction(
         RuleClass.Builder builder,
         RuleClassType type,
@@ -665,11 +669,11 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
 
     @Override
     public String getName() {
-      return "rule";
+      return ruleClass != null ? ruleClass.getName() : "unexported rule";
     }
 
     @Override
-    public Object call(StarlarkThread thread, Tuple<Object> args, Dict<String, Object> kwargs)
+    public Object call(StarlarkThread thread, Tuple args, Dict<String, Object> kwargs)
         throws EvalException, InterruptedException, ConversionException {
       if (!args.isEmpty()) {
         throw new EvalException("unexpected positional arguments");
@@ -807,7 +811,9 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
       try {
         this.ruleClass = builder.build(ruleClassName, starlarkLabel + "%" + ruleClassName);
       } catch (IllegalArgumentException | IllegalStateException ex) {
-        throw new EvalException(definitionLocation, ex);
+        // TODO(adonovan): this catch statement is an abuse of exceptions. Be more specific.
+        String msg = ex.getMessage();
+        throw new EvalException(definitionLocation, msg != null ? msg : ex.toString(), ex);
       }
 
       this.builder = null;
@@ -918,8 +924,19 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi<Arti
 
   @Override
   public ExecGroup execGroup(
-      Sequence<?> toolchains, Sequence<?> execCompatibleWith, StarlarkThread thread)
+      Sequence<?> toolchains,
+      Sequence<?> execCompatibleWith,
+      Boolean copyFromRule,
+      StarlarkThread thread)
       throws EvalException {
+    if (copyFromRule) {
+      if (!toolchains.isEmpty() || !execCompatibleWith.isEmpty()) {
+        throw Starlark.errorf(
+            "An exec group cannot set copy_from_rule=True and declare toolchains or constraints.");
+      }
+      return ExecGroup.COPY_FROM_RULE_EXEC_GROUP;
+    }
+
     ImmutableSet<Label> toolchainTypes = ImmutableSet.copyOf(parseToolchains(toolchains, thread));
     ImmutableSet<Label> constraints =
         ImmutableSet.copyOf(parseExecCompatibleWith(execCompatibleWith, thread));

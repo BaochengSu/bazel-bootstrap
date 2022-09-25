@@ -43,7 +43,6 @@ java_toolchain(
     genclass = [":dummy_binary"],
     ijar = [":dummy_binary"],
     javabuilder = [":dummy_binary"],
-    javac = [":dummy_binary"],
     singlejar = [":dummy_binary"],
 )
 
@@ -55,16 +54,21 @@ toolchain(
 
 java_runtime(name = "dummy_java_runtime")
 
+# Points to toolchain[":runtime_toolchain_type"] (was :legacy_current_java_runtime)
 java_runtime_alias(name = "current_java_runtime")
 
+# Host configuration of ":current_java_runtime"
 java_host_runtime_alias(name = "current_host_java_runtime")
 
+# Points to toolchain[":toolchain_type"] (was :legacy_current_java_toolchain)
 java_toolchain_alias(name = "current_java_toolchain")
 
 # This exists to support the migration to toolchain resolution.
 # TODO(cushon): delete once the migration is complete.
+# Points to --javabase/--host_javabase, defaults ":jdk"/":remote_jdk11"
 legacy_java_runtime_alias(name = "legacy_current_java_runtime")
 
+# Points to --java_toolchain/--host_java_toolchain, defaults ":toolchain"/":remote_toolchain"
 legacy_java_toolchain_alias(name = "legacy_current_java_toolchain")
 
 # Used to set --host_javabase or --javabase to a local JDK without having to define
@@ -129,8 +133,7 @@ java_runtime_files(
 # See test_jni in third_party/bazel/src/test/shell/bazel/bazel_java_test.sh for
 # an example of using Bazel to build a Java program that calls a C function.
 #
-# TODO(adonovan): add cases for //src/conditions:linux_arm when released in Bazel.
-# TODO(adonovan): why is there no //src/conditions target meaning "just linux"?
+# TODO(ilist): use //src:condition:linux when released in Bazel
 cc_library(
     name = "jni",
     hdrs = [":jni_header"] + select({
@@ -273,6 +276,11 @@ remote_java_tools_java_import(
     target = ":java_tools/JacocoCoverage_jarjar_deploy.jar",
 )
 
+remote_java_tools_filegroup(
+    name = "JacocoCoverageFilegroup",
+    target = ":java_tools/JacocoCoverage_jarjar_deploy.jar",
+)
+
 remote_java_tools_java_import(
     name = "TestRunner",
     target = ":java_tools/Runner_deploy.jar",
@@ -287,7 +295,6 @@ alias(
     name = "proguard",
     actual = select({
         "//src/conditions:darwin": "@remote_java_tools_darwin//:proguard",
-        "//src/conditions:darwin_x86_64": "@remote_java_tools_darwin//:proguard",
         "//src/conditions:windows": "@remote_java_tools_windows//:proguard",
         "//src/conditions:linux_x86_64": "@remote_java_tools_linux//:proguard",
         # On different platforms the linux repository can be used because the
@@ -308,17 +315,6 @@ BOOTCLASS_JARS = [
 alias(
     name = "bootclasspath",
     actual = "@local_jdk//:bootclasspath",
-)
-
-alias(
-    name = "extclasspath",
-    actual = "@local_jdk//:extdir",
-)
-
-# TODO(cushon): migrate to extclasspath and delete
-alias(
-    name = "extdir",
-    actual = "@local_jdk//:extdir",
 )
 
 filegroup(
@@ -373,7 +369,6 @@ alias(
     name = "toolchain",
     actual = select({
         "//src/conditions:darwin": "@remote_java_tools_darwin//:toolchain",
-        "//src/conditions:darwin_x86_64": "@remote_java_tools_darwin//:toolchain",
         "//src/conditions:windows": "@remote_java_tools_windows//:toolchain",
         "//src/conditions:linux_x86_64": "@remote_java_tools_linux//:toolchain",
         "//conditions:default": "@bazel_tools//tools/jdk:legacy_toolchain",
@@ -384,7 +379,6 @@ alias(
     name = "remote_toolchain",
     actual = select({
         "//src/conditions:darwin": "@remote_java_tools_darwin//:toolchain",
-        "//src/conditions:darwin_x86_64": "@remote_java_tools_darwin//:toolchain",
         "//src/conditions:windows": "@remote_java_tools_windows//:toolchain",
         "//src/conditions:linux_x86_64": "@remote_java_tools_linux//:toolchain",
         "//conditions:default": "@bazel_tools//tools/jdk:legacy_toolchain",
@@ -435,6 +429,7 @@ filegroup(
         "default_java_toolchain.bzl",
         "fail_rule.bzl",
         "java_toolchain_alias.bzl",
+        "java_toolchain_default.bzl.java_tools",
         "jdk.BUILD",
         "local_java_repository.bzl",
         "nosystemjdk/README",
@@ -476,11 +471,6 @@ py_test(
     ],
 )
 
-remote_java_tools_java_import(
-    name = "JarJar",
-    target = ":JarJar",
-)
-
 test_suite(
     name = "windows_tests",
     tags = [
@@ -502,7 +492,6 @@ alias(
     actual = select(
         {
             "//src/conditions:darwin": "@remotejdk11_macos//:jdk",
-            "//src/conditions:darwin_x86_64": "@remotejdk11_macos//:jdk",
             "//src/conditions:windows": "@remotejdk11_win//:jdk",
             "//src/conditions:linux_aarch64": "@remotejdk11_linux_aarch64//:jdk",
             "//src/conditions:linux_x86_64": "@remotejdk11_linux//:jdk",

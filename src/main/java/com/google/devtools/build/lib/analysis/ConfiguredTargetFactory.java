@@ -35,6 +35,7 @@ import com.google.devtools.build.lib.analysis.configuredtargets.InputFileConfigu
 import com.google.devtools.build.lib.analysis.configuredtargets.OutputFileConfiguredTarget;
 import com.google.devtools.build.lib.analysis.configuredtargets.PackageGroupConfiguredTarget;
 import com.google.devtools.build.lib.analysis.configuredtargets.RuleConfiguredTarget;
+import com.google.devtools.build.lib.analysis.constraints.RuleContextConstraintSemantics;
 import com.google.devtools.build.lib.analysis.starlark.StarlarkRuleConfiguredTargetUtil;
 import com.google.devtools.build.lib.analysis.test.AnalysisFailure;
 import com.google.devtools.build.lib.analysis.test.AnalysisFailureInfo;
@@ -322,6 +323,12 @@ public final class ConfiguredTargetFactory {
                     prerequisiteMap.values()))
             .build();
 
+    ConfiguredTarget incompatibleTarget =
+        RuleContextConstraintSemantics.incompatibleConfiguredTarget(ruleContext, prerequisiteMap);
+    if (incompatibleTarget != null) {
+      return incompatibleTarget;
+    }
+
     List<NestedSet<AnalysisFailure>> analysisFailures = depAnalysisFailures(ruleContext);
     if (!analysisFailures.isEmpty()) {
       return erroredConfiguredTargetWithFailures(ruleContext, analysisFailures);
@@ -403,7 +410,7 @@ public final class ConfiguredTargetFactory {
 
   private ConfiguredTarget erroredConfiguredTargetWithFailures(
       RuleContext ruleContext, List<NestedSet<AnalysisFailure>> analysisFailures)
-      throws ActionConflictException {
+      throws ActionConflictException, InterruptedException {
     RuleConfiguredTargetBuilder builder = new RuleConfiguredTargetBuilder(ruleContext);
     builder.addNativeDeclaredProvider(AnalysisFailureInfo.forAnalysisFailureSets(analysisFailures));
     builder.addProvider(RunfilesProvider.class, RunfilesProvider.simple(Runfiles.EMPTY));
@@ -412,14 +419,14 @@ public final class ConfiguredTargetFactory {
 
   /**
    * Returns a {@link ConfiguredTarget} which indicates that an analysis error occurred in
-   * processing the target. In most cases, this returns null, which signals to callers that
-   * the target failed to build and thus the build should fail. However, if analysis failures
-   * are allowed in this build, this returns a stub {@link ConfiguredTarget} which contains
-   * information about the failure.
+   * processing the target. In most cases, this returns null, which signals to callers that the
+   * target failed to build and thus the build should fail. However, if analysis failures are
+   * allowed in this build, this returns a stub {@link ConfiguredTarget} which contains information
+   * about the failure.
    */
   @Nullable
   private ConfiguredTarget erroredConfiguredTarget(RuleContext ruleContext)
-      throws ActionConflictException {
+      throws ActionConflictException, InterruptedException {
     if (ruleContext.getConfiguration().allowAnalysisFailures()) {
       ImmutableList.Builder<AnalysisFailure> analysisFailures = ImmutableList.builder();
 
@@ -588,7 +595,7 @@ public final class ConfiguredTargetFactory {
     if (advertisedProviders.canHaveAnyProvider()) {
       return;
     }
-    for (Class<?> aClass : advertisedProviders.getNativeProviders()) {
+    for (Class<?> aClass : advertisedProviders.getBuiltinProviders()) {
       if (configuredAspect.getProvider(aClass.asSubclass(TransitiveInfoProvider.class)) == null) {
         eventHandler.handle(
             Event.error(
@@ -618,7 +625,7 @@ public final class ConfiguredTargetFactory {
    * outputs, both implicit and explicit, due to a missing fragment class.
    */
   private static ConfiguredTarget createFailConfiguredTargetForMissingFragmentClass(
-      RuleContext ruleContext, Class<?> missingFragmentClass) {
+      RuleContext ruleContext, Class<?> missingFragmentClass) throws InterruptedException {
     RuleConfiguredTargetBuilder builder = new RuleConfiguredTargetBuilder(ruleContext);
     if (!ruleContext.getOutputArtifacts().isEmpty()) {
       ruleContext.registerAction(

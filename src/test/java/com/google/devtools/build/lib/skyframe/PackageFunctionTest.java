@@ -113,7 +113,7 @@ public class PackageFunctionTest extends BuildViewTestCase {
   }
 
   private void preparePackageLoadingWithCustomStarklarkSemanticsOptions(
-      BuildLanguageOptions starlarkSemanticsOptions, Path... roots) {
+      BuildLanguageOptions buildLanguageOptions, Path... roots) {
     PackageOptions packageOptions = Options.getDefaults(PackageOptions.class);
     packageOptions.defaultVisibility = ConstantRuleVisibility.PUBLIC;
     packageOptions.showLoadingProgress = true;
@@ -125,7 +125,7 @@ public class PackageFunctionTest extends BuildViewTestCase {
                 Arrays.stream(roots).map(Root::fromPath).collect(ImmutableList.toImmutableList()),
                 BazelSkyframeExecutorConstants.BUILD_FILES_BY_PRIORITY),
             packageOptions,
-            starlarkSemanticsOptions,
+            buildLanguageOptions,
             UUID.randomUUID(),
             ImmutableMap.<String, String>of(),
             new TimestampGranularityMonitor(BlazeClock.instance()));
@@ -679,7 +679,6 @@ public class PackageFunctionTest extends BuildViewTestCase {
             getSkyframeExecutor(), skyKey, /*keepGoing=*/ false, reporter);
     assertThat(result.hasError()).isTrue();
     ErrorInfo errorInfo = result.getError(skyKey);
-    assertThat(errorInfo.getRootCauseOfException()).isEqualTo(skyKey);
     assertThat(errorInfo.getException())
         .hasMessageThat()
         .isEqualTo(
@@ -1307,9 +1306,7 @@ public class PackageFunctionTest extends BuildViewTestCase {
         .contains("Symlink cycle: /workspace/foo/cycle");
     // And appropriate Skyframe root cause (N.B. since we want PackageFunction to rethrow in
     // situations like this, we want the PackageValue node to be its own root cause).
-    assertThatEvaluationResult(result)
-        .hasErrorEntryForKeyThat(pkgKey)
-        .rootCauseOfExceptionIs(pkgKey);
+    assertThatEvaluationResult(result).hasErrorEntryForKeyThat(pkgKey);
 
     // Then, when we modify the BUILD file so as to force package loading,
     scratch.overwriteFile(
@@ -1347,9 +1344,6 @@ public class PackageFunctionTest extends BuildViewTestCase {
         .hasExceptionThat()
         .hasMessageThat()
         .contains("Symlink cycle: /workspace/foo/cycle");
-    assertThatEvaluationResult(result)
-        .hasErrorEntryForKeyThat(pkgKey)
-        .rootCauseOfExceptionIs(pkgKey);
     // Thus showing that clean and incremental package loading have the same semantics in the
     // presence of a symlink cycle encountered during glob evaluation.
   }
