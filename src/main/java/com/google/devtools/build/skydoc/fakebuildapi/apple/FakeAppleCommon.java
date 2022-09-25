@@ -37,6 +37,7 @@ import com.google.devtools.build.skydoc.fakebuildapi.FakeStructApi;
 import com.google.devtools.build.skydoc.fakebuildapi.apple.FakeAppleStaticLibraryInfo.FakeAppleStaticLibraryInfoProvider;
 import net.starlark.java.eval.Dict;
 import net.starlark.java.eval.Sequence;
+import net.starlark.java.eval.StarlarkInt;
 import net.starlark.java.eval.StarlarkThread;
 
 /** Fake implementation of {@link AppleCommonApi}. */
@@ -66,7 +67,16 @@ public class FakeAppleCommon
 
   @Override
   public StructApi getPlatformStruct() {
-    return new FakeStructApi();
+    return new FakeStructApi(
+        new ImmutableMap.Builder<String, Object>()
+            .put("ios_device", "ios_device")
+            .put("ios_simulator", "ios_simulator")
+            .put("macos", "macos")
+            .put("tvos_device", "tvos_device")
+            .put("tvos_simulator", "tvos_simulator")
+            .put("watchos_device", "watchos_device")
+            .put("watchos_simulator", "watchos_simulator")
+            .build());
   }
 
   @Override
@@ -124,6 +134,7 @@ public class FakeAppleCommon
       StarlarkRuleContextApi<ConstraintValueInfoApi> starlarkRuleContext,
       Sequence<?> extraLinkopts,
       Sequence<?> extraLinkInputs,
+      StarlarkInt stamp,
       StarlarkThread thread) {
     return new FakeStructApi();
   }

@@ -423,9 +423,7 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
         throw new IllegalStateException(e.getCause());
       }
     } catch (ExecException e) {
-      throw e.toActionExecutionException(
-          "Include scanning of rule '" + getOwner().getLabel() + "'",
-          this);
+      throw e.toActionExecutionException("include scanning", this);
     }
   }
 
@@ -569,7 +567,7 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
                   .setCmdlineIncludes(getCmdlineIncludes(options))
                   .build());
 
-      if (useHeaderModules) {
+      if (getDotdFile() == null) {
         // If we aren't looking at .d files later, remove undeclared inputs now.
         additionalInputs =
             filterDiscoveredHeaders(actionExecutionContext, additionalInputs, headerInfo);
@@ -935,7 +933,7 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
 
   @Override
   public ExtraActionInfo.Builder getExtraActionInfo(ActionKeyContext actionKeyContext)
-      throws CommandLineExpansionException {
+      throws CommandLineExpansionException, InterruptedException {
     CppCompileInfo.Builder info = CppCompileInfo.newBuilder();
     info.setTool(compileCommandLine.getToolPath());
 
@@ -1318,7 +1316,7 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
       ActionKeyContext actionKeyContext,
       @Nullable Artifact.ArtifactExpander artifactExpander,
       Fingerprint fp)
-      throws CommandLineExpansionException {
+      throws CommandLineExpansionException, InterruptedException {
     computeKey(
         actionKeyContext,
         fp,
@@ -1351,7 +1349,8 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
       NestedSet<PathFragment> declaredIncludeDirs,
       List<PathFragment> builtInIncludeDirectories,
       NestedSet<Artifact> inputsForInvalidation,
-      boolean validateTopLevelHeaderInclusions) {
+      boolean validateTopLevelHeaderInclusions)
+      throws CommandLineExpansionException, InterruptedException {
     fp.addUUID(actionClassId);
     env.addTo(fp);
     fp.addStringMap(environmentVariables);
@@ -1676,7 +1675,10 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
     }
   }
 
-  static String actionNameToMnemonic(String actionName, FeatureConfiguration featureConfiguration) {
+  static String actionNameToMnemonic(
+      String actionName,
+      FeatureConfiguration featureConfiguration,
+      boolean useCppCompileHeaderMnemonic) {
     switch (actionName) {
       case CppActionNames.OBJC_COMPILE:
       case CppActionNames.OBJCPP_COMPILE:
@@ -1693,9 +1695,10 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
         return "CppLinkstampCompile";
 
       case CppActionNames.CPP_HEADER_PARSING:
+        String suffix = useCppCompileHeaderMnemonic ? "Header" : "";
         return featureConfiguration.isEnabled(CppRuleClasses.LANG_OBJC)
-            ? OBJC_COMPILE_MNEMONIC
-            : CPP_COMPILE_MNEMONIC;
+            ? OBJC_COMPILE_MNEMONIC + suffix
+            : CPP_COMPILE_MNEMONIC + suffix;
 
       default:
         return CPP_COMPILE_MNEMONIC;
@@ -1704,7 +1707,8 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
 
   @Override
   public String getMnemonic() {
-    return actionNameToMnemonic(actionName, featureConfiguration);
+    return actionNameToMnemonic(
+        actionName, featureConfiguration, cppConfiguration.useCppCompileHeaderMnemonic());
   }
 
   @Override
@@ -1842,7 +1846,6 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
       } catch (ExecException e) {
         copyTempOutErrToActionOutErr();
         throw e.toActionExecutionException(
-            "C++ compilation of rule '" + getOwner().getLabel() + "'",
             CppCompileAction.this);
       } catch (InterruptedException e) {
         copyTempOutErrToActionOutErr();
@@ -1923,9 +1926,7 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
         } catch (IOException e) {
           throw new EnvironmentalExecException(
                   e, createFailureDetail("OutErr copy failure", Code.COPY_OUT_ERR_FAILURE))
-              .toActionExecutionException(
-                  getRawProgressMessage(),
-                  CppCompileAction.this);
+              .toActionExecutionException(CppCompileAction.this);
         }
       }
     }

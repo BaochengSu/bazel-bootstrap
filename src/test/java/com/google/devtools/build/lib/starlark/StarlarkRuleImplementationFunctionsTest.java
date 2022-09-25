@@ -51,6 +51,7 @@ import com.google.devtools.build.lib.analysis.starlark.Args;
 import com.google.devtools.build.lib.analysis.starlark.StarlarkRuleContext;
 import com.google.devtools.build.lib.analysis.util.BuildViewTestCase;
 import com.google.devtools.build.lib.cmdline.Label;
+import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.packages.Provider;
@@ -103,7 +104,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
       documented = false,
       parameters = {
         @Param(name = "mandatory", doc = "", named = true),
-        @Param(name = "optional", doc = "", defaultValue = "None", noneable = true, named = true),
+        @Param(name = "optional", doc = "", defaultValue = "None", named = true),
         @Param(name = "mandatory_key", doc = "", positional = false, named = true),
         @Param(
             name = "optional_key",
@@ -334,7 +335,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
   public void testCreateSpawnActionArgumentsBadExecutable() throws Exception {
     setRuleContext(createRuleContext("//foo:foo"));
     ev.checkEvalErrorContains(
-        "got value of type 'int', want 'File or string or FilesToRunProvider'",
+        "got value of type 'int', want 'File, string, or FilesToRunProvider'",
         "ruleContext.actions.run(",
         "  inputs = ruleContext.files.srcs,",
         "  outputs = ruleContext.files.srcs,",
@@ -344,6 +345,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
 
   @Test
   public void testCreateSpawnActionShellCommandList() throws Exception {
+    ev.setSemantics("--incompatible_run_shell_command_string=false");
     StarlarkRuleContext ruleContext = createRuleContext("//foo:foo");
     setRuleContext(ruleContext);
     ev.exec(
@@ -443,6 +445,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
 
   @Test
   public void testRunShellArgumentsWithCommandSequence() throws Exception {
+    ev.setSemantics("--incompatible_run_shell_command_string=false");
     setRuleContext(createRuleContext("//foo:foo"));
     ev.checkEvalErrorContains(
         "'arguments' must be empty if 'command' is a sequence of strings",
@@ -1425,7 +1428,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testLacksAdvertisedNativeProvider() throws Exception {
+  public void testLacksAdvertisedBuiltinProvider() throws Exception {
     scratch.file(
         "test/foo.bzl",
         "FooInfo = provider()",
@@ -1806,7 +1809,8 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
     StarlarkRuleContext ctx = createRuleContext("//foo:bar");
     setRuleContext(ctx);
     Object result = ev.eval("ruleContext.bin_dir.path");
-    assertThat(result).isEqualTo(ctx.getConfiguration().getBinFragment().getPathString());
+    assertThat(result)
+        .isEqualTo(ctx.getConfiguration().getBinFragment(RepositoryName.MAIN).getPathString());
   }
 
   @Test
@@ -1972,11 +1976,9 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
         "silly_rule(name = 'silly')");
     thrown.handleAssertionErrors(); // Compatibility with JUnit 4.11
     thrown.expect(AssertionError.class);
-    // This confusing message shows why we should distinguish
-    // built-ins and Starlark functions in their repr strings.
     thrown.expectMessage(
-        "in call to rule(), parameter 'implementation' got value of type 'function', want"
-            + " 'function'");
+        "in call to rule(), parameter 'implementation' got value of type"
+            + " 'builtin_function_or_method', want 'function'");
     getConfiguredTarget("//test:silly");
   }
 
@@ -3047,7 +3049,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
             "def _path(f): return f.path",
             "args.add_all([directory], map_each=_path)");
 
-    ev.setSemantics("--incompatible_run_shell_command_string");
+    ev.setSemantics("--incompatible_run_shell_command_string=false");
     // setBuildLanguageOptions reinitializes the thread -- set the ruleContext on the new one.
     setRuleContext(createRuleContext("//foo:foo"));
 
@@ -3084,12 +3086,13 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
     };
   }
 
-  private String getDigest(CommandLine commandLine) throws CommandLineExpansionException {
+  private String getDigest(CommandLine commandLine)
+      throws CommandLineExpansionException, InterruptedException {
     return getDigest(commandLine, /*artifactExpander=*/ null);
   }
 
   private String getDigest(CommandLine commandLine, ArtifactExpander artifactExpander)
-      throws CommandLineExpansionException {
+      throws CommandLineExpansionException, InterruptedException {
     Fingerprint fingerprint = new Fingerprint();
     commandLine.addToFingerprint(actionKeyContext, artifactExpander, fingerprint);
     return fingerprint.hexDigestAndReset();

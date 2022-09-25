@@ -54,6 +54,7 @@ import com.google.devtools.build.lib.analysis.config.FragmentCollection;
 import com.google.devtools.build.lib.analysis.config.transitions.ConfigurationTransition;
 import com.google.devtools.build.lib.analysis.config.transitions.NoTransition;
 import com.google.devtools.build.lib.analysis.constraints.ConstraintSemantics;
+import com.google.devtools.build.lib.analysis.constraints.RuleContextConstraintSemantics;
 import com.google.devtools.build.lib.analysis.platform.ConstraintValueInfo;
 import com.google.devtools.build.lib.analysis.platform.PlatformInfo;
 import com.google.devtools.build.lib.analysis.stringtemplate.TemplateContext;
@@ -76,7 +77,6 @@ import com.google.devtools.build.lib.packages.FilesetEntry;
 import com.google.devtools.build.lib.packages.ImplicitOutputsFunction;
 import com.google.devtools.build.lib.packages.Info;
 import com.google.devtools.build.lib.packages.InputFile;
-import com.google.devtools.build.lib.packages.NativeProvider;
 import com.google.devtools.build.lib.packages.OutputFile;
 import com.google.devtools.build.lib.packages.PackageSpecification.PackageGroupContents;
 import com.google.devtools.build.lib.packages.RawAttributeMapper;
@@ -316,12 +316,36 @@ public final class RuleContext extends TargetContext
 
   @Override
   public ArtifactRoot getBinDirectory() {
-    return getConfiguration().getBinDirectory(rule.getRepository());
+    return getConfiguration().getBinDirectory(getLabel().getRepository());
+  }
+
+  public ArtifactRoot getIncludeDirectory() {
+    return getConfiguration().getIncludeDirectory(getLabel().getRepository());
+  }
+
+  public ArtifactRoot getGenfilesDirectory() {
+    return getConfiguration().getGenfilesDirectory(getLabel().getRepository());
+  }
+
+  public ArtifactRoot getCoverageMetadataDirectory() {
+    return getConfiguration().getCoverageMetadataDirectory(getLabel().getRepository());
+  }
+
+  public ArtifactRoot getTestLogsDirectory() {
+    return getConfiguration().getTestLogsDirectory(getLabel().getRepository());
+  }
+
+  public PathFragment getBinFragment() {
+    return getConfiguration().getBinFragment(getLabel().getRepository());
+  }
+
+  public PathFragment getGenfilesFragment() {
+    return getConfiguration().getGenfilesFragment(getLabel().getRepository());
   }
 
   @Override
   public ArtifactRoot getMiddlemanDirectory() {
-    return getConfiguration().getMiddlemanDirectory(rule.getRepository());
+    return getConfiguration().getMiddlemanDirectory(getLabel().getRepository());
   }
 
   public Rule getRule() {
@@ -724,8 +748,8 @@ public final class RuleContext extends TargetContext
   @Override
   public ArtifactRoot getBinOrGenfilesDirectory() {
     return rule.hasBinaryOutput()
-        ? getConfiguration().getBinDirectory(rule.getRepository())
-        : getConfiguration().getGenfilesDirectory(rule.getRepository());
+        ? getConfiguration().getBinDirectory(getLabel().getRepository())
+        : getConfiguration().getGenfilesDirectory(getLabel().getRepository());
   }
 
   /**
@@ -738,7 +762,7 @@ public final class RuleContext extends TargetContext
 
   public Artifact getBinArtifact(PathFragment relative) {
     return getPackageRelativeArtifact(
-        relative, getConfiguration().getBinDirectory(rule.getRepository()));
+        relative, getConfiguration().getBinDirectory(getLabel().getRepository()));
   }
 
   /**
@@ -751,7 +775,7 @@ public final class RuleContext extends TargetContext
 
   public Artifact getGenfilesArtifact(PathFragment relative) {
     return getPackageRelativeArtifact(
-        relative, getConfiguration().getGenfilesDirectory(rule.getRepository()));
+        relative, getConfiguration().getGenfilesDirectory(getLabel().getRepository()));
   }
 
   @Override
@@ -795,7 +819,9 @@ public final class RuleContext extends TargetContext
 
   @Override
   public PathFragment getPackageDirectory() {
-    return getLabel().getPackageIdentifier().getPackagePath();
+    return getLabel()
+        .getPackageIdentifier()
+        .getPackagePath(getConfiguration().isSiblingRepositoryLayout());
   }
 
   /**
@@ -1065,28 +1091,8 @@ public final class RuleContext extends TargetContext
    * the specified attribute of this target in the BUILD file.
    */
   public <T extends Info> List<T> getPrerequisites(
-      String attributeName, NativeProvider<T> starlarkKey) {
-    return AnalysisUtils.getProviders(getPrerequisites(attributeName), starlarkKey);
-  }
-
-  /**
-   * Returns all the declared providers (native and Starlark) for the specified constructor under
-   * the specified attribute of this target in the BUILD file.
-   */
-  public <T extends Info> List<T> getPrerequisites(
       String attributeName, BuiltinProvider<T> starlarkKey) {
     return AnalysisUtils.getProviders(getPrerequisites(attributeName), starlarkKey);
-  }
-
-  /**
-   * Returns the declared provider (native and Starlark) for the specified constructor under the
-   * specified attribute of this target in the BUILD file. May return null if there is no
-   * TransitiveInfoCollection under the specified attribute.
-   */
-  @Nullable
-  public <T extends Info> T getPrerequisite(String attributeName, NativeProvider<T> starlarkKey) {
-    TransitiveInfoCollection prerequisite = getPrerequisite(attributeName);
-    return prerequisite == null ? null : prerequisite.get(starlarkKey);
   }
 
   /**
@@ -1099,7 +1105,6 @@ public final class RuleContext extends TargetContext
     TransitiveInfoCollection prerequisite = getPrerequisite(attributeName);
     return prerequisite == null ? null : prerequisite.get(starlarkKey);
   }
-
   /**
    * Returns all the providers of the specified type that are listed under the specified attribute
    * of this target in the BUILD file, and that contain the specified provider.
@@ -1108,15 +1113,6 @@ public final class RuleContext extends TargetContext
       Iterable<? extends TransitiveInfoCollection> getPrerequisitesIf(
           String attributeName, Class<C> classType) {
     AnalysisUtils.checkProvider(classType);
-    return AnalysisUtils.filterByProvider(getPrerequisites(attributeName), classType);
-  }
-
-  /**
-   * Returns all the providers of the specified type that are listed under the specified attribute
-   * of this target in the BUILD file, and that contain the specified provider.
-   */
-  public <C extends Info> Iterable<? extends TransitiveInfoCollection> getPrerequisitesIf(
-      String attributeName, NativeProvider<C> classType) {
     return AnalysisUtils.filterByProvider(getPrerequisites(attributeName), classType);
   }
 
@@ -1471,7 +1467,8 @@ public final class RuleContext extends TargetContext
    */
   @Override
   public final PathFragment getUniqueDirectory(PathFragment fragment) {
-    return AnalysisUtils.getUniqueDirectory(getLabel(), fragment);
+    return AnalysisUtils.getUniqueDirectory(
+        getLabel(), fragment, getConfiguration().isSiblingRepositoryLayout());
   }
 
   /**
@@ -1616,7 +1613,7 @@ public final class RuleContext extends TargetContext
   public final Artifact.DerivedArtifact getRelatedArtifact(
       PathFragment pathFragment, String extension) {
     PathFragment file = FileSystemUtils.replaceExtension(pathFragment, extension);
-    return getDerivedArtifact(file, getConfiguration().getBinDirectory(rule.getRepository()));
+    return getDerivedArtifact(file, getConfiguration().getBinDirectory(getLabel().getRepository()));
   }
 
   /**
@@ -2310,6 +2307,14 @@ public final class RuleContext extends TargetContext
 
     private void validateDirectPrerequisite(
         Attribute attribute, ConfiguredTargetAndData prerequisite) {
+      if (RuleContextConstraintSemantics.checkForIncompatibility(prerequisite.getConfiguredTarget())
+          .isIncompatible()) {
+        // If the prerequisite is incompatible (e.g. has an incompatible provider), we pretend that
+        // there is no further validation needed. Otherwise, it would be difficult to make the
+        // incompatible target satisfy things like required providers and file extensions.
+        return;
+      }
+
       validateDirectPrerequisiteType(prerequisite, attribute);
       validateDirectPrerequisiteFileTypes(prerequisite, attribute);
       if (attribute.performPrereqValidatorCheck()) {

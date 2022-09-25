@@ -485,7 +485,7 @@ public abstract class AbstractExceptionalParallelEvaluator<E extends Exception>
               parent,
               parentEntry.getTemporaryDirectDeps(),
               bubbleErrorInfo,
-              ImmutableSet.<SkyKey>of(),
+              ImmutableSet.of(),
               evaluatorContext);
       externalInterrupt = externalInterrupt || Thread.currentThread().isInterrupted();
       boolean completedRun = false;
@@ -495,6 +495,7 @@ public abstract class AbstractExceptionalParallelEvaluator<E extends Exception>
         factory.compute(parent, env);
         completedRun = true;
       } catch (InterruptedException interruptedException) {
+        logger.atInfo().withCause(interruptedException).log("Interrupted during %s eval", parent);
         // Do nothing.
         // This throw happens if the builder requested the failed node, and then checked the
         // interrupted state later -- getValueOrThrow sets the interrupted bit after the failed
@@ -503,21 +504,19 @@ public abstract class AbstractExceptionalParallelEvaluator<E extends Exception>
         // Clear interrupted status. We're not listening to interrupts here.
         Thread.interrupted();
         ReifiedSkyFunctionException reifiedBuilderException =
-            new ReifiedSkyFunctionException(builderException, parent);
-        if (reifiedBuilderException.getRootCauseSkyKey().equals(parent)) {
-          error =
-              ErrorInfo.fromException(reifiedBuilderException, /*isTransitivelyTransient=*/ false);
-          Pair<NestedSet<TaggedEvents>, NestedSet<Postable>> eventsAndPostables =
-              env.buildAndReportEventsAndPostables(parentEntry, /*expectDoneDeps=*/ false);
-          ValueWithMetadata valueWithMetadata =
-              ValueWithMetadata.error(
-                  ErrorInfo.fromChildErrors(errorKey, ImmutableSet.of(error)),
-                  eventsAndPostables.first,
-                  eventsAndPostables.second);
-          replay(valueWithMetadata);
-          bubbleErrorInfo.put(errorKey, valueWithMetadata);
-          continue;
-        }
+            new ReifiedSkyFunctionException(builderException);
+        error =
+            ErrorInfo.fromException(reifiedBuilderException, /*isTransitivelyTransient=*/ false);
+        Pair<NestedSet<TaggedEvents>, NestedSet<Postable>> eventsAndPostables =
+            env.buildAndReportEventsAndPostables(parentEntry, /*expectDoneDeps=*/ false);
+        ValueWithMetadata valueWithMetadata =
+            ValueWithMetadata.error(
+                ErrorInfo.fromChildErrors(errorKey, ImmutableSet.of(error)),
+                eventsAndPostables.first,
+                eventsAndPostables.second);
+        replay(valueWithMetadata);
+        bubbleErrorInfo.put(errorKey, valueWithMetadata);
+        continue;
       } finally {
         // Clear interrupted status. We're not listening to interrupts here.
         Thread.interrupted();

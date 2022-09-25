@@ -52,12 +52,13 @@ DEFAULT_JAVACOPTS = [
 DEFAULT_TOOLCHAIN_CONFIGURATION = {
     "forcibly_disable_header_compilation": 0,
     "genclass": ["@bazel_tools//tools/jdk:genclass"],
-    "header_compiler": ["@bazel_tools//tools/jdk:turbine"],
+    "header_compiler": ["@bazel_tools//tools/jdk:turbine_direct"],
     "header_compiler_direct": ["@bazel_tools//tools/jdk:turbine_direct"],
     "ijar": ["@bazel_tools//tools/jdk:ijar"],
     "javabuilder": ["@bazel_tools//tools/jdk:javabuilder"],
-    "javac": ["@bazel_tools//tools/jdk:javac_jar"],
+    "jacocorunner": "@bazel_tools//tools/jdk:JacocoCoverageFilegroup",
     "tools": [
+        "@bazel_tools//tools/jdk:javac_jar",
         "@bazel_tools//tools/jdk:java_compiler_jar",
         "@bazel_tools//tools/jdk:jdk_compiler_jar",
     ],

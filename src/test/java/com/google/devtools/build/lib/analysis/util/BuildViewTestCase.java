@@ -216,7 +216,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
 
   protected OptionsParser optionsParser;
   private PackageOptions packageOptions;
-  private BuildLanguageOptions starlarkSemanticsOptions;
+  private BuildLanguageOptions buildLanguageOptions;
   protected PackageFactory pkgFactory;
 
   protected MockToolsConfig mockToolsConfig;
@@ -267,7 +267,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     initializeMockClient();
 
     packageOptions = parsePackageOptions();
-    starlarkSemanticsOptions = parseBuildLanguageOptions();
+    buildLanguageOptions = parseBuildLanguageOptions();
     workspaceStatusActionFactory = new AnalysisTestUtil.DummyWorkspaceStatusActionFactory();
     mutableActionGraph = new MapBasedActionGraph(actionKeyContext);
     ruleClassProvider = createRuleClassProvider();
@@ -311,7 +311,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
             .setManagedDirectoriesKnowledge(getManagedDirectoriesKnowledge())
             .build();
     if (usesInliningBzlLoadFunction()) {
-      injectInliningBzlLoadFunction(skyframeExecutor, pkgFactory);
+      injectInliningBzlLoadFunction(skyframeExecutor, pkgFactory, directories);
     }
     SkyframeExecutorTestHelper.process(skyframeExecutor);
     skyframeExecutor.injectExtraPrecomputedValues(extraPrecomputedValues);
@@ -324,7 +324,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
             ImmutableList.of(root),
             BazelSkyframeExecutorConstants.BUILD_FILES_BY_PRIORITY),
         packageOptions,
-        starlarkSemanticsOptions,
+        buildLanguageOptions,
         UUID.randomUUID(),
         ImmutableMap.<String, String>of(),
         tsgm);
@@ -339,13 +339,15 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
 
   private static void injectInliningBzlLoadFunction(
       SkyframeExecutor skyframeExecutor,
-      PackageFactory packageFactory) {
+      PackageFactory packageFactory,
+      BlazeDirectories directories) {
     ImmutableMap<SkyFunctionName, ? extends SkyFunction> skyFunctions =
         ((InMemoryMemoizingEvaluator) skyframeExecutor.getEvaluatorForTesting())
             .getSkyFunctionsForTesting();
     BzlLoadFunction bzlLoadFunction =
         BzlLoadFunction.createForInlining(
             packageFactory,
+            directories,
             // Use a cache size of 2 for testing to balance coverage for where loads are present and
             // aren't present in the cache.
             /*bzlLoadValueCacheSize=*/ 2);
@@ -401,7 +403,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
   }
 
   protected StarlarkSemantics getStarlarkSemantics() {
-    return starlarkSemanticsOptions.toStarlarkSemantics();
+    return buildLanguageOptions.toStarlarkSemantics();
   }
 
   protected PackageValidator getPackageValidator() {
@@ -481,7 +483,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     skyframeExecutor.preparePackageLoading(
         pkgLocator,
         packageOptions,
-        starlarkSemanticsOptions,
+        buildLanguageOptions,
         UUID.randomUUID(),
         ImmutableMap.of(),
         tsgm);
@@ -504,7 +506,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
   }
 
   protected void setBuildLanguageOptions(String... options) throws Exception {
-    starlarkSemanticsOptions = parseBuildLanguageOptions(options);
+    buildLanguageOptions = parseBuildLanguageOptions(options);
     setUpSkyframe();
   }
 
@@ -796,7 +798,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
   /** Locates the first parameter file used by the action and returns its args. */
   @Nullable
   protected final Iterable<String> paramFileArgsForAction(Action action)
-      throws CommandLineExpansionException {
+      throws CommandLineExpansionException, InterruptedException {
     CommandLine commandLine = paramFileCommandLineForAction(action);
     return commandLine != null ? commandLine.arguments() : null;
   }
@@ -808,7 +810,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
    */
   @Nullable
   protected final Iterable<String> paramFileArgsOrActionArgs(CommandAction action)
-      throws CommandLineExpansionException {
+      throws CommandLineExpansionException, InterruptedException {
     CommandLine commandLine = paramFileCommandLineForAction(action);
     return commandLine != null ? commandLine.arguments() : action.getArguments();
   }
@@ -816,7 +818,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
   /** Locates the first parameter file used by the action and returns its contents. */
   @Nullable
   protected final String paramFileStringContentsForAction(Action action)
-      throws CommandLineExpansionException, IOException {
+      throws CommandLineExpansionException, InterruptedException, IOException {
     if (action instanceof SpawnAction) {
       CommandLines commandLines = ((SpawnAction) action).getCommandLines();
       for (CommandLineAndParamFileInfo pair : commandLines.getCommandLines()) {
@@ -918,7 +920,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
   }
 
   protected final List<String> getGeneratingSpawnActionArgs(Artifact artifact)
-      throws CommandLineExpansionException {
+      throws CommandLineExpansionException, InterruptedException {
     SpawnAction a = getGeneratingSpawnAction(artifact);
     return a.getArguments();
   }
@@ -1505,8 +1507,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
       AspectParameters params) {
     return getPackageRelativeDerivedArtifact(
         packageRelativePath,
-        getConfiguration(owner)
-            .getGenfilesDirectory(owner.getLabel().getPackageIdentifier().getRepository()),
+        getConfiguration(owner).getGenfilesDirectory(owner.getLabel().getRepository()),
         getOwnerForAspect(owner, creatingAspectFactory, params));
   }
 
@@ -1550,8 +1551,9 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
    * "foo.h".
    */
   protected Artifact getIncludeArtifact(String packageRelativePath, ArtifactOwner owner) {
-    return getPackageRelativeDerivedArtifact(packageRelativePath,
-        targetConfig.getIncludeDirectory(owner.getLabel().getPackageIdentifier().getRepository()),
+    return getPackageRelativeDerivedArtifact(
+        packageRelativePath,
+        targetConfig.getIncludeDirectory(owner.getLabel().getRepository()),
         owner);
   }
 
@@ -1947,6 +1949,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
         loadingResult,
         targetConfig.getOptions(),
         /* multiCpu= */ ImmutableSet.of(),
+        /*explicitTargetPatterns=*/ ImmutableSet.of(),
         aspects,
         viewOptions,
         keepGoing,
@@ -2115,7 +2118,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
 
     @Override
     public StarlarkSemantics getStarlarkSemantics() {
-      return starlarkSemanticsOptions.toStarlarkSemantics();
+      return buildLanguageOptions.toStarlarkSemantics();
     }
 
     @Override
@@ -2272,7 +2275,8 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
         .isEqualTo(
             String.format(
                 "%s%s.extra_action_dummy",
-                targetConfig.getGenfilesFragment(), convertLabelToPath(targetLabel)));
+                targetConfig.getGenfilesFragment(RepositoryName.MAIN),
+                convertLabelToPath(targetLabel)));
 
     return (PseudoAction<?>) pseudoAction;
   }

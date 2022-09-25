@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
 import com.google.devtools.build.lib.analysis.platform.ConstraintValueInfo;
@@ -36,6 +37,7 @@ import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
+import com.google.devtools.build.lib.packages.BazelModuleContext;
 import com.google.devtools.build.lib.packages.BazelStarlarkContext;
 import com.google.devtools.build.lib.packages.Provider;
 import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
@@ -72,17 +74,29 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import javax.annotation.Nullable;
-import net.starlark.java.eval.ClassObject;
 import net.starlark.java.eval.Dict;
 import net.starlark.java.eval.EvalException;
+import net.starlark.java.eval.Module;
 import net.starlark.java.eval.NoneType;
 import net.starlark.java.eval.Sequence;
 import net.starlark.java.eval.Starlark;
+import net.starlark.java.eval.StarlarkInt;
 import net.starlark.java.eval.StarlarkList;
 import net.starlark.java.eval.StarlarkThread;
+import net.starlark.java.eval.Structure;
 import net.starlark.java.eval.Tuple;
 
-/** A module that contains Starlark utilities for C++ support. */
+/**
+ * A module that contains Starlark utilities for C++ support.
+ *
+ * <p>The Bazel team is planning to rewrite all native rules in Starlark. Many of these rules use
+ * C++ functionality that is not presently exposed to the public Starlark C++ API. To speed up the
+ * transition to Starlark, we are exposing functionality "as is" but preventing its use externally
+ * until we are comfortable with the API which would need to be supported long term.
+ *
+ * <p>We are not opposed to gradually adding to and improving the public C++ API but nothing should
+ * merged without following proper design processes and discussions.
+ */
 public abstract class CcModule
     implements CcModuleApi<
         StarlarkActionFactory,
@@ -97,10 +111,14 @@ public abstract class CcModule
         ConstraintValueInfo,
         StarlarkRuleContext,
         CcToolchainConfigInfo,
-        CcCompilationOutputs> {
+        CcCompilationOutputs,
+        CcDebugInfoContext> {
 
   private static final ImmutableList<String> SUPPORTED_OUTPUT_TYPES =
       ImmutableList.of("executable", "dynamic_library");
+
+  private static final ImmutableList<String> CC_DEBUG_INFO_API_ALLOWLIST =
+      ImmutableList.of("bazel_internal/test_rules/cc");
 
   /** Enum for strings coming in from Starlark representing languages */
   protected enum Language {
@@ -220,8 +238,7 @@ public abstract class CcModule
       String actionName,
       CcToolchainVariables variables)
       throws EvalException {
-    return Dict.copyOf(
-        null,
+    return Dict.immutableCopyOf(
         featureConfiguration
             .getFeatureConfiguration()
             .getEnvironmentVariables(actionName, variables));
@@ -301,6 +318,7 @@ public abstract class CcModule
         isUsingLinkerNotArchiver,
         /* binDirectoryPath= */ null,
         convertFromNoneable(outputFile, /* defaultValue= */ null),
+        /* runtimeSolibName= */ null,
         isCreatingSharedLibrary,
         convertFromNoneable(paramFile, /* defaultValue= */ null),
         /* thinltoParamFile= */ null,
@@ -909,10 +927,7 @@ public abstract class CcModule
                   .getRuleContext()
                   .getLabel()
                   .getPackageIdentifier()
-                  .getExecPath(
-                      starlarkRuleContext
-                          .getStarlarkSemantics()
-                          .getBool(BuildLanguageOptions.EXPERIMENTAL_SIBLING_REPOSITORY_LAYOUT))
+                  .getExecPath(starlarkRuleContext.getConfiguration().isSiblingRepositoryLayout())
                   .getRelative(PathFragment.create(tool.second))
                   .getPathString();
         }
@@ -1045,12 +1060,12 @@ public abstract class CcModule
     }
     if (!type.equals(provider.getValue("type_name"))) {
       throw new EvalException(
-          provider.getCreationLoc(),
+          provider.getCreationLocation(),
           String.format("Expected object of type '%s', received '%s'.", type, providerType));
     }
   }
 
-  private static Object getValueOrNull(ClassObject x, String name) {
+  private static Object getValueOrNull(Structure x, String name) {
     try {
       return x.getValue(name);
     } catch (EvalException e) {
@@ -1067,13 +1082,13 @@ public abstract class CcModule
         getMandatoryFieldFromStarlarkProvider(featureStruct, "enabled", Boolean.class);
     if (name == null || (name.isEmpty() && !enabled)) {
       throw new EvalException(
-          featureStruct.getCreationLoc(),
+          featureStruct.getCreationLocation(),
           "A feature must either have a nonempty 'name' field or be enabled.");
     }
 
     if (!name.matches("^[_a-z0-9+\\-\\.]*$")) {
       throw new EvalException(
-          featureStruct.getCreationLoc(),
+          featureStruct.getCreationLocation(),
           String.format(
               "A feature's name must consist solely of lowercase ASCII letters, digits, '.', "
                   + "'_', '+', and '-', got '%s'",
@@ -1087,7 +1102,7 @@ public abstract class CcModule
       FlagSet flagSet = flagSetFromStarlark(flagSetObject, /* actionName= */ null);
       if (flagSet.getActions().isEmpty()) {
         throw new EvalException(
-            flagSetObject.getCreationLoc(),
+            flagSetObject.getCreationLocation(),
             "A flag_set that belongs to a feature must have nonempty 'actions' parameter.");
       }
       flagSetBuilder.add(flagSet);
@@ -1107,7 +1122,7 @@ public abstract class CcModule
     for (StarlarkInfo featureSetStruct : requires) {
       if (!"feature_set".equals(featureSetStruct.getValue("type_name"))) { // getValue() may be null
         throw new EvalException(
-            featureStruct.getCreationLoc(), "expected object of type 'feature_set'.");
+            featureStruct.getCreationLocation(), "expected object of type 'feature_set'.");
       }
       ImmutableSet<String> featureSet =
           getStringSetFromStarlarkProviderField(featureSetStruct, "features");
@@ -1143,12 +1158,12 @@ public abstract class CcModule
     String value = getMandatoryFieldFromStarlarkProvider(makeVariableStruct, "value", String.class);
     if (name == null || name.isEmpty()) {
       throw new EvalException(
-          makeVariableStruct.getCreationLoc(),
+          makeVariableStruct.getCreationLocation(),
           "'name' parameter of make_variable must be a nonempty string.");
     }
     if (value == null || value.isEmpty()) {
       throw new EvalException(
-          makeVariableStruct.getCreationLoc(),
+          makeVariableStruct.getCreationLocation(),
           "'value' parameter of make_variable must be a nonempty string.");
     }
     return Pair.of(name, value);
@@ -1167,12 +1182,12 @@ public abstract class CcModule
     String path = getMandatoryFieldFromStarlarkProvider(toolPathStruct, "path", String.class);
     if (name == null || name.isEmpty()) {
       throw new EvalException(
-          toolPathStruct.getCreationLoc(),
+          toolPathStruct.getCreationLocation(),
           "'name' parameter of tool_path must be a nonempty string.");
     }
     if (path == null || path.isEmpty()) {
       throw new EvalException(
-          toolPathStruct.getCreationLoc(),
+          toolPathStruct.getCreationLocation(),
           "'path' parameter of tool_path must be a nonempty string.");
     }
     return Pair.of(name, path);
@@ -1189,12 +1204,12 @@ public abstract class CcModule
         getMandatoryFieldFromStarlarkProvider(variableWithValueStruct, "value", String.class);
     if (name == null || name.isEmpty()) {
       throw new EvalException(
-          variableWithValueStruct.getCreationLoc(),
+          variableWithValueStruct.getCreationLocation(),
           "'name' parameter of variable_with_value must be a nonempty string.");
     }
     if (value == null || value.isEmpty()) {
       throw new EvalException(
-          variableWithValueStruct.getCreationLoc(),
+          variableWithValueStruct.getCreationLocation(),
           "'value' parameter of variable_with_value must be a nonempty string.");
     }
     return new VariableWithValue(name, value);
@@ -1208,12 +1223,12 @@ public abstract class CcModule
     String value = getMandatoryFieldFromStarlarkProvider(envEntryStruct, "value", String.class);
     if (key == null || key.isEmpty()) {
       throw new EvalException(
-          envEntryStruct.getCreationLoc(),
+          envEntryStruct.getCreationLocation(),
           "'key' parameter of env_entry must be a nonempty string.");
     }
     if (value == null || value.isEmpty()) {
       throw new EvalException(
-          envEntryStruct.getCreationLoc(),
+          envEntryStruct.getCreationLocation(),
           "'value' parameter of env_entry must be a nonempty string.");
     }
     StringValueParser parser = new StringValueParser(value);
@@ -1239,7 +1254,8 @@ public abstract class CcModule
     ImmutableSet<String> actions = getStringSetFromStarlarkProviderField(envSetStruct, "actions");
     if (actions.isEmpty()) {
       throw new EvalException(
-          envSetStruct.getCreationLoc(), "actions parameter of env_set must be a nonempty list.");
+          envSetStruct.getCreationLocation(),
+          "actions parameter of env_set must be a nonempty list.");
     }
     ImmutableList.Builder<EnvEntry> envEntryBuilder = ImmutableList.builder();
     ImmutableList<StarlarkInfo> envEntryStructs =
@@ -1277,13 +1293,13 @@ public abstract class CcModule
 
     if (flagGroups.size() > 0 && flags.size() > 0) {
       throw new EvalException(
-          flagGroupStruct.getCreationLoc(),
+          flagGroupStruct.getCreationLocation(),
           "flag_group must contain either a list of flags or a list of flag_groups.");
     }
 
     if (flagGroups.size() == 0 && flags.size() == 0) {
       throw new EvalException(
-          flagGroupStruct.getCreationLoc(), "Both 'flags' and 'flag_groups' are empty.");
+          flagGroupStruct.getCreationLocation(), "Both 'flags' and 'flag_groups' are empty.");
     }
 
     String iterateOver =
@@ -1362,13 +1378,15 @@ public abstract class CcModule
     if (toolPathString != null) {
       if (toolArtifact != null) {
         throw new EvalException(
-            toolStruct.getCreationLoc(), "\"tool\" and \"path\" cannot be set at the same time.");
+            toolStruct.getCreationLocation(),
+            "\"tool\" and \"path\" cannot be set at the same time.");
       }
 
       toolPath = PathFragment.create(toolPathString);
       if (toolPath.isEmpty()) {
         throw new EvalException(
-            toolStruct.getCreationLoc(), "The 'path' field of tool must be a nonempty string.");
+            toolStruct.getCreationLocation(),
+            "The 'path' field of tool must be a nonempty string.");
       }
 
       if (toolPath.isAbsolute()) {
@@ -1406,12 +1424,12 @@ public abstract class CcModule
         getMandatoryFieldFromStarlarkProvider(actionConfigStruct, "action_name", String.class);
     if (actionName == null || actionName.isEmpty()) {
       throw new EvalException(
-          actionConfigStruct.getCreationLoc(),
+          actionConfigStruct.getCreationLocation(),
           "The 'action_name' field of action_config must be a nonempty string.");
     }
     if (!actionName.matches("^[_a-z0-9+\\-\\.]*$")) {
       throw new EvalException(
-          actionConfigStruct.getCreationLoc(),
+          actionConfigStruct.getCreationLocation(),
           String.format(
               "An action_config's name must consist solely of lowercase ASCII letters, digits, "
                   + "'.', '_', '+', and '-', got '%s'",
@@ -1452,7 +1470,7 @@ public abstract class CcModule
             artifactNamePatternStruct, "category_name", String.class);
     if (categoryName == null || categoryName.isEmpty()) {
       throw new EvalException(
-          artifactNamePatternStruct.getCreationLoc(),
+          artifactNamePatternStruct.getCreationLocation(),
           "The 'category_name' field of artifact_name_pattern must be a nonempty string.");
     }
     ArtifactCategory foundCategory = null;
@@ -1464,7 +1482,7 @@ public abstract class CcModule
 
     if (foundCategory == null) {
       throw new EvalException(
-          artifactNamePatternStruct.getCreationLoc(),
+          artifactNamePatternStruct.getCreationLocation(),
           String.format("Artifact category %s not recognized.", categoryName));
     }
 
@@ -1474,7 +1492,7 @@ public abstract class CcModule
                 artifactNamePatternStruct, "extension", String.class));
     if (!foundCategory.getAllowedExtensions().contains(extension)) {
       throw new EvalException(
-          artifactNamePatternStruct.getCreationLoc(),
+          artifactNamePatternStruct.getCreationLocation(),
           String.format(
               "Unrecognized file extension '%s', allowed extensions are %s,"
                   + " please check artifact_name_pattern configuration for %s in your rule.",
@@ -1507,7 +1525,8 @@ public abstract class CcModule
     if (obj == null) {
       if (mandatory) {
         throw new EvalException(
-            provider.getCreationLoc(), String.format("Missing mandatory field '%s'", fieldName));
+            provider.getCreationLocation(),
+            String.format("Missing mandatory field '%s'", fieldName));
       }
       return null;
     }
@@ -1518,7 +1537,7 @@ public abstract class CcModule
       return null;
     }
     throw new EvalException(
-        provider.getCreationLoc(),
+        provider.getCreationLocation(),
         String.format("Field '%s' is not of '%s' type.", fieldName, clazz.getName()));
   }
 
@@ -1585,7 +1604,7 @@ public abstract class CcModule
   }
 
   @Override
-  public Tuple<Object> createLinkingContextFromCompilationOutputs(
+  public Tuple createLinkingContextFromCompilationOutputs(
       StarlarkActionFactory starlarkActionFactoryApi,
       FeatureConfigurationForStarlark starlarkFeatureConfiguration,
       CcToolchainProvider starlarkCcToolchainProvider,
@@ -1678,6 +1697,31 @@ public abstract class CcModule
     }
   }
 
+  @Override
+  public CcDebugInfoContext createCcDebugInfoFromStarlark(
+      CcCompilationOutputs ccCompilationOutputs, StarlarkThread thread) throws EvalException {
+    checkCcDebugInfoRuleInAllowlist(thread);
+    return CcDebugInfoContext.from(ccCompilationOutputs);
+  }
+
+  @Override
+  public CcDebugInfoContext mergeCcDebugInfoFromStarlark(
+      Sequence<?> debugInfos, StarlarkThread thread) throws EvalException {
+    checkCcDebugInfoRuleInAllowlist(thread);
+    return CcDebugInfoContext.merge(
+        Sequence.cast(debugInfos, CcDebugInfoContext.class, "debug_infos"));
+  }
+
+  public static void checkCcDebugInfoRuleInAllowlist(StarlarkThread thread) throws EvalException {
+    String rulePackage =
+        ((BazelModuleContext) Module.ofInnermostEnclosingStarlarkFunction(thread).getClientData())
+            .label()
+            .getPackageName();
+    if (!CC_DEBUG_INFO_API_ALLOWLIST.contains(rulePackage)) {
+      throw Starlark.errorf("Rule in '%s' cannot use CcDebugInfo", rulePackage);
+    }
+  }
+
   protected void validateLanguage(String language) throws EvalException {
     if (!Arrays.stream(Language.values())
         .map(Language::getRepresentation)
@@ -1718,7 +1762,7 @@ public abstract class CcModule
     }
   }
 
-  protected Tuple<Object> compile(
+  protected Tuple compile(
       StarlarkActionFactory starlarkActionFactoryApi,
       FeatureConfigurationForStarlark starlarkFeatureConfiguration,
       CcToolchainProvider starlarkCcToolchainProvider,
@@ -1844,7 +1888,8 @@ public abstract class CcModule
       helper.setStripIncludePrefix(stripIncludePrefix);
     }
     try {
-      CompilationInfo compilationInfo = helper.compile(actions.getRuleContext()::ruleError);
+      RuleContext ruleContext = actions.getRuleContext();
+      CompilationInfo compilationInfo = helper.compile(ruleContext);
       return Tuple.of(
           compilationInfo.getCcCompilationContext(), compilationInfo.getCcCompilationOutputs());
     } catch (RuleErrorException e) {
@@ -1863,7 +1908,7 @@ public abstract class CcModule
       String language,
       String outputType,
       boolean linkDepsStatically,
-      int stamp,
+      StarlarkInt stamp,
       Sequence<?> additionalInputs,
       Object grepIncludes,
       StarlarkThread thread)
@@ -1871,7 +1916,7 @@ public abstract class CcModule
     validateLanguage(language);
     validateOutputType(outputType);
     boolean isStampingEnabled =
-        isStampingEnabled(stamp, actions.getRuleContext().getConfiguration());
+        isStampingEnabled(stamp.toInt("stamp"), actions.getRuleContext().getConfiguration());
     CcToolchainProvider ccToolchainProvider =
         convertFromNoneable(starlarkCcToolchainProvider, null);
     FeatureConfigurationForStarlark featureConfiguration =

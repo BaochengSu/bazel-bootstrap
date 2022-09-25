@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.actions.ArtifactPathResolver;
 import com.google.devtools.build.lib.actions.CommandLine;
 import com.google.devtools.build.lib.actions.CommandLineExpansionException;
 import com.google.devtools.build.lib.actions.EnvironmentalExecException;
@@ -172,11 +173,12 @@ public class RunCommand implements BlazeCommand  {
 
   /**
    * Compute the arguments the binary should be run with by concatenating the arguments in its
-   * {@code args=} attribute and the arguments on the Blaze command line.
+   * {@code args} attribute and the arguments on the Blaze command line.
    */
+  // TODO(bazel-team): audit the use of null values by caller. It looks unsafe.
   @Nullable
-  private List<String> computeArgs(CommandEnvironment env, ConfiguredTarget targetToRun,
-      List<String> commandLineArgs) {
+  private List<String> computeArgs(
+      CommandEnvironment env, ConfiguredTarget targetToRun, List<String> commandLineArgs) {
     List<String> args = Lists.newArrayList();
 
     FilesToRunProvider provider = targetToRun.getProvider(FilesToRunProvider.class);
@@ -185,6 +187,10 @@ public class RunCommand implements BlazeCommand  {
       CommandLine targetArgs = runfilesSupport.getArgs();
       try {
         Iterables.addAll(args, targetArgs.arguments());
+      } catch (InterruptedException ex) {
+        // TODO(b/173521404): report a specific FailureDetail for "interrupted".
+        env.getReporter().handle(Event.error("Interrupted while expanding target command line"));
+        return null;
       } catch (CommandLineExpansionException e) {
         env.getReporter().handle(Event.error("Could not expand target command line: " + e));
         return null;
@@ -384,7 +390,7 @@ public class RunCommand implements BlazeCommand  {
         env.getReporter().handle(Event.error("Interrupted"));
         return BlazeCommandResult.failureDetail(
             FailureDetail.newBuilder()
-                .setInterrupted(Interrupted.newBuilder().setCode(Interrupted.Code.RUN_COMMAND))
+                .setInterrupted(Interrupted.newBuilder().setCode(Interrupted.Code.INTERRUPTED))
                 .build());
       }
     }
@@ -437,7 +443,7 @@ public class RunCommand implements BlazeCommand  {
       workingDir = env.getExecRoot();
 
       try {
-        testAction.prepare(env.getExecRoot(), /* bulkDeleter= */ null);
+        testAction.prepare(env.getExecRoot(), ArtifactPathResolver.IDENTITY, /*bulkDeleter=*/ null);
       } catch (IOException e) {
         return reportAndCreateFailureResult(
             env,
@@ -457,9 +463,17 @@ public class RunCommand implements BlazeCommand  {
       } catch (ExecException e) {
         return reportAndCreateFailureResult(
             env, Strings.nullToEmpty(e.getMessage()), Code.COMMAND_LINE_EXPANSION_FAILURE);
+      } catch (InterruptedException e) {
+        String message = "run: argument expansion interrupted";
+        env.getReporter().handle(Event.error(message));
+        return BlazeCommandResult.detailedExitCode(
+            InterruptedFailureDetails.detailedExitCode(message));
       }
     } else {
       workingDir = runfilesDir;
+      if (runfilesSupport != null) {
+        runfilesSupport.getActionEnvironment().resolve(runEnvironment, env.getClientEnv());
+      }
       List<String> args = computeArgs(env, targetToRun, commandLineArgs);
       try {
         constructCommandLine(
@@ -744,7 +758,7 @@ public class RunCommand implements BlazeCommand  {
       String message = "run command interrupted";
       env.getReporter().handle(Event.error(message));
       return BlazeCommandResult.detailedExitCode(
-          InterruptedFailureDetails.detailedExitCode(message, Interrupted.Code.RUN_COMMAND));
+          InterruptedFailureDetails.detailedExitCode(message));
     } catch (NoSuchTargetException | NoSuchPackageException e) {
       env.getReporter().handle(Event.error("Failed to find a target to validate. " + e));
       throw new IllegalStateException("Failed to find a target to validate", e);

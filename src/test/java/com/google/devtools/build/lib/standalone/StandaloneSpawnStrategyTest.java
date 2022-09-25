@@ -36,6 +36,7 @@ import com.google.devtools.build.lib.actions.SimpleSpawn;
 import com.google.devtools.build.lib.actions.Spawn;
 import com.google.devtools.build.lib.actions.SpawnResult;
 import com.google.devtools.build.lib.actions.util.ActionsTestUtil;
+import com.google.devtools.build.lib.actions.util.ActionsTestUtil.NullAction;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.ServerDirectories;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
@@ -95,7 +96,8 @@ public class StandaloneSpawnStrategyTest {
 
   private Path createTestRoot() throws IOException {
     fileSystem = FileSystems.getNativeFileSystem();
-    Path testRoot = fileSystem.getPath(TestUtils.tmpDir());
+    Path testRoot = fileSystem.getPath(TestUtils.tmpDir()).getRelative("test");
+    testRoot.createDirectoryAndParents();
     try {
       testRoot.deleteTreesBelow();
     } catch (IOException e) {
@@ -314,7 +316,8 @@ public class StandaloneSpawnStrategyTest {
   @Test
   public void testVerboseFailures() {
     ExecException e = assertThrows(ExecException.class, () -> run(createSpawn(getFalseCommand())));
-    ActionExecutionException actionExecutionException = e.toActionExecutionException("", null);
+    ActionExecutionException actionExecutionException =
+        e.toActionExecutionException(new NullAction());
     assertWithMessage("got: " + actionExecutionException.getMessage())
         .that(actionExecutionException.getMessage().contains("failed: error executing command"))
         .isTrue();

@@ -29,6 +29,7 @@ import com.google.devtools.build.lib.query2.engine.QueryUtil.AggregateAllOutputF
 import com.google.devtools.build.lib.query2.engine.ThreadSafeOutputFormatterCallback;
 import com.google.devtools.build.lib.query2.query.output.OutputFormatter;
 import com.google.devtools.build.lib.query2.query.output.QueryOptions;
+import com.google.devtools.build.lib.query2.query.output.QueryOptions.QueryFailureExitCodeBehavior;
 import com.google.devtools.build.lib.query2.query.output.QueryOutputUtils;
 import com.google.devtools.build.lib.query2.query.output.StreamedFormatter;
 import com.google.devtools.build.lib.runtime.BlazeCommandResult;
@@ -39,7 +40,6 @@ import com.google.devtools.build.lib.runtime.LoadingPhaseThreadsOption;
 import com.google.devtools.build.lib.runtime.QueryRuntimeHelper;
 import com.google.devtools.build.lib.server.FailureDetails;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
-import com.google.devtools.build.lib.server.FailureDetails.Interrupted;
 import com.google.devtools.build.lib.server.FailureDetails.Query;
 import com.google.devtools.build.lib.server.FailureDetails.Query.Code;
 import com.google.devtools.build.lib.util.DetailedExitCode;
@@ -89,7 +89,6 @@ public final class QueryCommand extends QueryEnvironmentBasedCommand {
       return Either.ofLeft(
           BlazeCommandResult.detailedExitCode(
               DetailedExitCode.of(
-                  ExitCode.COMMAND_LINE_ERROR,
                   FailureDetail.newBuilder()
                       .setMessage(e.getMessage())
                       .setQuery(
@@ -102,7 +101,7 @@ public final class QueryCommand extends QueryEnvironmentBasedCommand {
       formatter.verifyCompatible(queryEnv, expr);
     } catch (QueryException e) {
       env.getReporter().handle(Event.error(e.getMessage()));
-      return Either.ofLeft(finalizeBlazeCommandResult(ExitCode.COMMAND_LINE_ERROR, e));
+      return Either.ofLeft(BlazeCommandResult.failureDetail(e.getFailureDetail()));
     }
 
     expr = queryEnv.transformParsedQuery(expr);
@@ -146,7 +145,12 @@ public final class QueryCommand extends QueryEnvironmentBasedCommand {
             // TODO(bazel-team): this is a kludge to fix a bug observed in the wild. We should make
             // sure no null error messages ever get in.
             .handle(Event.error(e.getMessage() == null ? e.toString() : e.getMessage()));
-        return Either.ofLeft(finalizeBlazeCommandResult(ExitCode.ANALYSIS_FAILURE, e));
+        if (QueryFailureExitCodeBehavior.UNDERLYING.equals(
+            queryOptions.queryFailureExitCodeBehavior)) {
+          return Either.ofLeft(BlazeCommandResult.failureDetail(e.getFailureDetail()));
+        } else {
+          return Either.ofLeft(finalizeBlazeCommandResult(ExitCode.ANALYSIS_FAILURE, e));
+        }
       } catch (InterruptedException e) {
         catastrophe = false;
         IOException ioException = callback.getIoException();
@@ -218,8 +222,7 @@ public final class QueryCommand extends QueryEnvironmentBasedCommand {
     String message = "query interrupted";
     env.getReporter().handle(Event.error(message));
     return Either.ofLeft(
-        BlazeCommandResult.detailedExitCode(
-            InterruptedFailureDetails.detailedExitCode(message, Interrupted.Code.QUERY)));
+        BlazeCommandResult.detailedExitCode(InterruptedFailureDetails.detailedExitCode(message)));
   }
 
   private static Either<BlazeCommandResult, QueryEvalResult> reportAndCreateIOExceptionResult(

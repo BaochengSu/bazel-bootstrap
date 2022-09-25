@@ -20,32 +20,17 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.io.MoreFiles;
 import com.google.devtools.build.lib.analysis.ConfiguredRuleClassProvider;
-import com.google.devtools.build.lib.analysis.PlatformConfigurationLoader;
 import com.google.devtools.build.lib.analysis.ShellConfiguration;
-import com.google.devtools.build.lib.analysis.config.ConfigurationFragmentFactory;
 import com.google.devtools.build.lib.analysis.util.AnalysisMock;
 import com.google.devtools.build.lib.bazel.repository.LocalConfigPlatformFunction;
 import com.google.devtools.build.lib.bazel.repository.LocalConfigPlatformRule;
 import com.google.devtools.build.lib.bazel.rules.BazelRuleClassProvider;
-import com.google.devtools.build.lib.bazel.rules.BazelRuleClassProvider.StrictActionEnvOptions;
-import com.google.devtools.build.lib.bazel.rules.python.BazelPythonConfiguration;
 import com.google.devtools.build.lib.packages.util.BazelMockCcSupport;
 import com.google.devtools.build.lib.packages.util.BazelMockPythonSupport;
 import com.google.devtools.build.lib.packages.util.MockCcSupport;
 import com.google.devtools.build.lib.packages.util.MockPlatformSupport;
 import com.google.devtools.build.lib.packages.util.MockPythonSupport;
 import com.google.devtools.build.lib.packages.util.MockToolsConfig;
-import com.google.devtools.build.lib.rules.android.AndroidConfiguration;
-import com.google.devtools.build.lib.rules.apple.AppleConfiguration;
-import com.google.devtools.build.lib.rules.apple.swift.SwiftConfiguration;
-import com.google.devtools.build.lib.rules.config.ConfigFeatureFlagConfiguration;
-import com.google.devtools.build.lib.rules.cpp.CppConfigurationLoader;
-import com.google.devtools.build.lib.rules.cpp.CpuTransformer;
-import com.google.devtools.build.lib.rules.java.JavaConfigurationLoader;
-import com.google.devtools.build.lib.rules.objc.J2ObjcConfiguration;
-import com.google.devtools.build.lib.rules.objc.ObjcConfigurationLoader;
-import com.google.devtools.build.lib.rules.proto.ProtoConfiguration;
-import com.google.devtools.build.lib.rules.python.PythonConfigurationLoader;
 import com.google.devtools.build.lib.rules.repository.RepositoryFunction;
 import com.google.devtools.build.lib.testutil.TestRuleClassProvider;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
@@ -62,8 +47,7 @@ import java.util.List;
 public final class BazelAnalysisMock extends AnalysisMock {
   public static final AnalysisMock INSTANCE = new BazelAnalysisMock();
 
-  private BazelAnalysisMock() {
-  }
+  private BazelAnalysisMock() {}
 
   @Override
   public List<String> getWorkspaceContents(MockToolsConfig config) {
@@ -139,9 +123,8 @@ public final class BazelAnalysisMock extends AnalysisMock {
         "  source_version = '8',",
         "  target_version = '8',",
         "  bootclasspath = [':bootclasspath'],",
-        "  extclasspath = [':extclasspath'],",
-        "  javac = [':langtools'],",
         "  javabuilder = ['JavaBuilder_deploy.jar'],",
+        "  jacocorunner = ':JacocoCoverage',",
         "  header_compiler = ['turbine_deploy.jar'],",
         "  header_compiler_direct = ['TurbineDirect_deploy.jar'],",
         "  singlejar = ['SingleJar_deploy.jar'],",
@@ -153,9 +136,8 @@ public final class BazelAnalysisMock extends AnalysisMock {
         "  source_version = '8',",
         "  target_version = '8',",
         "  bootclasspath = [':bootclasspath'],",
-        "  extclasspath = [':extclasspath'],",
-        "  javac = [':langtools'],",
         "  javabuilder = ['JavaBuilder_deploy.jar'],",
+        "  jacocorunner = ':JacocoCoverage',",
         "  header_compiler = ['turbine_deploy.jar'],",
         "  header_compiler_direct = ['TurbineDirect_deploy.jar'],",
         "  singlejar = ['SingleJar_deploy.jar'],",
@@ -191,11 +173,17 @@ public final class BazelAnalysisMock extends AnalysisMock {
         "filegroup(name='bootclasspath', srcs=['jdk/jre/lib/rt.jar'])",
         "filegroup(name='extdir', srcs=glob(['jdk/jre/lib/ext/*']))",
         "filegroup(name='java', srcs = ['jdk/jre/bin/java'])",
-        "filegroup(name='JacocoCoverage', srcs = [])",
-        "exports_files(['JavaBuilder_deploy.jar','SingleJar_deploy.jar','TestRunner_deploy.jar',",
-        "               'ijar', 'GenClass_deploy.jar',",
-        "               'turbine_deploy.jar', 'TurbineDirect_deploy.jar'])",
-        "sh_binary(name = 'proguard_whitelister', srcs = ['empty.sh'])",
+        "filegroup(name='JacocoCoverage', srcs = ['JacocoCoverage_deploy.jar'])",
+        "exports_files([",
+        "    'JavaBuilder_deploy.jar',",
+        "    'SingleJar_deploy.jar',",
+        "    'TestRunner_deploy.jar',",
+        "    'ijar',",
+        "    'GenClass_deploy.jar',",
+        "    'turbine_deploy.jar',",
+        "    'TurbineDirect_deploy.jar',",
+        "    'proguard_allowlister.par',",
+        "])",
         "toolchain_type(name = 'toolchain_type')",
         "toolchain_type(name = 'runtime_toolchain_type')",
         "toolchain(",
@@ -321,6 +309,7 @@ public final class BazelAnalysisMock extends AnalysisMock {
     MockPlatformSupport.setup(config);
     ccSupport().setup(config);
     pySupport().setup(config);
+    ShellConfiguration.injectShellExecutableFinder(BazelRuleClassProvider.SHELL_EXECUTABLE);
   }
 
   /** Contents of {@code //tools/android/emulator/BUILD.tools}. */
@@ -446,27 +435,6 @@ public final class BazelAnalysisMock extends AnalysisMock {
         "bazel_tools_workspace/tools/jdk/local_java_repository.bzl",
         "def local_java_repository(**kwargs):",
         "  pass");
-  }
-
-  @Override
-  public List<ConfigurationFragmentFactory> getDefaultConfigurationFragmentFactories() {
-    return ImmutableList.of(
-        new CppConfigurationLoader(CpuTransformer.IDENTITY),
-        new ShellConfiguration.Loader(
-            BazelRuleClassProvider.SHELL_EXECUTABLE,
-            ShellConfiguration.Options.class,
-            StrictActionEnvOptions.class),
-        new PythonConfigurationLoader(),
-        new BazelPythonConfiguration.Loader(),
-        new JavaConfigurationLoader(),
-        new ObjcConfigurationLoader(),
-        new AppleConfiguration.Loader(),
-        new SwiftConfiguration.Loader(),
-        new J2ObjcConfiguration.Loader(),
-        new ProtoConfiguration.Loader(),
-        new ConfigFeatureFlagConfiguration.Loader(),
-        new AndroidConfiguration.Loader(),
-        new PlatformConfigurationLoader());
   }
 
   @Override

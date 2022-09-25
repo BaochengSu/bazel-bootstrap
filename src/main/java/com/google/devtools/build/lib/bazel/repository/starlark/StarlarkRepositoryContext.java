@@ -40,6 +40,7 @@ import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.ExtendedEventHandler.FetchProgress;
 import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.packages.Rule;
+import com.google.devtools.build.lib.packages.StarlarkInfo;
 import com.google.devtools.build.lib.packages.StructImpl;
 import com.google.devtools.build.lib.packages.StructProvider;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
@@ -86,11 +87,12 @@ import java.util.Map;
 import javax.annotation.Nullable;
 import net.starlark.java.eval.Dict;
 import net.starlark.java.eval.EvalException;
-import net.starlark.java.eval.Mutability;
 import net.starlark.java.eval.Sequence;
 import net.starlark.java.eval.Starlark;
+import net.starlark.java.eval.StarlarkInt;
 import net.starlark.java.eval.StarlarkSemantics;
 import net.starlark.java.eval.StarlarkThread;
+import net.starlark.java.syntax.Location;
 
 /** Starlark API for the repository_rule's context. */
 public class StarlarkRepositoryContext
@@ -153,7 +155,7 @@ public class StarlarkRepositoryContext
       if (!name.equals("$local")) {
         // Attribute values should be type safe
         attrBuilder.put(
-            Attribute.getStarlarkName(name), Starlark.fromJava(attrs.getObject(name), null));
+            Attribute.getStarlarkName(name), Attribute.valueToStarlark(attrs.getObject(name)));
       }
     }
     attrObject = StructProvider.STRUCT.create(attrBuilder.build(), "No such attribute '%s'");
@@ -535,13 +537,14 @@ public class StarlarkRepositoryContext
   @Override
   public StarlarkExecutionResult execute(
       Sequence<?> arguments, // <String> or <StarlarkPath> or <Label> expected
-      Integer timeout,
+      StarlarkInt timeoutI,
       Dict<?, ?> uncheckedEnvironment, // <String, String> expected
       boolean quiet,
       String workingDirectory,
       StarlarkThread thread)
       throws EvalException, RepositoryFunctionException, InterruptedException {
     validateExecuteArguments(arguments);
+    int timeout = Starlark.toInt(timeoutI, "timeout");
 
     Map<String, String> environment =
         Dict.cast(uncheckedEnvironment, String.class, String.class, "environment");
@@ -575,7 +578,7 @@ public class StarlarkRepositoryContext
     env.getListener().post(w);
     createDirectory(outputDirectory);
 
-    long timeoutMillis = Math.round(timeout.longValue() * 1000 * timeoutScaling);
+    long timeoutMillis = Math.round(timeout * 1000L * timeoutScaling);
     if (processWrapper != null) {
       args =
           processWrapper
@@ -622,8 +625,9 @@ public class StarlarkRepositoryContext
   }
 
   @Override
-  public void patch(Object patchFile, Integer strip, StarlarkThread thread)
+  public void patch(Object patchFile, StarlarkInt stripI, StarlarkThread thread)
       throws EvalException, RepositoryFunctionException, InterruptedException {
+    int strip = Starlark.toInt(stripI, "strip");
     StarlarkPath starlarkPath = getPath("patch()", patchFile);
     WorkspaceRuleEvent w =
         WorkspaceRuleEvent.newPatchEvent(
@@ -648,7 +652,10 @@ public class StarlarkRepositoryContext
     env.getListener().post(w);
     if (program.contains("/") || program.contains("\\")) {
       throw Starlark.errorf(
-          "Program argument of which() may not contains a / or a \\ ('%s' given)", program);
+          "Program argument of which() may not contain a / or a \\ ('%s' given)", program);
+    }
+    if (program.length() == 0) {
+      throw Starlark.errorf("Program argument of which() may not be empty");
     }
     try {
       StarlarkPath commandPath = findCommandOnPath(program);
@@ -767,8 +774,8 @@ public class StarlarkRepositoryContext
           new IOException("thread interrupted"), Transience.TRANSIENT);
     } catch (IOException e) {
       if (allowFail) {
-        Dict<String, Object> dict = Dict.of((Mutability) null, "success", false);
-        return StructProvider.STRUCT.createWithBuiltinLocation(dict);
+        return StarlarkInfo.create(
+            StructProvider.STRUCT, ImmutableMap.of("success", false), Location.BUILTIN);
       } else {
         throw new RepositoryFunctionException(e, Transience.TRANSIENT);
       }
@@ -895,8 +902,8 @@ public class StarlarkRepositoryContext
     } catch (IOException e) {
       env.getListener().post(w);
       if (allowFail) {
-        Dict<String, Object> dict = Dict.of((Mutability) null, "success", false);
-        return StructProvider.STRUCT.createWithBuiltinLocation(dict);
+        return StarlarkInfo.create(
+            StructProvider.STRUCT, ImmutableMap.of("success", false), Location.BUILTIN);
       } else {
         throw new RepositoryFunctionException(e, Transience.TRANSIENT);
       }
@@ -1017,7 +1024,7 @@ public class StarlarkRepositoryContext
           Transience.PERSISTENT);
     }
 
-    ImmutableMap.Builder<String, Object> out = new ImmutableMap.Builder<>();
+    ImmutableMap.Builder<String, Object> out = ImmutableMap.builder();
     out.put("success", true);
     out.put("integrity", finalChecksum.toSubresourceIntegrity());
 
@@ -1025,7 +1032,7 @@ public class StarlarkRepositoryContext
     if (finalChecksum.getKeyType() == KeyType.SHA256) {
       out.put("sha256", finalChecksum.toString());
     }
-    return StructProvider.STRUCT.createWithBuiltinLocation(Dict.copyOf(null, out.build()));
+    return StarlarkInfo.create(StructProvider.STRUCT, out.build(), Location.BUILTIN);
   }
 
   private static ImmutableList<String> checkAllUrls(Iterable<?> urlList) throws EvalException {

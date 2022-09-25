@@ -246,7 +246,7 @@ public class CppOptions extends FragmentOptions {
 
   @Option(
       name = "incompatible_avoid_conflict_dlls",
-      defaultValue = "false",
+      defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.OUTPUT_PARAMETERS,
       effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS, OptionEffectTag.AFFECTS_OUTPUTS},
       metadataTags = {
@@ -888,15 +888,6 @@ public class CppOptions extends FragmentOptions {
   public boolean experimentalIncludesAttributeSubpackageTraversal;
 
   @Option(
-      name = "experimental_do_not_use_cpu_transformer",
-      defaultValue = "false",
-      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
-      effectTags = {OptionEffectTag.EXECUTION},
-      metadataTags = {OptionMetadataTag.EXPERIMENTAL},
-      help = "If enabled, cpu transformer is not used for CppConfiguration")
-  public boolean doNotUseCpuTransformer;
-
-  @Option(
       name = "incompatible_disable_legacy_cc_provider",
       defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
@@ -1015,7 +1006,7 @@ public class CppOptions extends FragmentOptions {
 
   @Option(
       name = "incompatible_force_strict_header_check_from_starlark",
-      defaultValue = "false",
+      defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.INPUT_STRICTNESS,
       effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS, OptionEffectTag.CHANGES_INPUTS},
       metadataTags = {
@@ -1024,6 +1015,40 @@ public class CppOptions extends FragmentOptions {
       },
       help = "If enabled, set strict header checking in the Starlark API")
   public boolean forceStrictHeaderCheckFromStarlark;
+
+  @Option(
+      name = "experimental_generate_llvm_lcov",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.UNCATEGORIZED,
+      effectTags = {OptionEffectTag.AFFECTS_OUTPUTS, OptionEffectTag.LOADING_AND_ANALYSIS},
+      help = "If true, coverage for clang will generate an LCOV report.")
+  public boolean generateLlvmLcov;
+
+  @Option(
+      name = "incompatible_use_cpp_compile_header_mnemonic",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+      effectTags = {OptionEffectTag.EXECUTION},
+      metadataTags = {
+        OptionMetadataTag.INCOMPATIBLE_CHANGE,
+        OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
+      },
+      help = "If enabled, give distinguishing mnemonic to header processing actions")
+  public boolean useCppCompileHeaderMnemonic;
+
+  @Option(
+      name = "incompatible_macos_set_install_name",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+      effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS},
+      metadataTags = {
+        OptionMetadataTag.INCOMPATIBLE_CHANGE,
+        OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
+      },
+      help =
+          "Whether to explicitly set `-install_name` when creating dynamic libraries. "
+              + "See https://github.com/bazelbuild/bazel/issues/12370")
+  public boolean macosSetInstallName;
 
   /** See {@link #targetLibcTopLabel} documentation. * */
   @Override
@@ -1088,7 +1113,6 @@ public class CppOptions extends FragmentOptions {
     host.inmemoryDotdFiles = inmemoryDotdFiles;
 
     host.enableFdoProfileAbsolutePath = enableFdoProfileAbsolutePath;
-    host.doNotUseCpuTransformer = doNotUseCpuTransformer;
     host.disableExpandIfAllAvailableInFlagSet = disableExpandIfAllAvailableInFlagSet;
     host.disableLegacyCcProvider = disableLegacyCcProvider;
     host.removeCpuCompilerCcToolchainAttributes = removeCpuCompilerCcToolchainAttributes;
@@ -1113,6 +1137,8 @@ public class CppOptions extends FragmentOptions {
     host.hostLinkoptList = hostLinkoptList;
 
     host.experimentalStarlarkCcImport = experimentalStarlarkCcImport;
+
+    host.macosSetInstallName = macosSetInstallName;
 
     return host;
   }
