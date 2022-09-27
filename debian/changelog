@@ -1,5 +1,6 @@
-bazel-bootstrap (4.1.0+ds-1) UNRELEASED; urgency=medium
+bazel-bootstrap (4.1.0+ds-1) unstable; urgency=medium
 
+  [ Jesse Chan ]
   * New upstream release
     - Update patches for new version
   * Patch to use debian "reactive_streams" and "rxjava3"
@@ -7,8 +8,14 @@ bazel-bootstrap (4.1.0+ds-1) UNRELEASED; urgency=medium
   * Patch to remove not useful dependency on "bazel_skylib"
     - Only used to support darwin-arm64 host platform
     - It is not useful for us to have this dependency
+  [ Olek Wojnar ]
+  * Modify add_include_for_limits.patch to also include <stdexcept> in ijar
+    - Should resolve failed autopkgtests on non-amd64 systems
+  * Note that bazel_skylib *will* be needed for the full bazel package
+    - It is being removed at this time to prevent a build failure. The bazel
+      package build-depends on the bazel-skylib package, avoiding the problem.
 
- -- Jesse Chan <jc@linux.com>  Sun, 30 May 2021 03:46:47 +0000
+ -- Olek Wojnar <olek@debian.org>  Tue, 27 Sep 2022 19:50:13 -0400
 
 bazel-bootstrap (4.0.0+ds-1) unstable; urgency=medium
 

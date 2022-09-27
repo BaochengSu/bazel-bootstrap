@@ -1,15 +1,18 @@
 Description: Add include for <limits> to allow correct build of ijar binaries
+ Also add include for <stdexcept> to allow proper builds on non-amd64 systems:
+ https://github.com/bazelbuild/bazel/pull/13575
 Author: Olek Wojnar <olek@debian.org>
 Forwarded: not-needed
-Last-Update: 2022-09-09
+Last-Update: 2022-09-27
 
 --- a/third_party/ijar/common.h
 +++ b/third_party/ijar/common.h
-@@ -21,6 +21,7 @@
+@@ -21,6 +21,8 @@
  #include <stddef.h>
  #include <stdint.h>
  #include <string.h>
 +#include <limits>
++#include <stdexcept>
  
  #ifdef _WIN32
  #define PATH_MAX 4096

@@ -9,7 +9,7 @@ Last-Update: 2022-09-21
 
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -2653,7 +2653,19 @@
+@@ -3317,7 +3317,19 @@
      is
      now a symlink to the latest log.
  
@@ -32,7 +32,7 @@ Last-Update: 2022-09-21
  
 --- a/site/docs/build-javascript.md
 +++ b/site/docs/build-javascript.md
-@@ -155,7 +155,12 @@
+@@ -140,7 +140,12 @@
  
  ```json
  "scripts": {
