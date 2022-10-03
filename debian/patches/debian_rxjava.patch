@@ -1,3 +1,8 @@
+Description: Patch to use debian "reactive_streams" and "rxjava3"
+Author: Jesse Chan <jc@linux.com>
+Forwarded: not-needed
+Last-Update: 2021-05-29
+
 --- a/third_party/BUILD
 +++ b/third_party/BUILD
 @@ -525,13 +525,15 @@
