@@ -109,6 +109,8 @@ public class StarlarkOptionsParser {
     ImmutableMap.Builder<String, Object> parsedOptions = new ImmutableMap.Builder<>();
     for (Map.Entry<String, Pair<String, Target>> option : unparsedOptions.entrySet()) {
       String loadedFlag = option.getKey();
+      // String loadedFlag =
+      // Label.parseAbsoluteUnchecked(option.getKey()).getDefaultCanonicalForm();
       String unparsedValue = option.getValue().first;
       Target buildSettingTarget = option.getValue().second;
       BuildSetting buildSetting =
@@ -155,7 +157,11 @@ public class StarlarkOptionsParser {
     if (value != null) {
       // --flag=value or -flag=value form
       Target buildSettingTarget = loadBuildSetting(name, nativeOptionsParser, eventHandler);
-      unparsedOptions.put(name, new Pair<>(value, buildSettingTarget));
+      // Use the unambiguous canonical form to ensure we don't have
+      // duplicate options getting into the starlark options map.
+      unparsedOptions.put(
+          buildSettingTarget.getLabel().getDefaultCanonicalForm(),
+          new Pair<>(value, buildSettingTarget));
     } else {
       boolean booleanValue = true;
       // check --noflag form
@@ -234,6 +240,11 @@ public class StarlarkOptionsParser {
       // off "no" if so.
       if (name.startsWith("no")) {
         potentialStarlarkFlag = potentialStarlarkFlag.substring(2);
+      }
+      // Check if the string contains a value, trim off the value if so.
+      int equalsIdx = potentialStarlarkFlag.indexOf('=');
+      if (equalsIdx > 0) {
+        potentialStarlarkFlag = potentialStarlarkFlag.substring(0, equalsIdx);
       }
       // Check if we can properly parse the (potentially trimmed) string as a label. If so, count
       // as starlark flag, else count as regular residue.
