@@ -9,7 +9,7 @@ Last-Update: 2022-09-21
 
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -3317,7 +3317,19 @@
+@@ -6373,7 +6373,19 @@
      is
      now a symlink to the latest log.
  

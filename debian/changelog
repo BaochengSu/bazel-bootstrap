@@ -1,3 +1,9 @@
+bazel-bootstrap (4.2.2+ds-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Olek Wojnar <olek@debian.org>  Tue, 04 Oct 2022 22:05:34 -0400
+
 bazel-bootstrap (4.1.0+ds-1) unstable; urgency=medium
 
   [ Jesse Chan ]
