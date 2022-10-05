@@ -15,7 +15,6 @@
 package com.google.devtools.build.lib.analysis.constraints;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.collect.Streams.stream;
 
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Joiner;
@@ -867,7 +866,7 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
       target = ((OutputFileConfiguredTarget) target).getGeneratingRule();
     }
     return IncompatibleCheckResult.create(
-        target.getProvider(IncompatiblePlatformProvider.class) != null, target);
+        target.get(IncompatiblePlatformProvider.PROVIDER) != null, target);
   }
 
   /**
@@ -898,9 +897,9 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
     if (ruleContext.getRule().getRuleClassObject().useToolchainResolution()
         && ruleContext.attributes().has("target_compatible_with")) {
       ImmutableList<ConstraintValueInfo> invalidConstraintValues =
-          stream(
-                  PlatformProviderUtils.constraintValues(
-                      ruleContext.getPrerequisites("target_compatible_with")))
+          PlatformProviderUtils.constraintValues(
+                  ruleContext.getPrerequisites("target_compatible_with"))
+              .stream()
               .filter(cv -> !ruleContext.targetPlatformHasConstraint(cv))
               .collect(toImmutableList());
 
@@ -983,13 +982,11 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
     builder.setFilesToBuild(filesToBuild);
 
     if (targetsResponsibleForIncompatibility != null) {
-      builder.add(
-          IncompatiblePlatformProvider.class,
+      builder.addNativeDeclaredProvider(
           IncompatiblePlatformProvider.incompatibleDueToTargets(
               targetsResponsibleForIncompatibility));
     } else if (violatedConstraints != null) {
-      builder.add(
-          IncompatiblePlatformProvider.class,
+      builder.addNativeDeclaredProvider(
           IncompatiblePlatformProvider.incompatibleDueToConstraints(violatedConstraints));
     } else {
       throw new IllegalArgumentException(
@@ -1010,7 +1007,7 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
     if (!outputArtifacts.isEmpty()) {
       Artifact executable = outputArtifacts.get(0);
       RunfilesSupport runfilesSupport =
-          RunfilesSupport.withExecutable(ruleContext, runfiles, executable);
+          RunfilesSupport.withExecutableButNoArgs(ruleContext, runfiles, executable);
       builder.setRunfilesSupport(runfilesSupport, executable);
 
       ruleContext.registerAction(
