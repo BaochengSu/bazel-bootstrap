@@ -53,6 +53,8 @@ import com.google.devtools.build.lib.events.EventKind;
 import com.google.devtools.build.lib.events.Reporter;
 import com.google.devtools.build.lib.events.StoredEventHandler;
 import com.google.devtools.build.lib.exec.SpawnCache.CacheHandle;
+import com.google.devtools.build.lib.exec.SpawnCheckingCacheEvent;
+import com.google.devtools.build.lib.exec.SpawnExecutingEvent;
 import com.google.devtools.build.lib.exec.SpawnInputExpander;
 import com.google.devtools.build.lib.exec.SpawnRunner.ProgressStatus;
 import com.google.devtools.build.lib.exec.SpawnRunner.SpawnExecutionContext;
@@ -60,13 +62,13 @@ import com.google.devtools.build.lib.exec.util.FakeOwner;
 import com.google.devtools.build.lib.remote.common.CacheNotFoundException;
 import com.google.devtools.build.lib.remote.common.RemoteActionExecutionContext;
 import com.google.devtools.build.lib.remote.common.RemoteCacheClient.ActionKey;
+import com.google.devtools.build.lib.remote.common.RemotePathResolver;
 import com.google.devtools.build.lib.remote.options.RemoteOptions;
 import com.google.devtools.build.lib.remote.options.RemoteOutputsMode;
 import com.google.devtools.build.lib.remote.util.DigestUtil;
 import com.google.devtools.build.lib.server.FailureDetails;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.server.FailureDetails.Spawn.Code;
-import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.util.io.FileOutErr;
 import com.google.devtools.build.lib.vfs.DigestHashFunction;
 import com.google.devtools.build.lib.vfs.FileSystem;
@@ -103,12 +105,13 @@ public class RemoteSpawnCacheTest {
   private FileSystem fs;
   private DigestUtil digestUtil;
   private Path execRoot;
+  private RemotePathResolver remotePathResolver;
   private SimpleSpawn simpleSpawn;
   private FakeActionInputFileCache fakeFileCache;
   @Mock private RemoteCache remoteCache;
   private RemoteSpawnCache cache;
   private FileOutErr outErr;
-  private final List<Pair<ProgressStatus, String>> progressUpdates = new ArrayList<>();
+  private final List<ProgressStatus> progressUpdates = new ArrayList<>();
 
   private StoredEventHandler eventHandler = new StoredEventHandler();
 
@@ -155,14 +158,15 @@ public class RemoteSpawnCacheTest {
         }
 
         @Override
-        public SortedMap<PathFragment, ActionInput> getInputMapping() throws IOException {
+        public SortedMap<PathFragment, ActionInput> getInputMapping(PathFragment baseDirectory)
+            throws IOException {
           return new SpawnInputExpander(execRoot, /*strict*/ false)
-              .getInputMapping(simpleSpawn, SIMPLE_ARTIFACT_EXPANDER, fakeFileCache);
+              .getInputMapping(simpleSpawn, SIMPLE_ARTIFACT_EXPANDER, baseDirectory, fakeFileCache);
         }
 
         @Override
-        public void report(ProgressStatus state, String name) {
-          progressUpdates.add(Pair.of(state, name));
+        public void report(ProgressStatus progress) {
+          progressUpdates.add(progress);
         }
 
         @Override
@@ -198,16 +202,19 @@ public class RemoteSpawnCacheTest {
   }
 
   private RemoteSpawnCache remoteSpawnCacheWithOptions(RemoteOptions options) {
+    RemoteExecutionService remoteExecutionService =
+        new RemoteExecutionService(
+            execRoot,
+            remotePathResolver,
+            BUILD_REQUEST_ID,
+            COMMAND_ID,
+            digestUtil,
+            options,
+            remoteCache,
+            null,
+            ImmutableSet.of());
     return new RemoteSpawnCache(
-        execRoot,
-        options,
-        /* verboseFailures=*/ true,
-        remoteCache,
-        BUILD_REQUEST_ID,
-        COMMAND_ID,
-        reporter,
-        digestUtil,
-        /* filesToDownload= */ ImmutableSet.of());
+        execRoot, options, /* verboseFailures=*/ true, reporter, remoteExecutionService);
   }
 
   @Before
@@ -216,6 +223,7 @@ public class RemoteSpawnCacheTest {
     fs = new InMemoryFileSystem(new JavaClock(), DigestHashFunction.SHA256);
     digestUtil = new DigestUtil(DigestHashFunction.SHA256);
     execRoot = fs.getPath("/exec/root");
+    remotePathResolver = RemotePathResolver.createDefault(execRoot);
     FileSystemUtils.createDirectoryAndParents(execRoot);
     fakeFileCache = new FakeActionInputFileCache(execRoot);
     simpleSpawn = simpleSpawnWithExecutionInfo(ImmutableMap.of());
@@ -265,20 +273,20 @@ public class RemoteSpawnCacheTest {
               }
             })
         .when(remoteCache)
-        .download(any(), eq(actionResult), eq(execRoot), eq(outErr), any());
+        .download(any(), any(), eq(actionResult), eq(outErr), any(), any());
 
     CacheHandle entry = cache.lookup(simpleSpawn, simplePolicy);
     assertThat(entry.hasResult()).isTrue();
     SpawnResult result = entry.getResult();
     // All other methods on RemoteActionCache have side effects, so we verify all of them.
-    verify(remoteCache).download(any(), eq(actionResult), eq(execRoot), eq(outErr), any());
+    verify(remoteCache).download(any(), any(), eq(actionResult), eq(outErr), any(), any());
     verify(remoteCache, never())
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             any(Collection.class),
             any(FileOutErr.class));
     assertThat(result.setupSuccess()).isTrue();
@@ -287,8 +295,7 @@ public class RemoteSpawnCacheTest {
     // We expect the CachedLocalSpawnRunner to _not_ write to outErr at all.
     assertThat(outErr.hasRecordedOutput()).isFalse();
     assertThat(outErr.hasRecordedStderr()).isFalse();
-    assertThat(progressUpdates)
-        .containsExactly(Pair.of(ProgressStatus.CHECKING_CACHE, "remote-cache"));
+    assertThat(progressUpdates).containsExactly(SpawnCheckingCacheEvent.create("remote-cache"));
   }
 
   @Test
@@ -316,24 +323,26 @@ public class RemoteSpawnCacheTest {
         .when(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
     entry.store(result);
     verify(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
     assertThat(progressUpdates)
-        .containsExactly(Pair.of(ProgressStatus.CHECKING_CACHE, "remote-cache"));
+        .containsExactly(
+            SpawnCheckingCacheEvent.create("remote-cache"),
+            SpawnExecutingEvent.create("remote-cache"));
   }
 
   @Test
@@ -494,14 +503,16 @@ public class RemoteSpawnCacheTest {
     verify(remoteCache, never())
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
     assertThat(progressUpdates)
-        .containsExactly(Pair.of(ProgressStatus.CHECKING_CACHE, "remote-cache"));
+        .containsExactly(
+            SpawnCheckingCacheEvent.create("remote-cache"),
+            SpawnExecutingEvent.create("remote-cache"));
   }
 
   @Test
@@ -520,10 +531,10 @@ public class RemoteSpawnCacheTest {
         .when(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
 
@@ -531,10 +542,10 @@ public class RemoteSpawnCacheTest {
     verify(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
 
@@ -543,7 +554,9 @@ public class RemoteSpawnCacheTest {
     assertThat(evt.getKind()).isEqualTo(EventKind.WARNING);
     assertThat(evt.getMessage()).contains("cache down");
     assertThat(progressUpdates)
-        .containsExactly(Pair.of(ProgressStatus.CHECKING_CACHE, "remote-cache"));
+        .containsExactly(
+            SpawnCheckingCacheEvent.create("remote-cache"),
+            SpawnExecutingEvent.create("remote-cache"));
   }
 
   @Test
@@ -579,20 +592,20 @@ public class RemoteSpawnCacheTest {
         .when(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
     entry.store(result);
     verify(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
 
@@ -601,7 +614,9 @@ public class RemoteSpawnCacheTest {
     assertThat(evt.getKind()).isEqualTo(EventKind.WARNING);
     assertThat(evt.getMessage()).contains("UNAVAILABLE");
     assertThat(progressUpdates)
-        .containsExactly(Pair.of(ProgressStatus.CHECKING_CACHE, "remote-cache"));
+        .containsExactly(
+            SpawnCheckingCacheEvent.create("remote-cache"),
+            SpawnExecutingEvent.create("remote-cache"));
   }
 
   @Test
@@ -628,7 +643,7 @@ public class RemoteSpawnCacheTest {
             });
     doThrow(new CacheNotFoundException(digest))
         .when(remoteCache)
-        .download(any(), eq(actionResult), eq(execRoot), eq(outErr), any());
+        .download(any(), any(), eq(actionResult), eq(outErr), any(), any());
 
     CacheHandle entry = cache.lookup(simpleSpawn, simplePolicy);
     assertThat(entry.hasResult()).isFalse();
@@ -654,24 +669,26 @@ public class RemoteSpawnCacheTest {
         .when(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
     entry.store(result);
     verify(remoteCache)
         .upload(
             any(RemoteActionExecutionContext.class),
+            any(RemotePathResolver.class),
             any(ActionKey.class),
             any(Action.class),
             any(Command.class),
-            any(Path.class),
             eq(outputFiles),
             eq(outErr));
     assertThat(progressUpdates)
-        .containsExactly(Pair.of(ProgressStatus.CHECKING_CACHE, "remote-cache"));
+        .containsExactly(
+            SpawnCheckingCacheEvent.create("remote-cache"),
+            SpawnExecutingEvent.create("remote-cache"));
     assertThat(eventHandler.getEvents()).isEmpty(); // no warning is printed.
   }
 
@@ -708,7 +725,7 @@ public class RemoteSpawnCacheTest {
     assertThat(cacheHandle.hasResult()).isTrue();
     assertThat(cacheHandle.getResult().exitCode()).isEqualTo(0);
     verify(remoteCache)
-        .downloadMinimal(any(), any(), any(), anyCollection(), any(), any(), any(), any(), any());
+        .downloadMinimal(any(), any(), any(), anyCollection(), any(), any(), any(), any());
   }
 
   @Test
@@ -725,7 +742,7 @@ public class RemoteSpawnCacheTest {
             any(RemoteActionExecutionContext.class), any(), /* inlineOutErr= */ eq(false)))
         .thenReturn(success);
     when(remoteCache.downloadMinimal(
-            any(), any(), any(), anyCollection(), any(), any(), any(), any(), any()))
+            any(), any(), any(), anyCollection(), any(), any(), any(), any()))
         .thenThrow(downloadFailure);
 
     // act
@@ -734,7 +751,7 @@ public class RemoteSpawnCacheTest {
     // assert
     assertThat(cacheHandle.hasResult()).isFalse();
     verify(remoteCache)
-        .downloadMinimal(any(), any(), any(), anyCollection(), any(), any(), any(), any(), any());
+        .downloadMinimal(any(), any(), any(), anyCollection(), any(), any(), any(), any());
     assertThat(eventHandler.getEvents().size()).isEqualTo(1);
     Event evt = eventHandler.getEvents().get(0);
     assertThat(evt.getKind()).isEqualTo(EventKind.WARNING);

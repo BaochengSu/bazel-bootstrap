@@ -70,6 +70,7 @@ import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.exec.ExecutionOptions;
 import com.google.devtools.build.lib.exec.util.FakeOwner;
 import com.google.devtools.build.lib.remote.RemoteRetrier.ExponentialBackoff;
+import com.google.devtools.build.lib.remote.common.RemotePathResolver;
 import com.google.devtools.build.lib.remote.grpc.ChannelConnectionFactory;
 import com.google.devtools.build.lib.remote.options.RemoteOptions;
 import com.google.devtools.build.lib.remote.util.DigestUtil;
@@ -181,7 +182,7 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
 
     Chunker.setDefaultChunkSizeForTesting(1000); // Enough for everything to be one chunk.
     fs = new InMemoryFileSystem(new JavaClock(), DigestHashFunction.SHA256);
-    execRoot = fs.getPath("/exec/root");
+    execRoot = fs.getPath("/execroot/main");
     logDir = fs.getPath("/server-logs");
     FileSystemUtils.createDirectoryAndParents(execRoot);
     fakeFileCache = new FakeActionInputFileCache(execRoot);
@@ -207,7 +208,7 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
 
                   @Override
                   public PathFragment getExecPath() {
-                    return null; // unused here.
+                    return PathFragment.create("foo");
                   }
                 },
                 new ActionInput() {
@@ -223,7 +224,7 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
 
                   @Override
                   public PathFragment getExecPath() {
-                    return null; // unused here.
+                    return PathFragment.create("bar");
                   }
                 }),
             ResourceSet.ZERO);
@@ -295,6 +296,17 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
             uploader);
     RemoteExecutionCache remoteCache =
         new RemoteExecutionCache(cacheProtocol, remoteOptions, DIGEST_UTIL);
+    RemoteExecutionService remoteExecutionService =
+        new RemoteExecutionService(
+            execRoot,
+            RemotePathResolver.createDefault(execRoot),
+            "build-req-id",
+            "command-id",
+            DIGEST_UTIL,
+            remoteOptions,
+            remoteCache,
+            executor,
+            /* filesToDownload= */ ImmutableSet.of());
     client =
         new RemoteSpawnRunner(
             execRoot,
@@ -302,14 +314,9 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
             Options.getDefaults(ExecutionOptions.class),
             /* verboseFailures= */ true,
             /*cmdlineReporter=*/ null,
-            "build-req-id",
-            "command-id",
-            remoteCache,
-            executor,
             retryService,
-            DIGEST_UTIL,
             logDir,
-            /* filesToDownload= */ ImmutableSet.of());
+            remoteExecutionService);
 
     inputDigest =
         fakeFileCache.createScratchInput(simpleSpawn.getInputFiles().getSingleton(), "xyz");
