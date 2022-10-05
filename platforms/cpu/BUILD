@@ -14,14 +14,44 @@ filegroup(
 constraint_setting(name = "cpu")
 
 # TODO(b/136237408): Remove this generic CPU name and replace with a specific one.
-constraint_value(
+alias(
     name = "aarch64",
-    constraint_setting = ":cpu",
+    actual = ":arm64",
 )
 
 # TODO(b/136237408): Remove this generic CPU name and replace with a specific one.
 constraint_value(
     name = "arm",
+    constraint_setting = ":cpu",
+)
+
+# Cortex-M0, Cortex-M0+, Cortex-M1
+constraint_value(
+    name = "armv6-m",  # Commonly known as thumbv6
+    constraint_setting = ":cpu",
+)
+
+# Cortex-M3
+constraint_value(
+    name = "armv7-m",
+    constraint_setting = ":cpu",
+)
+
+# Cortex-M4, Cortex-M7
+constraint_value(
+    name = "armv7e-m",
+    constraint_setting = ":cpu",
+)
+
+# Cortex-M4, Cortex-M7 with fpu
+constraint_value(
+    name = "armv7e-mf",  # armv7e-m with fpu
+    constraint_setting = ":cpu",
+)
+
+# Cortex-M23, Cortex-M33, Cortex-M35P
+constraint_value(
+    name = "armv8-m",
     constraint_setting = ":cpu",
 )
 
@@ -72,5 +102,25 @@ constraint_value(
 
 constraint_value(
     name = "x86_64",
+    constraint_setting = ":cpu",
+)
+
+constraint_value(
+    name = "wasm32",
+    constraint_setting = ":cpu",
+)
+
+constraint_value(
+    name = "wasm64",
+    constraint_setting = ":cpu",
+)
+
+constraint_value(
+    name = "mips64",
+    constraint_setting = ":cpu",
+)
+
+constraint_value(
+    name = "riscv64",
     constraint_setting = ":cpu",
 )

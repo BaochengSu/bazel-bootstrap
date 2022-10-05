@@ -81,6 +81,8 @@ EOF
 # We're not validating visibility here. Let everything access these targets.
 package(default_visibility = ["//visibility:public"])
 
+# TODO(philsc): Get rid of this and use @platforms//:incompatible instead.
+# Right now it's problematic because Google CI doesn't support @platforms.
 constraint_setting(name = "not_compatible_setting")
 
 constraint_value(
@@ -188,6 +190,36 @@ add_to_bazelrc "build --incompatible_merge_genfiles_directory=true"
 
 function tear_down() {
   bazel shutdown
+}
+
+# Validates that we get a good error message when passing a config_setting into
+# the target_compatible_with attribute. This is a regression test for
+# https://github.com/bazelbuild/bazel/issues/13250.
+function test_config_setting_in_target_compatible_with() {
+  cat >> target_skipping/BUILD <<EOF
+config_setting(
+    name = "foo3_config_setting",
+    constraint_values = [":foo3"],
+)
+
+sh_binary(
+    name = "problematic_foo3_target",
+    srcs = ["pass.sh"],
+    target_compatible_with = [
+        ":foo3_config_setting",
+    ],
+)
+EOF
+
+  cd target_skipping || fail "couldn't cd into workspace"
+
+  bazel build \
+    --show_result=10 \
+    --host_platform=@//target_skipping:foo3_platform \
+    --platforms=@//target_skipping:foo3_platform \
+    ... &> "${TEST_log}" && fail "Bazel succeeded unexpectedly."
+
+  expect_log "'//target_skipping:foo3_config_setting' does not have mandatory providers: 'ConstraintValueInfo'"
 }
 
 # Validates that the console log provides useful information to the user for
@@ -368,7 +400,10 @@ function atest_build_event_protocol() {
 # incompatible targets are themselves deemed incompatible and should therefore
 # not be built.
 function test_non_top_level_skipping() {
-  cat >> target_skipping/BUILD <<EOF
+  touch target_skipping/foo_test.sh
+  chmod +x target_skipping/foo_test.sh
+
+  cat >> target_skipping/BUILD <<'EOF'
 genrule(
     name = "genrule_foo1",
     target_compatible_with = [":foo1"],
@@ -381,6 +416,15 @@ sh_binary(
     srcs = ["foo1.sh"],
     target_compatible_with = [":foo2"],
 )
+
+# Make sure that using an incompatible target in Make variable substitution
+# doesn't produce an unexpected error.
+sh_test(
+    name = "foo_test",
+    srcs = ["foo_test.sh"],
+    data = [":some_foo3_target"],
+    args = ["$(location :some_foo3_target)"],
+)
 EOF
 
   cd target_skipping || fail "couldn't cd into workspace"
@@ -391,6 +435,14 @@ EOF
     --platforms=@//target_skipping:foo2_bar1_platform \
     //target_skipping:sh_foo2 &> "${TEST_log}" && fail "Bazel passed unexpectedly."
   expect_log 'ERROR: Target //target_skipping:sh_foo2 is incompatible and cannot be built, but was explicitly requested'
+  expect_log 'FAILED: Build did NOT complete successfully'
+
+  bazel build \
+    --show_result=10 \
+    --host_platform=@//target_skipping:foo2_bar1_platform \
+    --platforms=@//target_skipping:foo2_bar1_platform \
+    //target_skipping:foo_test &> "${TEST_log}" && fail "Bazel passed unexpectedly."
+  expect_log 'ERROR: Target //target_skipping:foo_test is incompatible and cannot be built, but was explicitly requested'
   expect_log 'FAILED: Build did NOT complete successfully'
 }
 
@@ -908,6 +960,44 @@ function test_cquery_incompatible_target() {
     && fail "Bazel cquery passed unexpectedly."
   expect_log 'Target //target_skipping:sh_foo1 is incompatible and cannot be built, but was explicitly requested'
   expect_log "target platform didn't satisfy constraint //target_skipping:foo1"
+}
+
+# Runs a cquery and makes sure that we can properly distinguish between
+# incompatible targets and compatible targets.
+function test_cquery_with_starlark_formatting() {
+  cat > target_skipping/compatibility.cquery <<EOF
+def format(target):
+    if "IncompatiblePlatformProvider" in providers(target):
+        result = "incompatible"
+    else:
+        result = "compatible"
+
+    return "%s is %s" % (target.label, result)
+EOF
+
+  cd target_skipping || fail "couldn't cd into workspace"
+
+  bazel cquery \
+    --host_platform=//target_skipping:foo1_bar1_platform \
+    --platforms=//target_skipping:foo1_bar1_platform \
+    :all \
+    --output=starlark --starlark:file=target_skipping/compatibility.cquery \
+    &> "${TEST_log}"
+
+  expect_log '^//target_skipping:pass_on_foo1 is compatible$'
+  expect_log '^//target_skipping:fail_on_foo2 is incompatible$'
+  expect_log '^//target_skipping:some_foo3_target is incompatible$'
+
+  bazel cquery \
+    --host_platform=//target_skipping:foo3_platform \
+    --platforms=//target_skipping:foo3_platform \
+    :all \
+    --output=starlark --starlark:file=target_skipping/compatibility.cquery \
+    &> "${TEST_log}"
+
+  expect_log '^//target_skipping:pass_on_foo1 is incompatible$'
+  expect_log '^//target_skipping:fail_on_foo2 is incompatible$'
+  expect_log '^//target_skipping:some_foo3_target is compatible$'
 }
 
 # Run an aquery on a target that is compatible. This should pass.
