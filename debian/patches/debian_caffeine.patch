@@ -19,12 +19,12 @@ Last-Update: 2022-10-17
 --- a/tools/distributions/debian/debian_java.BUILD
 +++ b/tools/distributions/debian/debian_java.BUILD
 @@ -472,3 +472,9 @@
-     jars = ["rxjava.jar"],
+     jars = ["java/rxjava.jar"],
      deps = [":reactive_streams"],
  )
 +
 +# libcaffeine-java
 +java_import(
 +    name = "caffeine",
-+    jars = ["caffeine.jar"],
++    jars = ["java/caffeine.jar"],
 +)
