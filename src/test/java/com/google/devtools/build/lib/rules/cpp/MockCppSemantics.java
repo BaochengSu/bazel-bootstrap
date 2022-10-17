@@ -44,8 +44,8 @@ public final class MockCppSemantics implements CppSemantics {
       RuleErrorConsumer ruleErrorConsumer) {}
 
   @Override
-  public IncludeProcessing getIncludeProcessing() {
-    return null;
+  public boolean allowIncludeScanning() {
+    return false;
   }
 
   @Override
@@ -83,4 +83,9 @@ public final class MockCppSemantics implements CppSemantics {
       AspectDescriptor aspectDescriptor,
       CcToolchainProvider ccToolchain,
       ImmutableSet<String> unsupportedFeatures) {}
+
+  @Override
+  public boolean createEmptyArchive() {
+    return false;
+  }
 }

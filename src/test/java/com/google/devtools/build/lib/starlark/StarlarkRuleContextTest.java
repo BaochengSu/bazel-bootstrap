@@ -75,8 +75,7 @@ import org.junit.runners.JUnit4;
 public final class StarlarkRuleContextTest extends BuildViewTestCase {
 
   private StarlarkRuleContext createRuleContext(String label) throws Exception {
-    return new StarlarkRuleContext(
-        getRuleContextForStarlark(getConfiguredTarget(label)), null, getStarlarkSemantics());
+    return new StarlarkRuleContext(getRuleContextForStarlark(getConfiguredTarget(label)), null);
   }
 
   private final BazelEvaluationTestCase ev = new BazelEvaluationTestCase();
@@ -520,152 +519,6 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testGetRuleSelect() throws Exception {
-    scratch.file("test/starlark/BUILD");
-    scratch.file(
-        "test/starlark/rulestr.bzl", "def rule_dict(name):", "  return native.existing_rule(name)");
-
-    scratch.file(
-        "test/getrule/BUILD",
-        "load('//test/starlark:rulestr.bzl', 'rule_dict')",
-        "cc_library(name ='x', ",
-        "  srcs = select({'//conditions:default': []})",
-        ")",
-        "rule_dict('x')");
-
-    // Parse the BUILD file, to make sure select() makes it out of native.rule().
-    createRuleContext("//test/getrule:x");
-  }
-
-  @Test
-  public void testExistingRuleReturnNone() throws Exception {
-    scratch.file(
-        "test/rulestr.bzl",
-        "def test_rule(name, x):",
-        "  print(native.existing_rule(x))",
-        "  if native.existing_rule(x) == None:",
-        "    native.cc_library(name = name)");
-    scratch.file(
-        "test/BUILD",
-        "load('//test:rulestr.bzl', 'test_rule')",
-        "test_rule('a', 'does not exist')",
-        "test_rule('b', 'BUILD')");
-
-    assertThat(getConfiguredTarget("//test:a")).isNotNull();
-    assertThat(getConfiguredTarget("//test:b")).isNotNull();
-  }
-
-  @Test
-  public void existingRuleWithSelect() throws Exception {
-    scratch.file(
-        "test/existing_rule.bzl",
-        "def macro():",
-        "  s = select({'//foo': ['//bar']})",
-        "  native.cc_library(name = 'x', srcs = s)",
-        "  print(native.existing_rule('x')['srcs'])");
-    scratch.file(
-        "test/BUILD",
-        "load('//test:existing_rule.bzl', 'macro')",
-        "macro()",
-        "cc_library(name = 'a', srcs = [])");
-    getConfiguredTarget("//test:a");
-    assertContainsEvent("select({Label(\"//foo:foo\"): [Label(\"//bar:bar\")]})");
-  }
-
-  @Test
-  public void testGetRule() throws Exception {
-    scratch.file("test/starlark/BUILD");
-    scratch.file(
-        "test/starlark/rulestr.bzl",
-        "def rule_dict(name):",
-        "  return native.existing_rule(name)",
-        "def rules_dict():",
-        "  return native.existing_rules()",
-        "def nop(ctx):",
-        "  pass",
-        "nop_rule = rule(attrs = {'x': attr.label()}, implementation = nop)",
-        "consume_rule = rule(attrs = {'s': attr.string_list()}, implementation = nop)");
-
-    scratch.file(
-        "test/getrule/BUILD",
-        "load('//test/starlark:rulestr.bzl', 'rules_dict', 'rule_dict', 'nop_rule',"
-            + "'consume_rule')",
-        "genrule(name = 'a', outs = ['a.txt'], ",
-        "        licenses = ['notice'],",
-        "        output_to_bindir = False,",
-        "        tools = [ '//test:bla' ], cmd = 'touch $@')",
-        "nop_rule(name = 'c', x = ':a')",
-        "rlist= rules_dict()",
-        "consume_rule(name = 'all_str', s = [rlist['a']['kind'], rlist['a']['name'], ",
-        "                                    rlist['c']['kind'], rlist['c']['name']])",
-        "adict = rule_dict('a')",
-        "cdict = rule_dict('c')",
-        "consume_rule(name = 'a_str', ",
-        "             s = [adict['kind'], adict['name'], adict['outs'][0], adict['tools'][0]])",
-        "consume_rule(name = 'genrule_attr', ",
-        "             s = adict.keys())",
-        "consume_rule(name = 'c_str', s = [cdict['kind'], cdict['name'], cdict['x']])");
-
-    StarlarkRuleContext allContext = createRuleContext("//test/getrule:all_str");
-    setRuleContext(allContext);
-    List<?> result = (List) ev.eval("ruleContext.attr.s");
-    assertThat(result).containsExactly("genrule", "a", "nop_rule", "c");
-
-    setRuleContext(createRuleContext("//test/getrule:a_str"));
-    result = (List) ev.eval("ruleContext.attr.s");
-    assertThat(result).containsExactly("genrule", "a", ":a.txt", "//test:bla");
-
-    setRuleContext(createRuleContext("//test/getrule:c_str"));
-    result = (List) ev.eval("ruleContext.attr.s");
-    assertThat(result).containsExactly("nop_rule", "c", ":a");
-
-    setRuleContext(createRuleContext("//test/getrule:genrule_attr"));
-    result = (List) ev.eval("ruleContext.attr.s");
-    assertThat(result)
-        .containsAtLeast(
-            "name",
-            "visibility",
-            "transitive_configs",
-            "tags",
-            "generator_name",
-            "generator_function",
-            "generator_location",
-            "features",
-            "compatible_with",
-            "target_compatible_with",
-            "restricted_to",
-            "srcs",
-            "tools",
-            "toolchains",
-            "outs",
-            "cmd",
-            "output_to_bindir",
-            "local",
-            "message",
-            "executable",
-            "stamp",
-            "heuristic_label_expansion",
-            "kind");
-  }
-
-  @Test
-  public void testExistingRuleDictIsMutable() throws Exception {
-    scratch.file(
-        "test/BUILD",
-        "load('inc.bzl', 'f')", //
-        "f()");
-    scratch.file(
-        "test/inc.bzl", //
-        "def f():",
-        "  native.config_setting(name='x', define_values={'key': 'value'})",
-        "  r = native.existing_rule('x')",
-        "  r['define_values']['key'] = 123"); // mutate the dict
-
-    // Logically this belongs among the loading-phase tests of existing_rules. Where are they?
-    assertThat(getConfiguredTarget("//test:BUILD")).isNotNull(); // no error
-  }
-
-  @Test
   public void testGetRuleAttributeListValue() throws Exception {
     StarlarkRuleContext ruleContext = createRuleContext("//foo:foo");
     setRuleContext(ruleContext);
@@ -701,6 +554,12 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
   public void testGetRuleAttributeBadAttributeName() throws Exception {
     setRuleContext(createRuleContext("//foo:foo"));
     ev.checkEvalErrorContains("No attribute 'bad'", "ruleContext.attr.bad");
+  }
+
+  @Test
+  public void testGetRuleAttributeNoAspectHints() throws Exception {
+    setRuleContext(createRuleContext("//foo:foo"));
+    ev.checkEvalErrorContains("No attribute 'aspect_hints'", "ruleContext.attr.aspect_hints");
   }
 
   @Test
@@ -744,6 +603,33 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
             Iterables.getOnlyElement(
                 ruleContext.getRuleContext().getAnalysisEnvironment().getRegisteredActions());
     assertThat(action.getCommandFilename()).matches("^.*/IdlClass(\\.exe){0,1}$");
+  }
+
+  @Test
+  public void testGetExecutablePrerequisite_forNativeRuleWithLabelList() throws Exception {
+    // Starlark rules only support executable=True on LABEL attributes, but native rules support it
+    // for LABEL_LIST as well. This became a problem when we started creating StarlarkRuleContexts
+    // for native rules for builtins injection. We work around it by not populating the executable
+    // field for these rules.
+    scratch.file(
+        "pkg/BUILD",
+        "extra_action(",
+        "    name = 'foo',",
+        "    cmd = 'cmd',",
+        "    out_templates = ['foo.out'],",
+        "    tools = [':tool1', ':tool2']", // not allowed in Starlark-defined rules
+        ")",
+        "cc_binary(",
+        "    name = 'tool1',",
+        "    srcs = ['tool1.cc'],",
+        ")",
+        "cc_binary(",
+        "    name = 'tool2',",
+        "    srcs = ['tool2.cc'],",
+        ")");
+    StarlarkRuleContext ruleContext = createRuleContext("//pkg:foo");
+    setRuleContext(ruleContext);
+    assertThat((Boolean) ev.eval("hasattr(ruleContext.executable, 'tools')")).isFalse();
   }
 
   @Test
@@ -1445,43 +1331,11 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testCallerRelativeLabelInExternalRepository() throws Exception {
-    scratch.file("BUILD");
-    scratch.file(
-        "external_rule.bzl",
-        "def _impl(ctx):",
-        "  return",
-        "external_rule = rule(",
-        "  implementation = _impl,",
-        "  attrs = {",
-        "    'internal_dep': attr.label(",
-        "        default = Label('//:dep', relative_to_caller_repository = True)",
-        "    )",
-        "  }",
-        ")");
-
-    scratch.file("/r/WORKSPACE");
-    scratch.file("/r/BUILD", "filegroup(name='dep')");
-
-    scratch.file(
-        "/r/a/BUILD", "load('@//:external_rule.bzl', 'external_rule')", "external_rule(name='r')");
-
-    scratch.overwriteFile(
-        "WORKSPACE",
-        new ImmutableList.Builder<String>()
-            .addAll(analysisMock.getWorkspaceContents(mockToolsConfig))
-            .add("local_repository(name='r', path='/r')")
-            .build());
-
-    invalidatePackages(
-        /*alsoConfigs=*/ false); // Repository shuffling messes with toolchain labels.
-    setRuleContext(createRuleContext("@r//a:r"));
-    Label depLabel = (Label) ev.eval("ruleContext.attr.internal_dep.label");
-    assertThat(depLabel).isEqualTo(Label.parseAbsolute("@r//:dep", ImmutableMap.of()));
-  }
-
-  @Test
   public void testExternalWorkspaceLoad() throws Exception {
+    // RepositoryDelegatorFunction deletes and creates symlink for the repository and as such is not
+    // safe to execute in parallel. Disable checks with package loader to avoid parallel
+    // evaluations.
+    initializeSkyframeExecutor(/*doPackageLoadingChecks=*/ false);
     scratch.file(
         "/r1/BUILD",
         "filegroup(name = 'test',",
@@ -1791,6 +1645,149 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
     assertThat(rootSymlinkFilenames).isInstanceOf(Sequence.class);
     Sequence<?> rootSymlinkFilenamesList = (Sequence) rootSymlinkFilenames;
     assertThat(rootSymlinkFilenamesList).containsExactly("test/a.py").inOrder();
+  }
+
+  @Test
+  public void testForwardingDefaultInfoRetainsDataRunfiles() throws Exception {
+    scratch.file(
+        "bar/rules.bzl",
+        "def _forward_default_info_impl(ctx):",
+        "    return [",
+        "        ctx.attr.target[DefaultInfo],",
+        "    ]",
+        "forward_default_info = rule(",
+        "    implementation = _forward_default_info_impl,",
+        "    attrs = {",
+        "        'target': attr.label(",
+        "            mandatory = True,",
+        "        ),",
+        "    },",
+        ")");
+    scratch.file("bar/i_am_a_runfile");
+    scratch.file(
+        "bar/BUILD",
+        "load(':rules.bzl', 'forward_default_info')",
+        "java_library(",
+        "    name = 'lib',",
+        "    data = ['i_am_a_runfile'],",
+        ")",
+        "forward_default_info(",
+        "    name = 'forwarded_lib',",
+        "    target = ':lib',",
+        ")");
+
+    ConfiguredTarget nativeTarget = getConfiguredTarget("//bar:lib");
+
+    ImmutableList<Artifact> nativeRunfiles =
+        getDataRunfiles(nativeTarget).getAllArtifacts().toList();
+    ConfiguredTarget forwardedTarget = getConfiguredTarget("//bar:forwarded_lib");
+    ImmutableList<Artifact> forwardedRunfiles =
+        getDataRunfiles(forwardedTarget).getAllArtifacts().toList();
+    assertThat(forwardedRunfiles).isEqualTo(nativeRunfiles);
+    assertThat(forwardedRunfiles).hasSize(1);
+    assertThat(forwardedRunfiles.get(0).getPath().getBaseName()).isEqualTo("i_am_a_runfile");
+  }
+
+  @Test
+  public void runfiles_merge() throws Exception {
+    scratch.file("test/a.py");
+    scratch.file("test/b.py");
+    scratch.file("test/other.py");
+    scratch.file(
+        "test/rule.bzl",
+        "def symlink_merge_impl(ctx):",
+        "  runfiles = ctx.runfiles(symlinks = {",
+        "    'symlink_' + ctx.file.symlink.short_path: ctx.file.symlink",
+        "  })",
+        "  if ctx.attr.dep:",
+        "    runfiles = runfiles.merge(ctx.attr.dep[DefaultInfo].default_runfiles)",
+        "  return DefaultInfo(",
+        "    runfiles = runfiles",
+        "  )",
+        "symlink_merge_rule = rule(",
+        "  implementation = symlink_merge_impl,",
+        "  attrs = {",
+        "    'symlink': attr.label(allow_single_file=True),",
+        "    'dep': attr.label(),",
+        "  },",
+        ")");
+    scratch.file(
+        "test/BUILD",
+        "load('//test:rule.bzl', 'symlink_merge_rule')",
+        "symlink_merge_rule(name = 'lib_a', symlink = ':a.py', dep = 'lib_b')",
+        "symlink_merge_rule(name = 'lib_b', symlink = ':b.py')",
+        "sh_binary(",
+        "  name = 'test',",
+        "  srcs = ['test/other.py'],",
+        "  data = [':lib_a'],",
+        ")");
+    setRuleContext(createRuleContext("//test:test"));
+    Object symlinkPaths =
+        ev.eval("[s.path for s in ruleContext.attr.data[0].data_runfiles.symlinks.to_list()]");
+    assertThat(symlinkPaths).isInstanceOf(Sequence.class);
+    Sequence<?> symlinkPathsList = (Sequence) symlinkPaths;
+    assertThat(symlinkPathsList)
+        .containsExactly("symlink_test/a.py", "symlink_test/b.py")
+        .inOrder();
+  }
+
+  @Test
+  public void runfiles_mergeAll() throws Exception {
+    scratch.file("test/a.py");
+    scratch.file("test/b.py");
+    scratch.file("test/c.py");
+    scratch.file("test/other.py");
+    scratch.file(
+        "test/rule.bzl",
+        "def symlink_merge_all_impl(ctx):",
+        "  runfiles = ctx.runfiles(symlinks = {",
+        "    'symlink_' + ctx.file.symlink.short_path: ctx.file.symlink",
+        "  })",
+        "  if ctx.attr.deps:",
+        "    runfiles = runfiles.merge_all([dep[DefaultInfo].default_runfiles",
+        "                                   for dep in ctx.attr.deps])",
+        "  return DefaultInfo(",
+        "    runfiles = runfiles",
+        "  )",
+        "symlink_merge_all_rule = rule(",
+        "  implementation = symlink_merge_all_impl,",
+        "  attrs = {",
+        "    'symlink': attr.label(allow_single_file=True),",
+        "    'deps': attr.label_list(),",
+        "  },",
+        ")");
+    scratch.file(
+        "test/BUILD",
+        "load('//test:rule.bzl', 'symlink_merge_all_rule')",
+        "symlink_merge_all_rule(name = 'lib_a', symlink = ':a.py', deps = [':lib_b', ':lib_c'])",
+        "symlink_merge_all_rule(name = 'lib_b', symlink = ':b.py')",
+        "symlink_merge_all_rule(name = 'lib_c', symlink = ':c.py')",
+        "sh_binary(",
+        "  name = 'test',",
+        "  srcs = ['test/other.py'],",
+        "  data = [':lib_a'],",
+        ")");
+    setRuleContext(createRuleContext("//test:test"));
+    Object symlinkPaths =
+        ev.eval("[s.path for s in ruleContext.attr.data[0].data_runfiles.symlinks.to_list()]");
+    assertThat(symlinkPaths).isInstanceOf(Sequence.class);
+    Sequence<?> symlinkPathsList = Sequence.cast(symlinkPaths, String.class, "symlinkPaths");
+    assertThat(symlinkPathsList)
+        .containsExactly("symlink_test/a.py", "symlink_test/b.py", "symlink_test/c.py")
+        .inOrder();
+  }
+
+  @Test
+  public void runfiles_incompatibleTransitiveFilesOrder() throws Exception {
+    scratch.file(
+        "test/rule.bzl",
+        "def _bad_runfiles_impl(ctx):",
+        "  ctx.runfiles(transitive_files = depset(order = 'preorder'))",
+        "bad_runfiles = rule(implementation = _bad_runfiles_impl)");
+    scratch.file("test/BUILD", "load(':rule.bzl', 'bad_runfiles')", "bad_runfiles(name = 'test')");
+    reporter.removeHandler(failFastHandler); // Error expected.
+    assertThat(getConfiguredTarget("//test:test")).isNull();
+    assertContainsEvent("Error in runfiles: order 'preorder' is invalid for transitive_files");
   }
 
   @Test
@@ -2272,6 +2269,63 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
   }
 
   @Test
+  public void testArgsMapEachFunctionMustBeGlobal() throws Exception {
+    // lambda
+    scratch.file(
+        "p/inc.bzl",
+        "def _impl(ctx):",
+        "  ctx.actions.args().add_all([], map_each=lambda x: x)", // error
+        "r = rule(implementation=_impl)");
+    scratch.file("p/BUILD", "load('inc.bzl', 'r')", "r(name='r')");
+    AssertionError ex = assertThrows(AssertionError.class, () -> getConfiguredTarget("//p:r"));
+    assertThat(ex)
+        .hasMessageThat()
+        .contains(
+            "map_each function (declared at /workspace/p/inc.bzl:2:43) must be "
+                + "declared by a top-level def statement");
+
+    // non-global def
+    scratch.file(
+        "q/inc.bzl",
+        "def _impl(ctx):",
+        "  def id(x): return x",
+        "  ctx.actions.args().add_all([], map_each=id)", // error
+        "r = rule(implementation=_impl)");
+    scratch.file("q/BUILD", "load('inc.bzl', 'r')", "r(name='r')");
+    ex = assertThrows(AssertionError.class, () -> getConfiguredTarget("//q:r"));
+    assertThat(ex)
+        .hasMessageThat()
+        .contains(
+            "map_each function (declared at /workspace/q/inc.bzl:2:7) must be "
+                + "declared by a top-level def statement");
+  }
+
+  @Test
+  public void testArgsMapEachFunctionAllowClosure() throws Exception {
+    // lambda
+    scratch.file(
+        "test/rules.bzl",
+        getSimpleUnderTestDefinition(
+            "def local_fn(x): return 'local:%s' % x",
+            "args = ctx.actions.args()",
+            "args.add_all(['a', 'b'], allow_closure=True, map_each=lambda x: 'lambda:%s' % x)",
+            "args.add_joined(['c', 'd'], join_with=';', allow_closure=True, map_each=local_fn)",
+            "args.set_param_file_format('multiline')",
+            "ctx.actions.write(output=out, content=args)"),
+        testingRuleDefinition);
+    scratch.file("test/BUILD", simpleBuildDefinition);
+    StarlarkRuleContext ruleContext = createRuleContext("//test:testing");
+    setRuleContext(ruleContext);
+    ev.update("file", ev.eval("ruleContext.attr.dep.files.to_list()[0]"));
+    ev.update("action", ev.eval("ruleContext.attr.dep[Actions].by_file[file]"));
+
+    Object contentUnchecked = ev.eval("action.content");
+    assertThat(contentUnchecked).isInstanceOf(String.class);
+    // Args content ends the file with a newline
+    assertThat(ev.eval("action.content")).isEqualTo("lambda:a\nlambda:b\nlocal:c;local:d\n");
+  }
+
+  @Test
   public void testTemplateExpansionActionInterface() throws Exception {
     scratch.file(
         "test/rules.bzl",
@@ -2408,7 +2462,6 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
           "aspect_ids",
           "var",
           "tokenize('foo')",
-          "expand('foo', [], Label('//test:main'))",
           "new_file('foo.txt')",
           "new_file(file, 'foo.txt')",
           "actions.declare_file('foo.txt')",
@@ -2633,6 +2686,51 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
     assertThat(buildSettingInfo.getValue("value")).isEqualTo(StarlarkInt.of(42));
   }
 
+  @SuppressWarnings("unchecked")
+  @Test
+  public void testBuildSettingValue_allowMultipleSetting() throws Exception {
+    scratch.file(
+        "test/build_setting.bzl",
+        "BuildSettingInfo = provider(fields = ['name', 'value'])",
+        "def _impl(ctx):",
+        "  return [BuildSettingInfo(name = ctx.attr.name, value = ctx.build_setting_value)]",
+        "",
+        "string_flag = rule(",
+        "  implementation = _impl,",
+        "  build_setting = config.string(flag = True, allow_multiple = True),",
+        ")");
+    scratch.file(
+        "test/BUILD",
+        "load('//test:build_setting.bzl', 'string_flag')",
+        "string_flag(name = 'string_flag', build_setting_default = 'some-value')");
+
+    // from default
+    ConfiguredTarget buildSetting = getConfiguredTarget("//test:string_flag");
+    Provider.Key key =
+        new StarlarkProvider.Key(
+            Label.create(buildSetting.getLabel().getPackageIdentifier(), "build_setting.bzl"),
+            "BuildSettingInfo");
+    StructImpl buildSettingInfo = (StructImpl) buildSetting.get(key);
+
+    assertThat(buildSettingInfo.getValue("value")).isInstanceOf(List.class);
+    assertThat((List<String>) buildSettingInfo.getValue("value")).containsExactly("some-value");
+
+    // Set multiple times
+    useConfiguration(
+        ImmutableMap.of(
+            "//test:string_flag", ImmutableList.of("some-other-value", "some-other-other-value")));
+    buildSetting = getConfiguredTarget("//test:string_flag");
+    key =
+        new StarlarkProvider.Key(
+            Label.create(buildSetting.getLabel().getPackageIdentifier(), "build_setting.bzl"),
+            "BuildSettingInfo");
+    buildSettingInfo = (StructImpl) buildSetting.get(key);
+
+    assertThat(buildSettingInfo.getValue("value")).isInstanceOf(List.class);
+    assertThat((List<String>) buildSettingInfo.getValue("value"))
+        .containsExactly("some-other-value", "some-other-other-value");
+  }
+
   @Test
   public void testBuildSettingValue_nonBuildSettingRule() throws Exception {
     scratch.file(
@@ -2840,7 +2938,6 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
         "something/BUILD",
         "load('//something:defs.bzl', 'use_exec_groups')",
         "use_exec_groups(name = 'nectarine')");
-    setBuildLanguageOptions("--experimental_exec_groups=true");
     useConfiguration(
         "--extra_toolchains=//toolchain:foo_toolchain,//toolchain:bar_toolchain",
         "--platforms=//platform:platform_1");
@@ -2902,7 +2999,6 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
         "constraint_value(name = 'extra', constraint_setting = ':setting')",
         "load('//something:defs.bzl', 'use_exec_groups')",
         "use_exec_groups(name = 'nectarine')");
-    setBuildLanguageOptions("--experimental_exec_groups=true");
     useConfiguration(
         "--extra_toolchains=//toolchain:foo_toolchain,//toolchain:bar_toolchain",
         "--platforms=//platform:platform_1");
@@ -3032,14 +3128,15 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
     scratch.file(
         "test/rule.bzl",
         "def _sample_impl(ctx):",
-        "    info = ctx.toolchains['//:toolchain_type']",
-        "    if info != None:",
-        "        fail('Toolchain should be empty')",
+        "    # This should raise an error.",
+        "    ctx.toolchains['//:toolchain_type']",
+        "    fail('Toolchain was not empty')",
         "sample_setting = rule(",
         "    implementation = _sample_impl,",
         "    build_setting = config.bool(flag = True),",
         ")");
-    getConfiguredTarget("//test:test");
-    assertNoEvents();
+    assertThrows(AssertionError.class, () -> getConfiguredTarget("//test:test"));
+    assertContainsEvent("Toolchains are not valid in this context");
+    assertDoesNotContainEvent("Toolchain was not empty");
   }
 }

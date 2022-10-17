@@ -18,14 +18,12 @@ import static com.google.devtools.build.lib.packages.Attribute.attr;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL_LIST;
 
-import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.lib.analysis.BaseRuleClasses;
-import com.google.devtools.build.lib.analysis.FileProvider;
 import com.google.devtools.build.lib.analysis.RuleDefinition;
 import com.google.devtools.build.lib.analysis.RuleDefinitionEnvironment;
 import com.google.devtools.build.lib.analysis.config.ExecutionTransitionFactory;
-import com.google.devtools.build.lib.analysis.TransitiveInfoProvider;
 import com.google.devtools.build.lib.packages.RuleClass;
+import com.google.devtools.build.lib.packages.StarlarkProviderIdentifier;
 import com.google.devtools.build.lib.packages.Type;
 
 /** Implements {code proto_lang_toolchain}. */
@@ -74,8 +72,7 @@ public class ProtoLangToolchainRule implements RuleDefinition {
         .add(
             attr("blacklisted_protos", LABEL_LIST)
                 .allowedFileTypes()
-                .mandatoryBuiltinProviders(
-                    ImmutableList.<Class<? extends TransitiveInfoProvider>>of(FileProvider.class)))
+                .mandatoryProviders(StarlarkProviderIdentifier.forKey(ProtoInfo.PROVIDER.getKey())))
         .requiresConfigurationFragments(ProtoConfiguration.class)
         .advertiseProvider(ProtoLangToolchainProvider.class)
         .removeAttribute("data")
@@ -87,7 +84,7 @@ public class ProtoLangToolchainRule implements RuleDefinition {
   public Metadata getMetadata() {
     return RuleDefinition.Metadata.builder()
         .name("proto_lang_toolchain")
-        .ancestors(BaseRuleClasses.RuleBase.class)
+        .ancestors(BaseRuleClasses.NativeActionCreatingRule.class)
         .factoryClass(ProtoLangToolchain.class)
         .build();
   }

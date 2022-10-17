@@ -24,11 +24,9 @@ import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.packages.AttributeMap;
 import com.google.devtools.build.lib.packages.License;
 import com.google.devtools.build.lib.packages.Rule;
-import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 
 /** A {@link ConfiguredTarget} that has licensed targets in its transitive closure. */
 @Immutable
-@AutoCodec
 public final class LicensesProviderImpl implements LicensesProvider {
   public static final LicensesProvider EMPTY =
       new LicensesProviderImpl(NestedSetBuilder.<TargetLicense>emptySet(Order.LINK_ORDER), null);
@@ -70,20 +68,27 @@ public final class LicensesProviderImpl implements LicensesProvider {
       ListMultimap<String, ? extends TransitiveInfoCollection> configuredMap =
           ruleContext.getConfiguredTargetMap();
 
-      for (String depAttrName : attributes.getAttributeNames()) {
-        // Only add the transitive licenses for the attributes that do not have the output_licenses.
-        Attribute attribute = attributes.getAttributeDefinition(depAttrName);
-        for (TransitiveInfoCollection dep : configuredMap.get(depAttrName)) {
-          LicensesProvider provider = dep.getProvider(LicensesProvider.class);
-          if (provider == null) {
-            continue;
-          }
-          if (useOutputLicenses(attribute, configuration) && provider.hasOutputLicenses()) {
+      if (rule.getRuleClassObject().isBazelLicense()) {
+        // Don't crawl a new-style license, it's effectively a leaf.
+        // The representation of the new-style rule is unfortunately hardcoded here,
+        // but this is code in the old-style licensing path that will ultimately be removed.
+      } else {
+        for (String depAttrName : attributes.getAttributeNames()) {
+          // Only add the transitive licenses for the attributes that do not have the
+          // output_licenses.
+          Attribute attribute = attributes.getAttributeDefinition(depAttrName);
+          for (TransitiveInfoCollection dep : configuredMap.get(depAttrName)) {
+            LicensesProvider provider = dep.getProvider(LicensesProvider.class);
+            if (provider == null) {
+              continue;
+            }
+            if (useOutputLicenses(attribute, configuration) && provider.hasOutputLicenses()) {
               builder.add(provider.getOutputLicenses());
-          } else {
-            builder.addTransitive(provider.getTransitiveLicenses());
+            } else {
+              builder.addTransitive(provider.getTransitiveLicenses());
+            }
           }
-        }
+          }
       }
     }
 

@@ -24,7 +24,6 @@ OUT=$1; shift
 EMBEDDED_TOOLS=$1; shift
 DEPLOY_JAR=$1; shift
 INSTALL_BASE_KEY=$1; shift
-BUILTINS_ZIP=$1; shift
 PLATFORMS_ARCHIVE=$1; shift
 
 if [[ "$OUT" == *jdk_allmodules.zip ]]; then
@@ -71,20 +70,23 @@ if [ -n "${EMBEDDED_TOOLS}" ]; then
   (cd ${PACKAGE_DIR}/embedded_tools && unzip -q "${WORKDIR}/${EMBEDDED_TOOLS}")
 fi
 
-# Add the builtins bzls.
-(
-  cd $PACKAGE_DIR
-  unzip -q $WORKDIR/$BUILTINS_ZIP
-)
-
 # Unzip platforms.zip into platforms/, move files up from external/platforms
-# subdirectory, and create WORKSPACE if it doesn't exist.
+# subdirectory if required, and create WORKSPACE if it doesn't exist.
 (
   cd $PACKAGE_DIR
   unzip -q -d platforms $WORKDIR/$PLATFORMS_ARCHIVE
   cd platforms
-  mv external/platforms/* .
-  rmdir -p external/platforms
+  # Platform files may be located under external/platform or platform depending
+  # on the external repository source layout. Take them out if it's the case.
+  if [ -d "external/platforms" ]; then
+    # --experimental_sibling_repository_layout=false
+    mv external/platforms/* .
+    rmdir -p external/platforms
+  else
+    # --experimental_sibling_repository_layout=true
+    mv platforms/* .
+    rmdir -p platforms
+  fi
   >> WORKSPACE
 )
 

@@ -15,6 +15,7 @@ package com.google.devtools.build.lib.rules.android;
 
 import static com.google.devtools.build.lib.analysis.config.CompilationMode.OPT;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
@@ -27,6 +28,7 @@ import com.google.devtools.build.lib.analysis.actions.SpawnAction;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.ImplicitOutputsFunction.SafeImplicitOutputsFunction;
+import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.packages.TriState;
 import com.google.devtools.build.lib.starlarkbuildapi.android.AndroidDataContextApi;
 import com.google.devtools.build.lib.vfs.PathFragment;
@@ -69,6 +71,8 @@ public class AndroidDataContext implements AndroidDataContextApi {
   private final boolean throwOnResourceConflict;
   private final boolean useDataBindingV2;
   private final boolean useDataBindingAndroidX;
+  private final boolean includeProguardLocationReferences;
+  private final ImmutableMap<String, String> executionInfo;
 
   public static AndroidDataContext forNative(RuleContext ruleContext) {
     return makeContext(ruleContext);
@@ -77,6 +81,9 @@ public class AndroidDataContext implements AndroidDataContextApi {
   public static AndroidDataContext makeContext(RuleContext ruleContext) {
     AndroidConfiguration androidConfig =
         ruleContext.getConfiguration().getFragment(AndroidConfiguration.class);
+
+    ImmutableMap<String, String> executionInfo =
+        TargetUtils.getExecutionInfo(ruleContext.getRule(), ruleContext.isAllowTagsPropagation());
 
     return new AndroidDataContext(
         ruleContext,
@@ -90,7 +97,9 @@ public class AndroidDataContext implements AndroidDataContextApi {
         !hasExemption(ruleContext, "allow_proguard_apply_mapping", true),
         !hasExemption(ruleContext, "allow_resource_conflicts", true),
         androidConfig.useDataBindingV2(),
-        androidConfig.useDataBindingAndroidX());
+        androidConfig.useDataBindingAndroidX(),
+        androidConfig.includeProguardLocationReferences(),
+        executionInfo);
   }
 
   private static boolean hasExemption(
@@ -112,7 +121,9 @@ public class AndroidDataContext implements AndroidDataContextApi {
       boolean throwOnProguardApplyMapping,
       boolean throwOnResourceConflict,
       boolean useDataBindingV2,
-      boolean useDataBindingAndroidX) {
+      boolean useDataBindingAndroidX,
+      boolean includeProguardLocationReferences,
+      ImmutableMap<String, String> executionInfo) {
     this.persistentBusyboxToolsEnabled = persistentBusyboxToolsEnabled;
     this.ruleContext = ruleContext;
     this.busybox = busybox;
@@ -125,6 +136,8 @@ public class AndroidDataContext implements AndroidDataContextApi {
     this.throwOnResourceConflict = throwOnResourceConflict;
     this.useDataBindingV2 = useDataBindingV2;
     this.useDataBindingAndroidX = useDataBindingAndroidX;
+    this.includeProguardLocationReferences = includeProguardLocationReferences;
+    this.executionInfo = executionInfo;
   }
 
   public Label getLabel() {
@@ -147,6 +160,10 @@ public class AndroidDataContext implements AndroidDataContextApi {
     return sdk;
   }
 
+  public ImmutableMap<String, String> getExecutionInfo() {
+    return executionInfo;
+  }
+
   /*
    * Convenience methods. These are just slightly cleaner ways of doing common tasks.
    */
@@ -156,9 +173,9 @@ public class AndroidDataContext implements AndroidDataContextApi {
     registerAction(spawnActionBuilder.build(ruleContext));
   }
 
-  /** Registers one or more actions. */
-  public void registerAction(ActionAnalysisMetadata... actions) {
-    ruleContext.registerAction(actions);
+  /** Registers an action. */
+  public void registerAction(ActionAnalysisMetadata action) {
+    ruleContext.registerAction(action);
   }
 
   public Artifact createOutputArtifact(SafeImplicitOutputsFunction function)
@@ -229,6 +246,10 @@ public class AndroidDataContext implements AndroidDataContextApi {
 
   public boolean useDataBindingAndroidX() {
     return useDataBindingAndroidX;
+  }
+
+  public boolean includeProguardLocationReferences() {
+    return includeProguardLocationReferences;
   }
 
   public boolean annotateRFieldsFromTransitiveDeps() {

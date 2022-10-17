@@ -13,7 +13,8 @@
 // limitations under the License.
 package net.starlark.java.eval;
 
-import com.google.common.collect.ImmutableList;
+import static com.google.common.base.Strings.isNullOrEmpty;
+
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
@@ -39,6 +40,7 @@ import net.starlark.java.syntax.Expression;
 import net.starlark.java.syntax.FileOptions;
 import net.starlark.java.syntax.ParserInput;
 import net.starlark.java.syntax.Program;
+import net.starlark.java.syntax.Resolver;
 import net.starlark.java.syntax.StarlarkFile;
 import net.starlark.java.syntax.SyntaxError;
 
@@ -244,7 +246,9 @@ public final class Starlark {
   public static Object[] toArray(Object x) throws EvalException {
     // Specialize Sequence and Dict to avoid allocation and/or indirection.
     if (x instanceof Sequence) {
-      return ((Sequence<?>) x).toArray(new Object[((Sequence) x).size()]);
+      // The returned array type must be exactly Object[],
+      // not a subclass, so calling toArray() is not enough.
+      return ((Sequence<?>) x).toArray(EMPTY);
     } else if (x instanceof Dict) {
       return ((Dict<?, ?>) x).keySet().toArray();
     } else {
@@ -353,6 +357,14 @@ public final class Starlark {
       // Integer is not a legal Starlark value, but it does appear as
       // the return type for many built-in functions.
       return "int";
+
+    } else if (c == void.class) {
+      // Built-in void methods return None to Starlark.
+      return "NoneType";
+
+    } else if (c == boolean.class) {
+      // Built-in function may return boolean.
+      return "bool";
 
     } else {
       String simpleName = c.getSimpleName();
@@ -579,11 +591,12 @@ public final class Starlark {
    *
    * <p>The caller must not subsequently modify or even inspect the two arrays.
    *
-   * <p>If the call throws a StackOverflowError or any instance of RuntimeException (other than
-   * UncheckedEvalException), regardless of whether it originates in a user-defined built-in
-   * function or a bug in the interpreter itself, the exception is wrapped by an
-   * UncheckedEvalException whose message includes the Starlark stack. The original exception may be
-   * retrieved using {@code getCause}.
+   * <p>If the call throws an unchecked throwable, regardless of whether it originates in a
+   * user-defined built-in function or a bug in the interpreter itself, the throwable is wrapped by
+   * {@link UncheckedEvalException} (for {@link RuntimeException}) or {@link UncheckedEvalError}
+   * (for {@link Error}). The {@linkplain Throwable#getStackTrace stack trace} will reflect the
+   * Starlark call stack rather than the Java call stack. The original throwable (and the Java call
+   * stack) may be retrieved using {@link Throwable#getCause}.
    */
   public static Object fastcall(
       StarlarkThread thread, Object fn, Object[] positional, Object[] named)
@@ -604,10 +617,12 @@ public final class Starlark {
     thread.push(callable);
     try {
       return callable.fastcall(thread, positional, named);
-    } catch (UncheckedEvalException ex) {
+    } catch (UncheckedEvalException | UncheckedEvalError ex) {
       throw ex; // already wrapped
-    } catch (RuntimeException | StackOverflowError ex) {
-      throw new UncheckedEvalException(ex, thread.getCallStack());
+    } catch (RuntimeException ex) {
+      throw new UncheckedEvalException(ex, thread);
+    } catch (Error ex) {
+      throw new UncheckedEvalError(ex, thread);
     } catch (EvalException ex) {
       // If this exception was newly thrown, set its stack.
       throw ex.ensureStack(thread);
@@ -617,28 +632,37 @@ public final class Starlark {
   }
 
   /**
-   * An UncheckedEvalException decorates an unchecked exception with its Starlark stack, to help
-   * maintainers locate problematic source expressions. The original exception can be retrieved
-   * using {@code getCause}.
+   * Decorates a {@link RuntimeException} with its Starlark stack, to help maintainers locate
+   * problematic source expressions.
+   *
+   * <p>The original exception can be retrieved using {@link #getCause}.
    */
   public static final class UncheckedEvalException extends RuntimeException {
-    private final ImmutableList<StarlarkThread.CallStackEntry> stack;
 
-    private UncheckedEvalException(
-        Throwable cause, ImmutableList<StarlarkThread.CallStackEntry> stack) {
-      super(cause);
-      this.stack = stack;
+    private UncheckedEvalException(RuntimeException cause, StarlarkThread thread) {
+      super(createUncheckedEvalMessage(cause, thread), cause);
+      thread.fillInStackTrace(this);
     }
+  }
 
-    /** Returns the stack of Starlark calls active at the moment of the error. */
-    public ImmutableList<StarlarkThread.CallStackEntry> getCallStack() {
-      return stack;
-    }
+  /**
+   * Decorates an {@link Error} with its Starlark stack, to help maintainers locate problematic
+   * source expressions.
+   *
+   * <p>The original exception can be retrieved using {@link #getCause}.
+   */
+  public static final class UncheckedEvalError extends Error {
 
-    @Override
-    public String getMessage() {
-      return String.format("%s (Starlark stack: %s)", super.getMessage(), stack);
+    private UncheckedEvalError(Error cause, StarlarkThread thread) {
+      super(createUncheckedEvalMessage(cause, thread), cause);
+      thread.fillInStackTrace(this);
     }
+  }
+
+  private static String createUncheckedEvalMessage(Throwable cause, StarlarkThread thread) {
+    String msg = cause.getClass().getSimpleName() + " thrown during Starlark evaluation";
+    String context = thread.getContextForUncheckedException();
+    return isNullOrEmpty(context) ? msg : msg + " (" + context + ")";
   }
 
   /**
@@ -857,13 +881,31 @@ public final class Starlark {
    */
   public static Object execFileProgram(Program prog, Module module, StarlarkThread thread)
       throws EvalException, InterruptedException {
-    Tuple defaultValues = Tuple.empty();
+    Resolver.Function rfn = prog.getResolvedFunction();
+
+    // A given Module may be passed to execFileProgram multiple times in sequence,
+    // for different compiled Programs. (This happens in the REPL, and in
+    // EvaluationTestCase scenarios. It is not true of the go.starlark.net
+    // implementation, and it complicates things significantly.
+    // It would be nice to stop doing that.)
+    //
+    // Therefore StarlarkFunctions from different Programs (files) but initializing
+    // the same Module need different mappings from the Program's numbering of
+    // globals to the Module's numbering of globals, and to access a global requires
+    // two array lookups.
+    int[] globalIndex = module.getIndicesOfGlobals(rfn.getGlobals());
+
     StarlarkFunction toplevel =
-        new StarlarkFunction(prog.getResolvedFunction(), defaultValues, module);
-    return Starlark.fastcall(thread, toplevel, NOARGS, NOARGS);
+        new StarlarkFunction(
+            rfn,
+            module,
+            globalIndex,
+            /*defaultValues=*/ Tuple.empty(),
+            /*freevars=*/ Tuple.empty());
+    return Starlark.fastcall(thread, toplevel, EMPTY, EMPTY);
   }
 
-  private static final Object[] NOARGS = {};
+  private static final Object[] EMPTY = {};
 
   /**
    * Parses the input as an expression, resolves it in the specified module environment, compiles
@@ -877,7 +919,7 @@ public final class Starlark {
       ParserInput input, FileOptions options, Module module, StarlarkThread thread)
       throws SyntaxError.Exception, EvalException, InterruptedException {
     StarlarkFunction fn = newExprFunction(input, options, module);
-    return Starlark.fastcall(thread, fn, NOARGS, NOARGS);
+    return Starlark.fastcall(thread, fn, EMPTY, EMPTY);
   }
 
   /** Variant of {@link #eval} that creates a module for the given predeclared environment. */
@@ -899,12 +941,14 @@ public final class Starlark {
    *
    * @throws SyntaxError.Exception if there were scanner, parser, or resolver errors.
    */
-  public static StarlarkFunction newExprFunction(
+  private static StarlarkFunction newExprFunction(
       ParserInput input, FileOptions options, Module module) throws SyntaxError.Exception {
-    Expression expr = Expression.parse(input, options);
+    Expression expr = Expression.parse(input);
     Program prog = Program.compileExpr(expr, module, options);
-    Tuple defaultValues = Tuple.empty();
-    return new StarlarkFunction(prog.getResolvedFunction(), defaultValues, module);
+    Resolver.Function rfn = prog.getResolvedFunction();
+    int[] globalIndex = module.getIndicesOfGlobals(rfn.getGlobals()); // see execFileProgram
+    return new StarlarkFunction(
+        rfn, module, globalIndex, /*defaultValues=*/ Tuple.empty(), /*freevars=*/ Tuple.empty());
   }
 
   /**

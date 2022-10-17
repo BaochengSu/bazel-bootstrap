@@ -27,12 +27,12 @@ import build.bazel.remote.execution.v2.ExecutionCapabilities;
 import build.bazel.remote.execution.v2.GetCapabilitiesRequest;
 import build.bazel.remote.execution.v2.ServerCapabilities;
 import com.google.auth.Credentials;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.eventbus.EventBus;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.ServerDirectories;
-import com.google.devtools.build.lib.analysis.config.BuildOptions;
 import com.google.devtools.build.lib.analysis.config.CoreOptions;
 import com.google.devtools.build.lib.authandtls.AuthAndTLSOptions;
 import com.google.devtools.build.lib.authandtls.BasicHttpAuthenticationEncoder;
@@ -41,7 +41,6 @@ import com.google.devtools.build.lib.exec.BinTools;
 import com.google.devtools.build.lib.exec.ExecutionOptions;
 import com.google.devtools.build.lib.pkgcache.PackageOptions;
 import com.google.devtools.build.lib.remote.options.RemoteOptions;
-import com.google.devtools.build.lib.runtime.BlazeModule;
 import com.google.devtools.build.lib.runtime.BlazeRuntime;
 import com.google.devtools.build.lib.runtime.BlazeServerStartupOptions;
 import com.google.devtools.build.lib.runtime.BlazeWorkspace;
@@ -76,7 +75,7 @@ import org.junit.runners.JUnit4;
 
 /** Tests for {@link RemoteModule}. */
 @RunWith(JUnit4.class)
-public class RemoteModuleTest {
+public final class RemoteModuleTest {
 
   private static CommandEnvironment createTestCommandEnvironment(RemoteOptions remoteOptions)
       throws IOException, AbruptExitException {
@@ -109,14 +108,6 @@ public class RemoteModuleTest {
             .setServerDirectories(serverDirectories)
             .setStartupOptionsProvider(
                 OptionsParser.builder().optionsClasses(BlazeServerStartupOptions.class).build())
-            .addBlazeModule(
-                new BlazeModule() {
-                  @Override
-                  public BuildOptions getDefaultBuildOptions(BlazeRuntime runtime) {
-                    return BuildOptions.getDefaultBuildOptionsForFragments(
-                        runtime.getRuleClassProvider().getConfigurationOptions());
-                  }
-                })
             .build();
 
     BlazeDirectories directories =
@@ -127,7 +118,8 @@ public class RemoteModuleTest {
             productName);
     BlazeWorkspace workspace = runtime.initWorkspace(directories, BinTools.empty(directories));
     Command command = BuildCommand.class.getAnnotation(Command.class);
-    return workspace.initCommand(command, options, new ArrayList<>(), 0, 0);
+    return workspace.initCommand(
+        command, options, new ArrayList<>(), 0, 0, ImmutableList.of(), s -> {});
   }
 
   static class CapabilitiesImpl extends CapabilitiesImplBase {
@@ -147,7 +139,7 @@ public class RemoteModuleTest {
       responseObserver.onCompleted();
     }
 
-    public int getRequestCount() {
+    int getRequestCount() {
       return requestCount;
     }
   }
@@ -175,7 +167,7 @@ public class RemoteModuleTest {
                     .setDigestFunction(Value.SHA256)
                     .build())
             .setCacheCapabilities(
-                CacheCapabilities.newBuilder().addDigestFunction(Value.SHA256).build())
+                CacheCapabilities.newBuilder().addDigestFunctions(Value.SHA256).build())
             .build();
     CapabilitiesImpl executionServerCapabilitiesImpl = new CapabilitiesImpl(caps);
     String executionServerName = "execution-server";
@@ -211,7 +203,7 @@ public class RemoteModuleTest {
             .setHighApiVersion(ApiVersion.current.toSemVer())
             .setCacheCapabilities(
                 CacheCapabilities.newBuilder()
-                    .addDigestFunction(Value.SHA256)
+                    .addDigestFunctions(Value.SHA256)
                     .setActionCacheUpdateCapabilities(
                         ActionCacheUpdateCapabilities.newBuilder().setUpdateEnabled(true).build())
                     .build())
@@ -254,7 +246,7 @@ public class RemoteModuleTest {
                     .setDigestFunction(Value.SHA256)
                     .build())
             .setCacheCapabilities(
-                CacheCapabilities.newBuilder().addDigestFunction(Value.SHA256).build())
+                CacheCapabilities.newBuilder().addDigestFunctions(Value.SHA256).build())
             .build();
     CapabilitiesImpl executionServerCapabilitiesImpl = new CapabilitiesImpl(caps);
     String executionServerName = "execution-server";
@@ -314,7 +306,7 @@ public class RemoteModuleTest {
             .setLowApiVersion(ApiVersion.current.toSemVer())
             .setHighApiVersion(ApiVersion.current.toSemVer())
             .setCacheCapabilities(
-                CacheCapabilities.newBuilder().addDigestFunction(Value.SHA256).build())
+                CacheCapabilities.newBuilder().addDigestFunctions(Value.SHA256).build())
             .build();
     CapabilitiesImpl cacheServerCapabilitiesImpl = new CapabilitiesImpl(cacheOnlyCaps);
     String cacheServerName = "cache-server";
@@ -371,11 +363,7 @@ public class RemoteModuleTest {
 
       CommandEnvironment env = createTestCommandEnvironment(remoteOptions);
 
-      assertThrows(
-          AbruptExitException.class,
-          () -> {
-            remoteModule.beforeCommand(env);
-          });
+      assertThrows(AbruptExitException.class, () -> remoteModule.beforeCommand(env));
     } finally {
       cacheServer.shutdownNow();
       cacheServer.awaitTermination();
@@ -408,11 +396,7 @@ public class RemoteModuleTest {
 
       CommandEnvironment env = createTestCommandEnvironment(remoteOptions);
 
-      assertThrows(
-          AbruptExitException.class,
-          () -> {
-            remoteModule.beforeCommand(env);
-          });
+      assertThrows(AbruptExitException.class, () -> remoteModule.beforeCommand(env));
     } finally {
       cacheServer.shutdownNow();
       cacheServer.awaitTermination();

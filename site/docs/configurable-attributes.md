@@ -1,13 +1,14 @@
 ---
 layout: documentation
 title: Configurable build attributes
+category: getting-started
 ---
 
-# Configurable build attributes
+# Configurable Build Attributes
 
 **_Configurable attributes_**, commonly known as [`select()`](
 be/functions.html#select), is a Bazel feature that lets users toggle the values
-of BUILD rule attributes at the command line.
+of build rule attributes at the command line.
 
 This can be used, for example, for a multiplatform library that automatically
 chooses the appropriate implementation for the architecture, or for a
@@ -92,7 +93,7 @@ Certain attributes change the build parameters for all transitive dependencies
 under a target. For example, `genrule`'s `tools` changes `--cpu` to the CPU of
 the machine running Bazel (which, thanks to cross-compilation, may be different
 than the CPU the target is built for). This is known as a
-[configuration transition](https://docs.bazel.build/versions/master/glossary.html#transition).
+[configuration transition](https://docs.bazel.build/versions/main/glossary.html#transition).
 
 Given
 
@@ -114,6 +115,7 @@ genrule(
     srcs = select({
         ":arm_cpu": ["g_arm.src"],
         ":x86_cpu": ["g_x86.src"],
+    }),
     tools = select({
         ":arm_cpu": [":tool1"],
         ":x86_cpu": [":tool2"],
@@ -210,7 +212,7 @@ config_setting(
 )
 ```
 
-Behavior is the same as for [built-in flags](#built-in-flags). See [here](https://github.com/bazelbuild/examples/tree/master/rules/starlark_configurations/select_on_build_setting)
+Behavior is the same as for [built-in flags](#built-in-flags). See [here](https://github.com/bazelbuild/examples/tree/HEAD/rules/starlark_configurations/select_on_build_setting)
 for a working example.
 
 [`--define`](command-line-reference.html#flag--define)
@@ -330,7 +332,7 @@ The platform can be specified on the command line. It activates the
 allowing those `config_setting`s to match in `select()` expressions.
 
 For example, in order to set the `srcs` attribute of `my_rocks` to `calcite.sh`,
-we can simply run
+you can simply run
 
 ```sh
 bazel build //my_app:my_rocks --platforms=//myapp:marble_platform
@@ -453,9 +455,9 @@ For more direct support, use one of the following:
 ### <a name="selects-with-or"></a>`selects.with_or`
 
 The
-[with_or](https://g3doc.corp.google.com/third_party/bazel_skylib/g3doc/selects_doc.md#selectswith-or)
+[with_or](https://github.com/bazelbuild/bazel-skylib/blob/main/docs/selects_doc.md#selectswith_or)
 macro in [Skylib](https://github.com/bazelbuild/bazel-skylib)'s
-[`selects`](https://g3doc.corp.google.com/third_party/bazel_skylib/g3doc/selects_doc.md)
+[`selects`](https://github.com/bazelbuild/bazel-skylib/blob/main/docs/selects_doc.md)
 module supports `OR`ing conditions directly inside a `select`:
 
 ```python
@@ -477,9 +479,9 @@ sh_binary(
 
 
 The
-[config_setting_group](https://github.com/bazelbuild/bazel-skylib/blob/master/docs/selects_doc.md#selectsconfig_setting_group)
+[config_setting_group](https://github.com/bazelbuild/bazel-skylib/blob/main/docs/selects_doc.md#selectsconfig_setting_group)
 macro in [Skylib](https://github.com/bazelbuild/bazel-skylib)'s
-[`selects`](https://github.com/bazelbuild/bazel-skylib/blob/master/docs/selects_doc.md)
+[`selects`](https://github.com/bazelbuild/bazel-skylib/blob/main/docs/selects_doc.md)
 module supports `OR`ing multiple `config_setting`s:
 
 ```python
@@ -520,7 +522,7 @@ It's an error for multiple conditions to match unless one is an unambiguous
 
 If you need a `select` branch to match when multiple conditions match, use the
 [Skylib](https://github.com/bazelbuild/bazel-skylib) macro
-[config_setting_group](https://github.com/bazelbuild/bazel-skylib/blob/master/docs/selects_doc.md#selectsconfig_setting_group):
+[config_setting_group](https://github.com/bazelbuild/bazel-skylib/blob/main/docs/selects_doc.md#selectsconfig_setting_group):
 
 ```python
 config_setting(
@@ -632,13 +634,13 @@ this.
 
 ## <a name="query"></a>Bazel query and cquery
 Bazel [`query`](query-how-to.html) operates over Bazel's
-[loading phase](https://docs.bazel.build/versions/master/glossary.html#loading-phase).
+[loading phase](https://docs.bazel.build/versions/main/glossary.html#loading-phase).
 This means it doesn't know what command line flags a target uses since those
 flags aren't evaluated until later in the build (in the
-[analysis phase](https://docs.bazel.build/versions/master/glossary.html#analysis-phase)).
+[analysis phase](https://docs.bazel.build/versions/main/glossary.html#analysis-phase)).
 So it can't determine which `select()` branches are chosen.
 
-Bazel [`cquery`](cquery.html) opeates after Bazel's analysis phase, so it has
+Bazel [`cquery`](cquery.html) operates after Bazel's analysis phase, so it has
 all this information and can accurately resolve `select()`s.
 
 Consider:
@@ -673,7 +675,7 @@ config_setting(
 )
 ```
 
-`query` overapproximtes `:my_lib`'s dependencies:
+`query` overapproximates `:my_lib`'s dependencies:
 
 ```sh
 $ bazel query 'deps(//myapp:my_lib)'
@@ -771,7 +773,7 @@ type 'select' has no method upper().
 ERROR: error loading package 'myapp': Package 'myapp' contains errors.
 ```
 
-Building succeeds when we comment out `sad_macro`:
+Building succeeds when you comment out `sad_macro`:
 
 ```sh
 # Comment out sad_macro so it doesn't mess up the build.

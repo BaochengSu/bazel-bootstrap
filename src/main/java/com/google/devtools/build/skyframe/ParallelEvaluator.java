@@ -40,7 +40,7 @@ public class ParallelEvaluator extends AbstractExceptionalParallelEvaluator<Runt
   public ParallelEvaluator(
       ProcessableGraph graph,
       Version graphVersion,
-      ImmutableMap<SkyFunctionName, ? extends SkyFunction> skyFunctions,
+      ImmutableMap<SkyFunctionName, SkyFunction> skyFunctions,
       final ExtendedEventHandler reporter,
       EmittedEventState emittedEventState,
       EventFilter storedEventFilter,
@@ -51,6 +51,40 @@ public class ParallelEvaluator extends AbstractExceptionalParallelEvaluator<Runt
       Supplier<ExecutorService> executorService,
       CycleDetector cycleDetector,
       EvaluationVersionBehavior evaluationVersionBehavior) {
+    this(
+        graph,
+        graphVersion,
+        skyFunctions,
+        reporter,
+        emittedEventState,
+        storedEventFilter,
+        errorInfoManager,
+        keepGoing,
+        progressReceiver,
+        graphInconsistencyReceiver,
+        executorService,
+        cycleDetector,
+        evaluationVersionBehavior,
+        /*cpuHeavySkyKeysThreadPoolSize=*/ 0,
+        /*executionJobsThreadPoolSize=*/ 0);
+  }
+
+  public ParallelEvaluator(
+      ProcessableGraph graph,
+      Version graphVersion,
+      ImmutableMap<SkyFunctionName, SkyFunction> skyFunctions,
+      final ExtendedEventHandler reporter,
+      EmittedEventState emittedEventState,
+      EventFilter storedEventFilter,
+      ErrorInfoManager errorInfoManager,
+      boolean keepGoing,
+      DirtyTrackingProgressReceiver progressReceiver,
+      GraphInconsistencyReceiver graphInconsistencyReceiver,
+      Supplier<ExecutorService> executorService,
+      CycleDetector cycleDetector,
+      EvaluationVersionBehavior evaluationVersionBehavior,
+      int cpuHeavySkyKeysThreadPoolSize,
+      int executionJobsThreadPoolSize) {
     super(
         graph,
         graphVersion,
@@ -64,7 +98,9 @@ public class ParallelEvaluator extends AbstractExceptionalParallelEvaluator<Runt
         graphInconsistencyReceiver,
         executorService,
         cycleDetector,
-        evaluationVersionBehavior);
+        evaluationVersionBehavior,
+        cpuHeavySkyKeysThreadPoolSize,
+        executionJobsThreadPoolSize);
   }
 
   /**

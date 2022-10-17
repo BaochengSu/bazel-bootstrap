@@ -102,6 +102,16 @@ public final class RemoteOptions extends OptionsBase {
   public PathFragment remoteCaptureCorruptedOutputs;
 
   @Option(
+      name = "experimental_remote_cache_async",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.REMOTE,
+      effectTags = {OptionEffectTag.UNKNOWN},
+      help =
+          "If true, remote cache I/O will happen in the background instead of taking place as the"
+              + " part of a spawn.")
+  public boolean remoteCacheAsync;
+
+  @Option(
       name = "remote_cache",
       oldName = "remote_http_cache",
       defaultValue = "null",
@@ -111,7 +121,7 @@ public final class RemoteOptions extends OptionsBase {
           "A URI of a caching endpoint. The supported schemas are http, https, grpc, grpcs "
               + "(grpc with TLS enabled) and unix (local UNIX sockets). If no schema is provided "
               + "Bazel will default to grpcs. Specify grpc://, http:// or unix: schema to disable "
-              + "TLS. See https://docs.bazel.build/versions/master/remote-caching.html")
+              + "TLS. See https://docs.bazel.build/versions/main/remote-caching.html")
   public String remoteCache;
 
   @Option(
@@ -121,8 +131,8 @@ public final class RemoteOptions extends OptionsBase {
       effectTags = {OptionEffectTag.UNKNOWN},
       help =
           "A Remote Asset API endpoint URI, to be used as a remote download proxy. The supported"
-              + " schemas are grpc, grpcs (grpc with TLS enabled) and unix (local UNIX sockets)."
-              + " If no schema is provided Bazel will default to grpcs. See: "
+              + " schemas are grpc, grpcs (grpc with TLS enabled) and unix (local UNIX sockets). If"
+              + " no schema is provided Bazel will default to grpcs. See: "
               + "https://github.com/bazelbuild/remote-apis/blob/master/build/bazel/remote/asset/v1/remote_asset.proto")
   public String remoteDownloader;
 
@@ -260,15 +270,22 @@ public final class RemoteOptions extends OptionsBase {
   public boolean remoteUploadLocalResults;
 
   @Option(
+      name = "incompatible_remote_build_event_upload_respect_no_cache",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.REMOTE,
+      effectTags = {OptionEffectTag.UNKNOWN},
+      help =
+          "If set to true, outputs referenced by BEP are not uploaded to remote cache if the"
+              + " generating action cannot be cached remotely.")
+  public boolean incompatibleRemoteBuildEventUploadRespectNoCache;
+
+  @Option(
       name = "incompatible_remote_results_ignore_disk",
       defaultValue = "false",
       category = "remote",
       documentationCategory = OptionDocumentationCategory.REMOTE,
       effectTags = {OptionEffectTag.UNKNOWN},
-      metadataTags = {
-        OptionMetadataTag.INCOMPATIBLE_CHANGE,
-        OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
-      },
+      metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
       help =
           "If set to true, --noremote_upload_local_results and --noremote_accept_cached will not"
               + " apply to the disk cache. If a combined cache is used:\n"
@@ -276,6 +293,7 @@ public final class RemoteOptions extends OptionsBase {
               + " cache, but not uploaded to the remote cache.\n"
               + "\t--noremote_accept_cached will result in Bazel checking for results in the disk"
               + " cache, but not in the remote cache.\n"
+              + "\tno-remote-exec actions can hit the disk cache.\n"
               + "See #8216 for details.")
   public boolean incompatibleRemoteResultsIgnoreDisk;
 
@@ -284,10 +302,7 @@ public final class RemoteOptions extends OptionsBase {
       defaultValue = "false",
       documentationCategory = OptionDocumentationCategory.REMOTE,
       effectTags = {OptionEffectTag.UNKNOWN},
-      metadataTags = {
-        OptionMetadataTag.INCOMPATIBLE_CHANGE,
-        OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
-      },
+      metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
       help =
           "If set to true, output paths are relative to input root instead of working directory.")
   public boolean incompatibleRemoteOutputPathsRelativeToInputRoot;
@@ -355,16 +370,21 @@ public final class RemoteOptions extends OptionsBase {
       category = "remote",
       documentationCategory = OptionDocumentationCategory.EXECUTION_STRATEGY,
       effectTags = {OptionEffectTag.EXECUTION},
-      metadataTags = {
-        OptionMetadataTag.INCOMPATIBLE_CHANGE,
-        OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
-      },
+      metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
       help =
           "If set to true, Bazel will represent symlinks in action outputs "
               + "in the remote caching/execution protocol as such. The "
               + "current behavior is for remote caches/executors to follow "
               + "symlinks and represent them as files. See #6631 for details.")
   public boolean incompatibleRemoteSymlinks;
+
+  @Option(
+      name = "experimental_remote_cache_compression",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.REMOTE,
+      effectTags = {OptionEffectTag.UNKNOWN},
+      help = "If enabled, compress/decompress cache blobs with zstd.")
+  public boolean cacheCompression;
 
   @Option(
       name = "build_event_upload_max_threads",
@@ -508,6 +528,29 @@ public final class RemoteOptions extends OptionsBase {
   public boolean remoteVerifyDownloads;
 
   @Option(
+      name = "experimental_remote_merkle_tree_cache",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.REMOTE,
+      effectTags = {OptionEffectTag.UNKNOWN},
+      help =
+          "If set to true, Merkle tree calculations will be memoized to improve the remote cache "
+              + "hit checking speed. The memory foot print of the cache is controlled by "
+              + "--experimental_remote_merkle_tree_cache_size.")
+  public boolean remoteMerkleTreeCache;
+
+  @Option(
+      name = "experimental_remote_merkle_tree_cache_size",
+      defaultValue = "0",
+      documentationCategory = OptionDocumentationCategory.REMOTE,
+      effectTags = {OptionEffectTag.UNKNOWN},
+      help =
+          "The number of Merkle trees to memoize to improve the remote cache hit checking speed. "
+              + "Even though the cache is automatically pruned according to Java's handling of "
+              + "soft references, out-of-memory errors can occur if set too high. If set to 0 "
+              + "(default), the cache size is unlimited.")
+  public long remoteMerkleTreeCacheSize;
+
+  @Option(
       name = "remote_download_symlink_template",
       defaultValue = "",
       category = "remote",
@@ -528,10 +571,14 @@ public final class RemoteOptions extends OptionsBase {
   /** The maximum size of an outbound message sent via a gRPC channel. */
   public int maxOutboundMessageSize = 1024 * 1024;
 
-  public boolean isRemoteEnabled() {
-    return !Strings.isNullOrEmpty(remoteCache) || isRemoteExecutionEnabled();
+  /** Returns {@code true} if remote cache or disk cache is enabled. */
+  public boolean isRemoteCacheEnabled() {
+    return !Strings.isNullOrEmpty(remoteCache)
+        || !(diskCache == null || diskCache.isEmpty())
+        || isRemoteExecutionEnabled();
   }
 
+  /** Returns {@code true} if remote execution is enabled. */
   public boolean isRemoteExecutionEnabled() {
     return !Strings.isNullOrEmpty(remoteExecutor);
   }

@@ -164,6 +164,17 @@ public class AppleCommandLineOptions extends FragmentOptions {
   public DottedVersion.Option macosMinimumOs;
 
   @Option(
+      name = "host_macos_minimum_os",
+      defaultValue = "null",
+      converter = DottedVersionConverter.class,
+      documentationCategory = OptionDocumentationCategory.OUTPUT_PARAMETERS,
+      effectTags = {OptionEffectTag.LOSES_INCREMENTAL_STATE},
+      help =
+          "Minimum compatible macOS version for host targets. "
+              + "If unspecified, uses 'macos_sdk_version'.")
+  public DottedVersion.Option hostMacosMinimumOs;
+
+  @Option(
       name = "experimental_prefer_mutual_xcode",
       defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.TOOLCHAIN,
@@ -345,6 +356,21 @@ public class AppleCommandLineOptions extends FragmentOptions {
   )
   public Label xcodeVersionConfig;
 
+  @Option(
+      name = "experimental_include_xcode_execution_requirements",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.TOOLCHAIN,
+      effectTags = {
+        OptionEffectTag.LOSES_INCREMENTAL_STATE,
+        OptionEffectTag.LOADING_AND_ANALYSIS,
+        OptionEffectTag.EXECUTION
+      },
+      help =
+          "If set, add a \"requires-xcode:{version}\" execution requirement to every Xcode action."
+              + "  If the xcode version has a hyphenated label,  also add a"
+              + " \"requires-xcode-label:{version_label}\" execution requirement.")
+  public boolean includeXcodeExecutionRequirements;
+
   /**
    * The default label of the build-wide {@code xcode_config} configuration rule. This can be
    * changed from the default using the {@code xcode_version_config} build flag.
@@ -368,6 +394,17 @@ public class AppleCommandLineOptions extends FragmentOptions {
               + " platforms. The mode must be 'none', 'embedded_markers', or 'embedded'. This"
               + " option may be provided multiple times.")
   public List<Map.Entry<ApplePlatform.PlatformType, AppleBitcodeMode>> appleBitcodeMode;
+
+  // TODO(b/180572694): Modify the Apple split transition to split the --apple_platforms out into a
+  // single --platform during the transition instead of splitting on the --*_cpus flags.
+  @Option(
+      name = "apple_platforms",
+      converter = CommaSeparatedOptionListConverter.class,
+      defaultValue = "null",
+      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+      effectTags = {OptionEffectTag.LOSES_INCREMENTAL_STATE, OptionEffectTag.LOADING_AND_ANALYSIS},
+      help = "Comma-separated list of platforms to use when building Apple binaries.")
+  public List<String> applePlatforms;
 
   /** Returns whether the minimum OS version is explicitly set for the current platform. */
   public DottedVersion getMinimumOsVersion() {
@@ -462,12 +499,17 @@ public class AppleCommandLineOptions extends FragmentOptions {
     host.watchOsSdkVersion = watchOsSdkVersion;
     host.tvOsSdkVersion = tvOsSdkVersion;
     host.macOsSdkVersion = macOsSdkVersion;
-    host.appleBitcodeMode = appleBitcodeMode;
+    host.macosMinimumOs = hostMacosMinimumOs;
     // The host apple platform type will always be MACOS, as no other apple platform type can
     // currently execute build actions. If that were the case, a host_apple_platform_type flag might
     // be needed.
     host.applePlatformType = PlatformType.MACOS;
     host.configurationDistinguisher = ConfigurationDistinguisher.UNKNOWN;
+    // Preseve Xcode selection preferences so that the same Xcode version is used throughout the
+    // build.
+    host.preferMutualXcode = preferMutualXcode;
+    host.includeXcodeExecutionRequirements = includeXcodeExecutionRequirements;
+    host.appleCrosstoolTop = appleCrosstoolTop;
 
     return host;
   }

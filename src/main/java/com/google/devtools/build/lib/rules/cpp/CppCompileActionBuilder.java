@@ -77,8 +77,10 @@ public class CppCompileActionBuilder {
   @Nullable private String actionName;
   private ImmutableList<Artifact> builtinIncludeFiles;
   private NestedSet<Artifact> inputsForInvalidation = NestedSetBuilder.emptySet(Order.STABLE_ORDER);
-  private Iterable<Artifact> additionalPrunableHeaders = ImmutableList.of();
+  private NestedSet<Artifact> additionalPrunableHeaders =
+      NestedSetBuilder.emptySet(Order.STABLE_ORDER);
   private ImmutableList<PathFragment> builtinIncludeDirectories;
+  private ImmutableList<Artifact> additionalOutputs = ImmutableList.of();
   // New fields need to be added to the copy constructor.
 
   /** Creates a builder from a rule and configuration. */
@@ -135,10 +137,16 @@ public class CppCompileActionBuilder {
     this.actionName = other.actionName;
     this.grepIncludes = other.grepIncludes;
     this.builtinIncludeDirectories = other.builtinIncludeDirectories;
+    this.additionalOutputs = ImmutableList.copyOf(other.additionalOutputs);
   }
 
   public CppCompileActionBuilder setSourceFile(Artifact sourceFile) {
     this.sourceFile = sourceFile;
+    return this;
+  }
+
+  public CppCompileActionBuilder setAdditionalOutputs(ImmutableList<Artifact> additionalOutputs) {
+    this.additionalOutputs = additionalOutputs;
     return this;
   }
 
@@ -163,14 +171,12 @@ public class CppCompileActionBuilder {
       return CppActionNames.CPP_MODULE_COMPILE;
     } else if (CppFileTypes.CPP_HEADER.matches(sourcePath)) {
       // TODO(bazel-team): Handle C headers that probably don't work in C++ mode.
-      if (!cppConfiguration.getParseHeadersVerifiesModules()
-          && featureConfiguration.isEnabled(CppRuleClasses.PARSE_HEADERS)) {
+      if (featureConfiguration.isEnabled(CppRuleClasses.PARSE_HEADERS)) {
         return CppActionNames.CPP_HEADER_PARSING;
-      } else {
-        // CcCommon.collectCAndCppSources() ensures we do not add headers to
-        // the compilation artifacts unless 'parse_headers' is set.
-        throw new IllegalStateException();
       }
+      // CcCommon.collectCAndCppSources() ensures we do not add headers to
+      // the compilation artifacts unless 'parse_headers' is set.
+      throw new IllegalStateException();
     } else if (CppFileTypes.C_SOURCE.matches(sourcePath)) {
       return CppActionNames.C_COMPILE;
     } else if (CppFileTypes.CPP_SOURCE.matches(sourcePath)) {
@@ -259,7 +265,7 @@ public class CppCompileActionBuilder {
     }
 
     NestedSet<Artifact> realMandatoryInputs = buildMandatoryInputs();
-    NestedSet<Artifact> prunableHeaders = buildPrunableHeaders();
+    NestedSet<Artifact> prunableHeaders = additionalPrunableHeaders;
 
     configuration.modifyExecutionInfo(
         executionInfo,
@@ -298,7 +304,8 @@ public class CppCompileActionBuilder {
             getActionName(),
             cppSemantics,
             builtinIncludeDirectories,
-            grepIncludes);
+            grepIncludes,
+            additionalOutputs);
     return action;
   }
 
@@ -328,13 +335,13 @@ public class CppCompileActionBuilder {
     }
     if (!shouldScanIncludes && dotdFile == null) {
       realMandatoryInputsBuilder.addTransitive(ccCompilationContext.getDeclaredIncludeSrcs());
-      realMandatoryInputsBuilder.addAll(additionalPrunableHeaders);
+      realMandatoryInputsBuilder.addTransitive(additionalPrunableHeaders);
     }
     return realMandatoryInputsBuilder.build();
   }
 
-  NestedSet<Artifact> buildPrunableHeaders() {
-    return NestedSetBuilder.<Artifact>stableOrder().addAll(additionalPrunableHeaders).build();
+  NestedSet<Artifact> getPrunableHeaders() {
+    return additionalPrunableHeaders;
   }
 
   NestedSet<Artifact> buildInputsForInvalidation() {
@@ -573,7 +580,7 @@ public class CppCompileActionBuilder {
   }
 
   public CppCompileActionBuilder setAdditionalPrunableHeaders(
-      Iterable<Artifact> additionalPrunableHeaders) {
+      NestedSet<Artifact> additionalPrunableHeaders) {
     this.additionalPrunableHeaders = Preconditions.checkNotNull(additionalPrunableHeaders);
     return this;
   }

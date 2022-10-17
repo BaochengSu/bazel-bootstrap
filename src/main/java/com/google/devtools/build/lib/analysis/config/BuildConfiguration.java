@@ -16,38 +16,32 @@ package com.google.devtools.build.lib.analysis.config;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Suppliers;
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.ClassToInstanceMap;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Interner;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.MutableClassToInstanceMap;
 import com.google.devtools.build.lib.actions.ActionEnvironment;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.BuildConfigurationEvent;
 import com.google.devtools.build.lib.actions.CommandLines.CommandLineLimits;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
+import com.google.devtools.build.lib.analysis.PlatformOptions;
 import com.google.devtools.build.lib.analysis.config.OutputDirectories.InvalidMnemonicException;
+import com.google.devtools.build.lib.analysis.starlark.FunctionTransitionUtil;
 import com.google.devtools.build.lib.buildeventstream.BuildEventIdUtil;
 import com.google.devtools.build.lib.buildeventstream.BuildEventStreamProtos;
 import com.google.devtools.build.lib.buildeventstream.BuildEventStreamProtos.BuildEventId;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.concurrent.BlazeInterners;
-import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
-import com.google.devtools.build.lib.packages.RuleClassProvider;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.starlarkbuildapi.BuildConfigurationApi;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.util.RegexFilter;
 import com.google.devtools.build.lib.vfs.PathFragment;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -74,19 +68,12 @@ import net.starlark.java.annot.StarlarkBuiltin;
  *
  * <p>Instances of BuildConfiguration are canonical:
  *
- * <pre>c1.equals(c2) <=> c1==c2.</pre>
+ * <pre>{@code c1.equals(c2) <=> c1==c2.}</pre>
  */
 // TODO(janakr): If overhead of fragments class names is too high, add constructor that just takes
 // fragments and gets names from them.
 @AutoCodec
 public class BuildConfiguration implements BuildConfigurationApi {
-  /**
-   * Sorts fragments by class name. This produces a stable order which, e.g., facilitates consistent
-   * output from buildMnemonic.
-   */
-  @AutoCodec
-  public static final Comparator<Class<? extends Fragment>> lexicalFragmentSorter =
-      Comparator.comparing(Class::getName);
 
   private static final Interner<ImmutableSortedMap<Class<? extends Fragment>, Fragment>>
       fragmentsInterner = BlazeInterners.newWeakInterner();
@@ -107,7 +94,7 @@ public class BuildConfiguration implements BuildConfigurationApi {
   private final ImmutableMap<String, Class<? extends Fragment>> starlarkVisibleFragments;
   private final RepositoryName mainRepositoryName;
   private final ImmutableSet<String> reservedActionMnemonics;
-  private CommandLineLimits commandLineLimits;
+  private final CommandLineLimits commandLineLimits;
 
   /**
    * The global "make variables" such as "$(TARGET_CPU)"; these get applied to all rules analyzed in
@@ -119,12 +106,18 @@ public class BuildConfiguration implements BuildConfigurationApi {
   private final ActionEnvironment testEnv;
 
   private final BuildOptions buildOptions;
-  private final BuildOptions.OptionsDiffForReconstruction buildOptionsDiff;
   private final CoreOptions options;
+
+  /**
+   * If non-empty, this is appended to output directories as ST-[transitionDirectoryNameFragment].
+   * The value is a hash of BuildOptions that have been affected by a Starlark transition.
+   *
+   * <p>See b/203470434 or #14023 for more information and planned behavior changes.
+   */
+  private final String transitionDirectoryNameFragment;
 
   private final ImmutableMap<String, String> commandLineBuildVariables;
 
-  private final String checksum;
   private final int hashCode; // We can precompute the hash code as all its inputs are immutable.
 
   /** Data for introspecting the options used by this configuration. */
@@ -133,28 +126,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
   private final Supplier<BuildConfigurationEvent> buildEventSupplier;
 
   private final boolean siblingRepositoryLayout;
-
-  /**
-   * Returns true if this configuration is semantically equal to the other, with the possible
-   * exception that the other has fewer fragments.
-   *
-   * <p>This is useful for trimming: as the same configuration gets "trimmed" while going down a
-   * dependency chain, it's still the same configuration but loses some of its fragments. So we need
-   * a more nuanced concept of "equality" than simple reference equality.
-   */
-  // TODO(b/121048710): make this reflect starlark options
-  public boolean equalsOrIsSupersetOf(BuildConfiguration other) {
-    return this.equals(other)
-        || (other != null
-            // TODO(gregce): add back in output root checking. This requires a better approach to
-            // configuration-safe output paths. If the parent config has a fragment the child config
-            // doesn't, it may inject $(FOO) into the output roots. So the child bindir might be
-            // "bazel-out/arm-linux-fastbuild/bin" while the parent bindir is
-            // "bazel-out/android-arm-linux-fastbuild/bin". That's pretty awkward to check here.
-            //      && outputRoots.equals(other.outputRoots)
-            && fragments.values().containsAll(other.fragments.values())
-            && buildOptions.getNativeOptions().containsAll(other.buildOptions.getNativeOptions()));
-  }
 
   /**
    * Returns {@code true} if this configuration is semantically equal to the other, including
@@ -182,11 +153,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
     return hashCode;
   }
 
-  /** Returns map of all the fragments for this configuration. */
-  public ImmutableMap<Class<? extends Fragment>, Fragment> getFragmentsMap() {
-    return fragments;
-  }
-
   /**
    * Validates the options for this BuildConfiguration. Issues warnings for the use of deprecated
    * options, and warnings or errors for any option settings that conflict.
@@ -194,12 +160,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
   public void reportInvalidOptions(EventHandler reporter) {
     for (Fragment fragment : fragments.values()) {
       fragment.reportInvalidOptions(reporter, this.buildOptions);
-    }
-
-    if (options.outputDirectoryName != null) {
-      reporter.handle(
-          Event.error(
-              "The internal '--output directory name' option cannot be used on the command line"));
     }
   }
 
@@ -217,55 +177,38 @@ public class BuildConfiguration implements BuildConfigurationApi {
     return ActionEnvironment.split(testEnv);
   }
 
-  private static ImmutableSortedMap<Class<? extends Fragment>, Fragment> makeFragmentsMap(
-      Map<Class<? extends Fragment>, Fragment> fragmentsMap) {
-    return fragmentsInterner.intern(ImmutableSortedMap.copyOf(fragmentsMap, lexicalFragmentSorter));
-  }
-
-  /** Constructs a new BuildConfiguration instance. */
   public BuildConfiguration(
       BlazeDirectories directories,
-      Map<Class<? extends Fragment>, Fragment> fragmentsMap,
+      ImmutableMap<Class<? extends Fragment>, Fragment> fragments,
+      FragmentClassSet fragmentClassSet,
       BuildOptions buildOptions,
-      BuildOptions.OptionsDiffForReconstruction buildOptionsDiff,
-      ImmutableSet<String> reservedActionMnemonics,
-      ActionEnvironment actionEnvironment,
-      String repositoryName,
-      boolean siblingRepositoryLayout)
-      throws InvalidMnemonicException {
-    this(
-        directories,
-        fragmentsMap,
-        buildOptions,
-        buildOptionsDiff,
-        reservedActionMnemonics,
-        actionEnvironment,
-        RepositoryName.createFromValidStrippedName(repositoryName),
-        siblingRepositoryLayout);
-  }
-
-  @AutoCodec.VisibleForSerialization
-  @AutoCodec.Instantiator
-  BuildConfiguration(
-      BlazeDirectories directories,
-      Map<Class<? extends Fragment>, Fragment> fragmentsMap,
-      BuildOptions buildOptions,
-      BuildOptions.OptionsDiffForReconstruction buildOptionsDiff,
       ImmutableSet<String> reservedActionMnemonics,
       ActionEnvironment actionEnvironment,
       RepositoryName mainRepositoryName,
       boolean siblingRepositoryLayout)
       throws InvalidMnemonicException {
-    // this.directories = directories;
-    this.fragments = makeFragmentsMap(fragmentsMap);
-    this.fragmentClassSet = FragmentClassSet.of(this.fragments.keySet());
+    this.fragments =
+        fragmentsInterner.intern(
+            ImmutableSortedMap.copyOf(fragments, FragmentClassSet.LEXICAL_FRAGMENT_SORTER));
+    this.fragmentClassSet = fragmentClassSet;
     this.starlarkVisibleFragments = buildIndexOfStarlarkVisibleFragments();
-    this.buildOptions = buildOptions.clone();
-    this.buildOptionsDiff = buildOptionsDiff;
+    this.buildOptions = buildOptions;
     this.options = buildOptions.get(CoreOptions.class);
+    PlatformOptions platformOptions = null;
+    if (buildOptions.contains(PlatformOptions.class)) {
+      platformOptions = buildOptions.get(PlatformOptions.class);
+    }
+    this.transitionDirectoryNameFragment =
+        FunctionTransitionUtil.computeOutputDirectoryNameFragment(buildOptions);
     this.outputDirectories =
         new OutputDirectories(
-            directories, options, fragments, mainRepositoryName, siblingRepositoryLayout);
+            directories,
+            options,
+            platformOptions,
+            this.fragments,
+            mainRepositoryName,
+            siblingRepositoryLayout,
+            transitionDirectoryNameFragment);
     this.mainRepositoryName = mainRepositoryName;
     this.siblingRepositoryLayout = siblingRepositoryLayout;
 
@@ -302,62 +245,11 @@ public class BuildConfiguration implements BuildConfigurationApi {
         "GENDIR", getGenfilesDirectory(RepositoryName.MAIN).getExecPath().getPathString());
     globalMakeEnv = globalMakeEnvBuilder.build();
 
-    checksum = buildOptions.computeChecksum();
     hashCode = computeHashCode();
 
     this.reservedActionMnemonics = reservedActionMnemonics;
     this.buildEventSupplier = Suppliers.memoize(this::createBuildEvent);
     this.commandLineLimits = new CommandLineLimits(options.minParamFileSize);
-  }
-
-  /**
-   * Returns a copy of this configuration only including the given fragments (which the current
-   * configuration is assumed to have).
-   */
-  public BuildConfiguration clone(
-      FragmentClassSet fragmentClasses,
-      RuleClassProvider ruleClassProvider,
-      BuildOptions defaultBuildOptions) {
-
-    ClassToInstanceMap<Fragment> fragmentsMap = MutableClassToInstanceMap.create();
-    for (Fragment fragment : fragments.values()) {
-      if (fragmentClasses.fragmentClasses().contains(fragment.getClass())) {
-        fragmentsMap.put(fragment.getClass(), fragment);
-      }
-    }
-    BuildOptions options =
-        buildOptions.trim(getOptionsClasses(fragmentsMap.keySet(), ruleClassProvider));
-    try {
-      return new BuildConfiguration(
-          getDirectories(),
-          fragmentsMap,
-          options,
-          BuildOptions.diffForReconstruction(defaultBuildOptions, options),
-          reservedActionMnemonics,
-          actionEnv,
-          mainRepositoryName.strippedName(),
-          siblingRepositoryLayout);
-    } catch (InvalidMnemonicException e) {
-      throw new IllegalStateException(
-          "Invalid mnemonic unexpected when cloning: " + this + ", " + fragmentClasses, e);
-    }
-  }
-
-  /** Returns the config fragment options classes used by the given fragment types. */
-  public static Set<Class<? extends FragmentOptions>> getOptionsClasses(
-      Iterable<Class<? extends Fragment>> fragmentClasses, RuleClassProvider ruleClassProvider) {
-
-    Multimap<Class<? extends Fragment>, Class<? extends FragmentOptions>>
-        fragmentToRequiredOptions = ArrayListMultimap.create();
-    for (Class<? extends Fragment> fragmentClass :
-        ((FragmentProvider) ruleClassProvider).getConfigurationFragments()) {
-      fragmentToRequiredOptions.putAll(fragmentClass, Fragment.requiredOptions(fragmentClass));
-    }
-    Set<Class<? extends FragmentOptions>> options = new HashSet<>();
-    for (Class<? extends Fragment> fragmentClass : fragmentClasses) {
-      options.addAll(fragmentToRequiredOptions.get(fragmentClass));
-    }
-    return options;
   }
 
   private ImmutableMap<String, Class<? extends Fragment>> buildIndexOfStarlarkVisibleFragments() {
@@ -521,6 +413,11 @@ public class BuildConfiguration implements BuildConfigurationApi {
    */
   public String getMnemonic() {
     return outputDirectories.getMnemonic();
+  }
+
+  @VisibleForTesting
+  public String getTransitionDirectoryNameFragment() {
+    return transitionDirectoryNameFragment;
   }
 
   @Override
@@ -709,10 +606,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
     return options.collectCodeCoverage;
   }
 
-  public boolean experimentalForwardInstrumentedFilesInfoByDefault() {
-    return options.experimentalForwardInstrumentedFilesInfoByDefault;
-  }
-
   public RunUnder getRunUnder() {
     return options.runUnder;
   }
@@ -761,22 +654,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
   }
 
   /**
-   * Returns whether we should trim configurations to only include the fragments needed to correctly
-   * analyze a rule.
-   */
-  public boolean trimConfigurations() {
-    return options.configsMode == CoreOptions.ConfigsMode.ON;
-  }
-
-  /**
-   * Returns whether we should trim configurations to only include the fragments needed to correctly
-   * analyze a rule.
-   */
-  public boolean trimConfigurationsRetroactively() {
-    return options.configsMode == CoreOptions.ConfigsMode.RETROACTIVE;
-  }
-
-  /**
    * <b>>Experimental feature:</b> if true, qualifying outputs use path prefixes based on their
    * content instead of the traditional <code>blaze-out/$CPU-$COMPILATION_MODE</code>.
    *
@@ -802,13 +679,12 @@ public class BuildConfiguration implements BuildConfigurationApi {
 
   /** Returns the cache key of the build options used to create this configuration. */
   public String checksum() {
-    return checksum;
+    return buildOptions.checksum();
   }
 
   /** Returns a copy of the build configuration options for this configuration. */
   public BuildOptions cloneOptions() {
-    BuildOptions clone = buildOptions.clone();
-    return clone;
+    return buildOptions.clone();
   }
 
   /**
@@ -823,10 +699,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
    */
   public BuildOptions getOptions() {
     return buildOptions;
-  }
-
-  public BuildOptions.OptionsDiffForReconstruction getBuildOptionsDiff() {
-    return buildOptionsDiff;
   }
 
   public String getCpu() {
@@ -856,10 +728,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
 
   public boolean inprocessSymlinkCreation() {
     return options.inprocessSymlinkCreation;
-  }
-
-  public boolean enableAggregatingMiddleman() {
-    return options.enableAggregatingMiddleman;
   }
 
   public boolean skipRunfilesManifests() {
@@ -908,10 +776,6 @@ public class BuildConfiguration implements BuildConfigurationApi {
    */
   public Label getAutoCpuEnvironmentGroup() {
     return options.autoCpuEnvironmentGroup;
-  }
-
-  public CoreOptions.FatApkSplitSanitizer getFatApkSplitSanitizer() {
-    return options.fatApkSplitSanitizer;
   }
 
   public Class<? extends Fragment> getStarlarkFragmentByName(String name) {

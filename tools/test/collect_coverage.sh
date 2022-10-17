@@ -30,6 +30,18 @@ if [[ -n "$VERBOSE_COVERAGE" ]]; then
   set -x
 fi
 
+if [[ -z "$LCOV_MERGER" ]]; then
+  # this can happen if a rule returns an InstrumentedFilesInfo (which all do
+  # following 5b216b2) but does not define an _lcov_merger attribute.
+  # Unfortunately, we cannot simply stop this script being called in this case
+  # due to conflicts with how things work within Google.
+  # The file creation is required because TestActionBuilder has already declared
+  # it.
+  # TODO(cmita): Improve this situation so this early-exit isn't required.
+  touch $COVERAGE_OUTPUT_FILE
+  exit 0
+fi
+
 function resolve_links() {
   local name="$1"
 
@@ -151,14 +163,14 @@ if [[ "$IS_COVERAGE_SPAWN" == "0" ]]; then
   # TODO(bazel-team): cd should be avoided.
   cd "$TEST_SRCDIR/$TEST_WORKSPACE"
 
-  # Execute the test.
-  "$@"
-  TEST_STATUS=$?
-
   # Always create the coverage report.
   if [[ "$SPLIT_COVERAGE_POST_PROCESSING" == "0" ]]; then
     touch $COVERAGE_OUTPUT_FILE
   fi
+
+  # Execute the test.
+  "$@"
+  TEST_STATUS=$?
 
   if [[ $TEST_STATUS -ne 0 ]]; then
     echo --
@@ -205,9 +217,10 @@ fi
 #
 # --source_file_manifest  The absolute path of the coverage source file
 #                         manifest. CoverageOutputGenerator uses this file to
-#                         keep only the C++ sources found in the manifest.
-#                         For other languages the sources in the manifest are
-#                         ignored.
+#                         keep only the sources found in the manifest (that is,
+#                         only the sources of targets matched by
+#                         --instrumentation_filter, excluding test targets
+#                         unless --instrument_test_targets).
 
 if [[ "$IS_COVERAGE_SPAWN" == "1" ]]; then
   COVERAGE_DIR=$(resolve_links $COVERAGE_DIR)

@@ -47,12 +47,9 @@ public class CommonCommandOptions extends OptionsBase {
       name = "all_incompatible_changes",
       defaultValue = "null",
       documentationCategory = OptionDocumentationCategory.UNCATEGORIZED,
-      effectTags = {OptionEffectTag.UNKNOWN},
+      effectTags = {OptionEffectTag.NO_OP},
       metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
-      expansionFunction = AllIncompatibleChangesExpansion.class,
-      help =
-          "Enables all options of the form --incompatible_*. Use this option to find places where "
-              + "your build may break in the future due to deprecations or other changes.")
+      help = "No-op, being removed. See https://github.com/bazelbuild/bazel/issues/13892")
   public Void allIncompatibleChanges;
 
   @Option(
@@ -216,34 +213,16 @@ public class CommonCommandOptions extends OptionsBase {
   public String oomMessage;
 
   @Option(
-      name = "experimental_generate_json_trace_profile",
-      defaultValue = "false",
-      documentationCategory = OptionDocumentationCategory.LOGGING,
-      effectTags = {OptionEffectTag.AFFECTS_OUTPUTS, OptionEffectTag.BAZEL_MONITORING},
-      help =
-          "If enabled, Bazel profiles the build and writes a JSON-format profile into a file in"
-              + " the output base. View profile by loading into chrome://tracing.")
-  public boolean enableTracer;
-
-  @Option(
-      name = "json_trace_compression",
-      oldName = "experimental_json_trace_compression",
+      name = "generate_json_trace_profile",
+      oldName = "experimental_generate_json_trace_profile",
       defaultValue = "auto",
       documentationCategory = OptionDocumentationCategory.LOGGING,
       effectTags = {OptionEffectTag.AFFECTS_OUTPUTS, OptionEffectTag.BAZEL_MONITORING},
       help =
-          "If enabled, Bazel compresses the JSON-format profile with gzip. "
-              + "By default, this is decided based on the extension of the file specified in "
-              + "--profile.")
-  public TriState enableTracerCompression;
-
-  @Option(
-      name = "experimental_profile_cpu_usage",
-      defaultValue = "false",
-      documentationCategory = OptionDocumentationCategory.LOGGING,
-      effectTags = {OptionEffectTag.AFFECTS_OUTPUTS, OptionEffectTag.BAZEL_MONITORING},
-      help = "If set, Bazel will measure cpu usage and add it to the JSON profile.")
-  public boolean enableCpuUsageProfiling;
+          "If enabled, Bazel profiles the build and writes a JSON-format profile into a file in"
+              + " the output base. View profile by loading into chrome://tracing. By default Bazel"
+              + " writes the profile for all build-like commands and query.")
+  public TriState enableTracer;
 
   @Option(
       name = "experimental_profile_additional_tasks",
@@ -356,6 +335,19 @@ public class CommonCommandOptions extends OptionsBase {
           "If this flag is set to a value less than 100, Bazel will OOM if, after two full GC's, "
               + "more than this percentage of the (old gen) heap is still occupied.")
   public int oomMoreEagerlyThreshold;
+
+  @Option(
+      name = "heap_dump_on_oom",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.LOGGING,
+      effectTags = {OptionEffectTag.BAZEL_MONITORING},
+      help =
+          "Whether to manually output a heap dump if an OOM is thrown (including OOMs due to"
+              + " --experimental_oom_more_eagerly_threshold). The dump will be written to"
+              + " <output_base>/<invocation_id>.heapdump.hprof. This option effectively replaces"
+              + " -XX:+HeapDumpOnOutOfMemoryError, which has no effect because OOMs are caught and"
+              + " redirected to Runtime#halt.")
+  public boolean heapDumpOnOom;
 
   @Option(
       name = "startup_time",

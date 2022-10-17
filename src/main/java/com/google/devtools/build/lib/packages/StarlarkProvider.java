@@ -17,7 +17,9 @@ package com.google.devtools.build.lib.packages;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.lib.cmdline.Label;
+import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
+import com.google.devtools.build.lib.util.Fingerprint;
 import java.util.Collection;
 import java.util.Objects;
 import javax.annotation.Nullable;
@@ -124,7 +126,7 @@ public final class StarlarkProvider implements StarlarkCallable, StarlarkExporta
 
   @Override
   public Object fastcall(StarlarkThread thread, Object[] positional, Object[] named)
-      throws EvalException, InterruptedException {
+      throws EvalException {
     if (positional.length > 0) {
       throw Starlark.errorf("%s: unexpected positional arguments", getName());
     }
@@ -172,7 +174,7 @@ public final class StarlarkProvider implements StarlarkCallable, StarlarkExporta
   }
 
   @Override
-  public void export(Label extensionLabel, String exportedName) {
+  public void export(EventHandler handler, Label extensionLabel, String exportedName) {
     Preconditions.checkState(!isExported());
     this.key = new Key(extensionLabel, exportedName);
   }
@@ -240,6 +242,14 @@ public final class StarlarkProvider implements StarlarkCallable, StarlarkExporta
     @Override
     public String toString() {
       return exportedName;
+    }
+
+    @Override
+    void fingerprint(Fingerprint fp) {
+      // False => Not native.
+      fp.addBoolean(false);
+      fp.addString(extensionLabel.getCanonicalForm());
+      fp.addString(exportedName);
     }
 
     @Override

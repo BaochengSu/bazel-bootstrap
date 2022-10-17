@@ -17,6 +17,7 @@ import static org.junit.Assert.assertThrows;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.actions.ActionKeyContext;
@@ -85,13 +86,13 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
   protected Path workspace;
   protected AnalysisMock analysisMock;
   protected SequencedSkyframeExecutor skyframeExecutor;
-  protected ImmutableList<Class<? extends FragmentOptions>> buildOptionClasses;
+  protected ImmutableSet<Class<? extends FragmentOptions>> buildOptionClasses;
   protected final ActionKeyContext actionKeyContext = new ActionKeyContext();
 
   @Before
   public final void initializeSkyframeExecutor() throws Exception {
     workspace = rootDirectory;
-    analysisMock = getAnalysisMock();
+    analysisMock = AnalysisMock.get();
 
     ConfiguredRuleClassProvider ruleClassProvider = analysisMock.createRuleClassProvider();
     PathPackageLocator pkgLocator =
@@ -102,31 +103,13 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
     final PackageFactory pkgFactory;
     BlazeDirectories directories =
         new BlazeDirectories(
-            new ServerDirectories(outputBase, outputBase, outputBase),
+            new ServerDirectories(rootDirectory, outputBase, outputBase),
             rootDirectory,
             /* defaultSystemJavabase= */ null,
             analysisMock.getProductName());
 
     mockToolsConfig = new MockToolsConfig(rootDirectory);
-    mockToolsConfig.create("bazel_tools_workspace/WORKSPACE", "workspace(name = 'bazel_tools')");
-    mockToolsConfig.create("bazel_tools_workspace/tools/build_defs/repo/BUILD");
-    mockToolsConfig.create(
-        "bazel_tools_workspace/tools/build_defs/repo/utils.bzl",
-        "def maybe(repo_rule, name, **kwargs):",
-        "  if name not in native.existing_rules():",
-        "    repo_rule(name = name, **kwargs)");
-    mockToolsConfig.create(
-        "bazel_tools_workspace/tools/build_defs/repo/http.bzl",
-        "def http_archive(**kwargs):",
-        "  pass",
-        "",
-        "def http_file(**kwargs):",
-        "  pass");
-    mockToolsConfig.create(
-        "bazel_tools_workspace/tools/jdk/local_java_repository.bzl",
-        "def local_java_repository(**kwargs):",
-        "  pass");
-
+    analysisMock.setupMockToolsRepository(mockToolsConfig);
     analysisMock.setupMockClient(mockToolsConfig);
     analysisMock.setupMockWorkspaceFiles(directories.getEmbeddedBinariesRoot());
 
@@ -142,8 +125,6 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
             .setFileSystem(fileSystem)
             .setDirectories(directories)
             .setActionKeyContext(actionKeyContext)
-            .setDefaultBuildOptions(
-                DefaultBuildOptionsForTesting.getDefaultBuildOptionsForTest(ruleClassProvider))
             .setWorkspaceStatusActionFactory(workspaceStatusActionFactory)
             .setExtraSkyFunctions(analysisMock.getSkyFunctions(directories))
             .build();
@@ -153,12 +134,11 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
             PrecomputedValue.injected(
                 RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE, Optional.empty()),
             PrecomputedValue.injected(
-                RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE, Optional.empty()),
-            PrecomputedValue.injected(
                 RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()),
             PrecomputedValue.injected(
                 RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING,
                 RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY),
+            PrecomputedValue.injected(RepositoryDelegatorFunction.ENABLE_BZLMOD, false),
             PrecomputedValue.injected(
                 BuildInfoCollectionFunction.BUILD_INFO_FACTORIES,
                 ruleClassProvider.getBuildInfoFactoriesAsMap())));
@@ -170,21 +150,17 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
         packageOptions,
         Options.getDefaults(BuildLanguageOptions.class),
         UUID.randomUUID(),
-        ImmutableMap.<String, String>of(),
+        ImmutableMap.of(),
         new TimestampGranularityMonitor(BlazeClock.instance()));
-    skyframeExecutor.setActionEnv(ImmutableMap.<String, String>of());
+    skyframeExecutor.setActionEnv(ImmutableMap.of());
 
     mockToolsConfig = new MockToolsConfig(rootDirectory);
     analysisMock.setupMockClient(mockToolsConfig);
     analysisMock.setupMockWorkspaceFiles(directories.getEmbeddedBinariesRoot());
-    buildOptionClasses = ruleClassProvider.getConfigurationOptions();
+    buildOptionClasses = ruleClassProvider.getFragmentRegistry().getOptionsClasses();
   }
 
-  protected AnalysisMock getAnalysisMock() {
-    return AnalysisMock.get();
-  }
-
-  protected void checkError(String expectedMessage, String... options) throws Exception {
+  protected void checkError(String expectedMessage, String... options) {
     reporter.removeHandler(failFastHandler);
     assertThrows(InvalidConfigurationException.class, () -> create(options));
     assertContainsEvent(expectedMessage);
@@ -224,9 +200,8 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
         parser.getOptions(TestOptions.class).multiCpus);
 
     skyframeExecutor.handleDiffsForTesting(reporter);
-    BuildConfigurationCollection collection = skyframeExecutor.createConfigurations(
+    return skyframeExecutor.createConfigurations(
         reporter, BuildOptions.of(buildOptionClasses, parser), multiCpu, false);
-    return collection;
   }
 
   /**
@@ -261,8 +236,8 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
     return createCollection(args).getHostConfiguration();
   }
 
-  public void assertConfigurationsHaveUniqueOutputDirectories(
-      BuildConfigurationCollection configCollection) throws Exception {
+  public static void assertConfigurationsHaveUniqueOutputDirectories(
+      BuildConfigurationCollection configCollection) {
     Map<ArtifactRoot, BuildConfiguration> outputPaths = new HashMap<>();
     for (BuildConfiguration config : configCollection.getTargetConfigurations()) {
       BuildConfiguration otherConfig =

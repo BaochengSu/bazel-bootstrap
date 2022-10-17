@@ -18,10 +18,11 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.eventbus.EventBus;
 import com.google.devtools.build.lib.actions.MetadataProvider;
 import com.google.devtools.build.lib.actions.ResourceManager;
-import com.google.devtools.build.lib.actions.cache.ActionCache;
 import com.google.devtools.build.lib.analysis.AnalysisOptions;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.config.CoreOptions;
@@ -53,7 +54,7 @@ import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.common.options.OptionsParsingResult;
 import com.google.devtools.common.options.OptionsProvider;
-import java.io.IOException;
+import com.google.protobuf.Any;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -66,6 +67,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
@@ -85,7 +87,7 @@ public class CommandEnvironment {
   private final Reporter reporter;
   private final EventBus eventBus;
   private final BlazeModule.ModuleEnvironment blazeModuleEnvironment;
-  private final Map<String, String> clientEnv;
+  private final ImmutableMap<String, String> clientEnv;
   private final Set<String> visibleActionEnv = new TreeSet<>();
   private final Set<String> visibleTestEnv = new TreeSet<>();
   private final Map<String, String> repoEnv = new TreeMap<>();
@@ -99,6 +101,9 @@ public class CommandEnvironment {
   private final PathFragment relativeWorkingDirectory;
   private final Duration waitTime;
   private final long commandStartTime;
+  private final ImmutableList<Any> commandExtensions;
+  private final ImmutableList.Builder<Any> responseExtensions = ImmutableList.builder();
+  private final Consumer<String> shutdownReasonConsumer;
 
   private OutputService outputService;
   private TopDownActionCache topDownActionCache;
@@ -133,8 +138,10 @@ public class CommandEnvironment {
     public void exit(AbruptExitException exception) {
       Preconditions.checkNotNull(exception);
       Preconditions.checkNotNull(exception.getExitCode());
-      if (pendingException.compareAndSet(null, Optional.of(exception))) {
-        // There was no exception, so we're the first one to ask for an exit. Interrupt the command.
+      if (pendingException.compareAndSet(null, Optional.of(exception))
+          && !Thread.currentThread().equals(commandThread)) {
+        // There was no exception, so we're the first one to ask for an exit. Interrupt the command
+        // if this exit is coming from a different thread, so that the command terminates promptly.
         commandThread.interrupt();
       }
     }
@@ -156,7 +163,9 @@ public class CommandEnvironment {
       OptionsParsingResult options,
       List<String> warnings,
       long waitTimeInMs,
-      long commandStartTime) {
+      long commandStartTime,
+      List<Any> commandExtensions,
+      Consumer<String> shutdownReasonConsumer) {
     this.runtime = runtime;
     this.workspace = workspace;
     this.directories = workspace.getDirectories();
@@ -165,6 +174,7 @@ public class CommandEnvironment {
     this.commandThread = commandThread;
     this.command = command;
     this.options = options;
+    this.shutdownReasonConsumer = shutdownReasonConsumer;
     this.blazeModuleEnvironment = new BlazeModuleEnvironment();
     this.timestampGranularityMonitor = new TimestampGranularityMonitor(runtime.getClock());
     // Record the command's starting time again, for use by
@@ -177,7 +187,6 @@ public class CommandEnvironment {
         Preconditions.checkNotNull(
             options.getOptions(CommonCommandOptions.class),
             "CommandEnvironment needs its options provider to have CommonCommandOptions loaded.");
-    Path workspacePath = directories.getWorkspace();
     Path workingDirectory;
     try {
       workingDirectory = computeWorkingDirectory(commandOptions);
@@ -185,7 +194,7 @@ public class CommandEnvironment {
       // We'll exit very soon, but set the working directory to something reasonable so remainder of
       // setup can finish.
       this.blazeModuleEnvironment.exit(e);
-      workingDirectory = workspacePath;
+      workingDirectory = directories.getWorkingDirectory();
     }
     this.workingDirectory = workingDirectory;
     if (getWorkspace() != null) {
@@ -197,14 +206,17 @@ public class CommandEnvironment {
 
     this.waitTime = Duration.ofMillis(waitTimeInMs + commandOptions.waitTime);
     this.commandStartTime = commandStartTime - commandOptions.startupTime;
+    this.commandExtensions = ImmutableList.copyOf(commandExtensions);
     // If this command supports --package_path we initialize the package locator scoped
     // to the command environment
-    if (commandHasPackageOptions(command) && workspacePath != null) {
+    if (commandHasPackageOptions(command) && directories.getWorkspace() != null) {
       this.packageLocator =
           workspace
               .getSkyframeExecutor()
               .createPackageLocator(
-                  reporter, options.getOptions(PackageOptions.class).packagePath, workingDirectory);
+                  reporter,
+                  options.getOptions(PackageOptions.class).packagePath,
+                  directories.getWorkspace());
     } else {
       this.packageLocator = null;
     }
@@ -217,7 +229,10 @@ public class CommandEnvironment {
 
     this.clientEnv = makeMapFromMapEntries(clientOptions.clientEnv);
     this.commandId = computeCommandId(commandOptions.invocationId, warnings);
-    this.buildRequestId = computeBuildRequestId(commandOptions.buildRequestId, warnings);
+    this.buildRequestId =
+        commandOptions.buildRequestId != null
+            ? commandOptions.buildRequestId
+            : UUID.randomUUID().toString();
 
     this.repoEnv.putAll(clientEnv);
     if (command.builds()) {
@@ -322,6 +337,14 @@ public class CommandEnvironment {
     return getRuntime().getClock();
   }
 
+  void notifyOnCrash(String message) {
+    shutdownReasonConsumer.accept(message);
+    if (!Thread.currentThread().equals(commandThread)) {
+      // Give shutdown hooks priority in JVM and stop generating more data for modules to consume.
+      commandThread.interrupt();
+    }
+  }
+
   public OptionsProvider getStartupOptionsProvider() {
     return getRuntime().getStartupOptionsProvider();
   }
@@ -358,14 +381,13 @@ public class CommandEnvironment {
    * Return an unmodifiable view of the blaze client's environment when it invoked the current
    * command.
    */
-  public Map<String, String> getClientEnv() {
+  public ImmutableMap<String, String> getClientEnv() {
     return clientEnv;
   }
 
   public Command getCommand() {
     return command;
   }
-
   public String getCommandName() {
     return command.name();
   }
@@ -401,13 +423,13 @@ public class CommandEnvironment {
     return Collections.unmodifiableMap(result);
   }
 
-  private static Map<String, String> makeMapFromMapEntries(
+  private static ImmutableMap<String, String> makeMapFromMapEntries(
       List<Map.Entry<String, String>> mapEntryList) {
     Map<String, String> result = new TreeMap<>();
     for (Map.Entry<String, String> entry : mapEntryList) {
       result.put(entry.getKey(), entry.getValue());
     }
-    return Collections.unmodifiableMap(result);
+    return ImmutableMap.copyOf(result);
   }
 
   private UUID computeCommandId(UUID idFromOptions, List<String> warnings) {
@@ -431,22 +453,6 @@ public class CommandEnvironment {
       }
     }
     return commandId;
-  }
-
-  private String computeBuildRequestId(String idFromOptions, List<String> warnings) {
-    String buildRequestId = idFromOptions;
-    if (buildRequestId == null) {
-      String uuidString = clientEnv.getOrDefault("BAZEL_INTERNAL_BUILD_REQUEST_ID", "");
-      if (!uuidString.isEmpty()) {
-        buildRequestId = uuidString;
-        warnings.add(
-            "BAZEL_INTERNAL_BUILD_REQUEST_ID is set. This will soon be deprecated in favor of "
-                + "--build_request_id. Please switch to using the flag.");
-      } else {
-        buildRequestId = UUID.randomUUID().toString();
-      }
-    }
-    return buildRequestId;
   }
 
   public TimestampGranularityMonitor getTimestampGranularityMonitor() {
@@ -509,7 +515,7 @@ public class CommandEnvironment {
    * Callers should certainly not make this assumption. The Path returned may be null.
    */
   public Path getWorkspace() {
-    return getDirectories().getWorkspace();
+    return getDirectories().getWorkingDirectory();
   }
 
   public String getWorkspaceName() {
@@ -583,19 +589,16 @@ public class CommandEnvironment {
   }
 
   /**
-   * Returns precomputed workspace information or null.
+   * Returns workspace information obtained from the {@linkplain
+   * com.google.devtools.build.lib.skyframe.DiffAwareness.View#getWorkspaceInfo() diff} or null.
    *
-   * <p>Precomputed workspace info is an optimization allowing to share information about the
-   * workspace if it was derived at the time of synchronizing the workspace. This way we can make it
-   * available earlier during the build and avoid retrieving it again.
+   * <p>We store workspace info as an optimization to allow sharing of information about the
+   * workspace if it was derived from the diff at the time of synchronizing the workspace. This way
+   * we can make it available earlier during the build and avoid retrieving it again.
    */
   @Nullable
   public WorkspaceInfoFromDiff getWorkspaceInfoFromDiff() {
     return workspaceInfoFromDiff;
-  }
-
-  public ActionCache getPersistentActionCache() throws IOException {
-    return workspace.getPersistentActionCache(reporter);
   }
 
   /** Returns the top-down action cache to use, or null. */
@@ -810,5 +813,31 @@ public class CommandEnvironment {
       }
       return fileCache;
     }
+  }
+
+  /**
+   * Returns the {@linkplain
+   * com.google.devtools.build.lib.server.CommandProtos.RunRequest#getCommandExtensions extensions}
+   * passed to the server for this command.
+   *
+   * <p>Extensions are arbitrary messages containing additional per-command information.
+   */
+  public ImmutableList<Any> getCommandExtensions() {
+    return commandExtensions;
+  }
+
+  /**
+   * Returns the {@linkplain
+   * com.google.devtools.build.lib.server.CommandProtos.RunResponse#getCommandExtensions extensions}
+   * to be passed to the client for this command.
+   *
+   * <p>Extensions are arbitrary messages containing additional execution results.
+   */
+  public ImmutableList<Any> getResponseExtensions() {
+    return responseExtensions.build();
+  }
+
+  public void addResponseExtensions(Iterable<Any> extensions) {
+    responseExtensions.addAll(extensions);
   }
 }

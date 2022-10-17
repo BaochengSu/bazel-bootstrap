@@ -98,7 +98,7 @@ public class ToolchainResolutionFunctionTest extends ToolchainTestCase {
         "register_execution_platforms('//platforms:linux')");
 
     // Set up an alias for the toolchain type.
-    Label aliasedToolchainTypeLabel = makeLabel("//alias:toolchain_type");
+    Label aliasedToolchainTypeLabel = Label.parseAbsoluteUnchecked("//alias:toolchain_type");
     scratch.file(
         "alias/BUILD", "alias(name = 'toolchain_type', actual = '//toolchain:test_toolchain')");
 
@@ -179,6 +179,7 @@ public class ToolchainResolutionFunctionTest extends ToolchainTestCase {
 
   @Test
   public void resolve_unavailableToolchainType_single() throws Exception {
+    reporter.removeHandler(failFastHandler);
     scratch.file("fake/toolchain/BUILD", "");
     useConfiguration("--host_platform=//platforms:linux", "--platforms=//platforms:mac");
     ToolchainContextKey key =
@@ -194,15 +195,12 @@ public class ToolchainResolutionFunctionTest extends ToolchainTestCase {
         .hasErrorEntryForKeyThat(key)
         .hasExceptionThat()
         .isInstanceOf(InvalidToolchainTypeException.class);
-    assertThatEvaluationResult(result)
-        .hasErrorEntryForKeyThat(key)
-        .hasExceptionThat()
-        .hasMessageThat()
-        .contains("//fake/toolchain:type_1");
+    assertContainsEvent("no such target '//fake/toolchain:type_1'");
   }
 
   @Test
   public void resolve_unavailableToolchainType_multiple() throws Exception {
+    reporter.removeHandler(failFastHandler);
     scratch.file("fake/toolchain/BUILD", "");
     useConfiguration("--host_platform=//platforms:linux", "--platforms=//platforms:mac");
     ToolchainContextKey key =

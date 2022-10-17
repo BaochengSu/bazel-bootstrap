@@ -25,11 +25,13 @@ import com.google.devtools.build.lib.analysis.config.ConfigAwareRuleClassBuilder
 import com.google.devtools.build.lib.analysis.config.ExecutionTransitionFactory;
 import com.google.devtools.build.lib.bazel.rules.java.BazelJavaRuleClasses.JavaRule;
 import com.google.devtools.build.lib.packages.RuleClass;
+import com.google.devtools.build.lib.packages.RuleClass.ToolchainTransitionMode;
 import com.google.devtools.build.lib.packages.StarlarkProviderIdentifier;
 import com.google.devtools.build.lib.rules.cpp.CppConfiguration;
 import com.google.devtools.build.lib.rules.cpp.CppRuleClasses;
 import com.google.devtools.build.lib.rules.java.JavaConfiguration;
 import com.google.devtools.build.lib.rules.java.JavaInfo;
+import com.google.devtools.build.lib.rules.java.JavaPluginInfo;
 import com.google.devtools.build.lib.rules.java.ProguardLibraryRule;
 
 /**
@@ -151,11 +153,11 @@ public final class BazelJavaLibraryRule implements RuleDefinition {
         .add(
             attr("exported_plugins", LABEL_LIST)
                 .cfg(ExecutionTransitionFactory.create())
-                .allowedRuleClasses("java_plugin")
+                .mandatoryProviders(JavaPluginInfo.PROVIDER.id())
                 .allowedFileTypes())
         .advertiseStarlarkProvider(StarlarkProviderIdentifier.forKey(JavaInfo.PROVIDER.getKey()))
         .addRequiredToolchains(CppRuleClasses.ccToolchainTypeAttribute(env))
-        .useToolchainTransition(true)
+        .useToolchainTransition(ToolchainTransitionMode.ENABLED)
         .build();
   }
 

@@ -40,8 +40,10 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
+import com.google.devtools.build.lib.cmdline.SignedTargetPattern;
 import com.google.devtools.build.lib.cmdline.TargetParsingException;
 import com.google.devtools.build.lib.cmdline.TargetPattern;
+import com.google.devtools.build.lib.cmdline.TargetPatternResolver;
 import com.google.devtools.build.lib.collect.compacthashset.CompactHashSet;
 import com.google.devtools.build.lib.concurrent.BlockingStack;
 import com.google.devtools.build.lib.concurrent.MultisetSemaphore;
@@ -91,10 +93,12 @@ import com.google.devtools.build.lib.server.FailureDetails.Query;
 import com.google.devtools.build.lib.server.FailureDetails.Query.Code;
 import com.google.devtools.build.lib.skyframe.DetailedException;
 import com.google.devtools.build.lib.skyframe.GraphBackedRecursivePackageProvider;
+import com.google.devtools.build.lib.skyframe.GraphBackedRecursivePackageProvider.UniverseTargetPattern;
 import com.google.devtools.build.lib.skyframe.IgnoredPackagePrefixesValue;
 import com.google.devtools.build.lib.skyframe.PackageValue;
 import com.google.devtools.build.lib.skyframe.PrepareDepsOfPatternsFunction;
 import com.google.devtools.build.lib.skyframe.RecursivePackageProviderBackedTargetPatternResolver;
+import com.google.devtools.build.lib.skyframe.SimplePackageIdentifierBatchingCallback;
 import com.google.devtools.build.lib.skyframe.TargetPatternValue;
 import com.google.devtools.build.lib.skyframe.TargetPatternValue.TargetPatternKey;
 import com.google.devtools.build.lib.skyframe.TransitiveTraversalValue;
@@ -158,12 +162,12 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
   private final boolean visibilityDepsAreAllowed;
 
   // The following fields are set in the #beforeEvaluateQuery method.
-  private MultisetSemaphore<PackageIdentifier> packageSemaphore;
+  protected MultisetSemaphore<PackageIdentifier> packageSemaphore;
   protected WalkableGraph graph;
   protected InterruptibleSupplier<ImmutableSet<PathFragment>> ignoredPatternsSupplier;
   protected GraphBackedRecursivePackageProvider graphBackedRecursivePackageProvider;
   protected ListeningExecutorService executor;
-  private RecursivePackageProviderBackedTargetPatternResolver resolver;
+  private TargetPatternResolver<Target> resolver;
 
   public SkyQueryEnvironment(
       boolean keepGoing,
@@ -268,7 +272,7 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
       graphBackedRecursivePackageProvider =
           new GraphBackedRecursivePackageProvider(
               graph,
-              getTargetPatternsForUniverseKey(universeKey),
+              UniverseTargetPattern.of(getTargetPatternsForUniverseKey(universeKey)),
               pkgPath,
               new TraversalInfoRootPackageExtractor());
     }
@@ -283,12 +287,16 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
             /*workQueue=*/ new BlockingStack<Runnable>(),
             new ThreadFactoryBuilder().setNameFormat("QueryEnvironment %d").build()));
     }
-    resolver =
-        new RecursivePackageProviderBackedTargetPatternResolver(
-            graphBackedRecursivePackageProvider,
-            eventHandler,
-            FilteringPolicies.NO_FILTER,
-            packageSemaphore);
+    resolver = makeNewTargetPatternResolver();
+  }
+
+  protected TargetPatternResolver<Target> makeNewTargetPatternResolver() {
+    return new RecursivePackageProviderBackedTargetPatternResolver(
+        graphBackedRecursivePackageProvider,
+        eventHandler,
+        FilteringPolicies.NO_FILTER,
+        packageSemaphore,
+        SimplePackageIdentifierBatchingCallback::new);
   }
 
   /** Returns the TargetPatterns corresponding to {@code universeKey}. */
@@ -375,13 +383,21 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
     if (constantUniverseScopeList.size() != 1) {
       return QueryExpressionMapper.identity();
     }
-    TargetPattern.Parser targetPatternParser = new TargetPattern.Parser(parserPrefix);
-    String universeScopePattern = Iterables.getOnlyElement(constantUniverseScopeList);
+    TargetPattern.Parser targetPatternParser = TargetPattern.mainRepoParser(parserPrefix);
+    String universeScopePatternString = Iterables.getOnlyElement(constantUniverseScopeList);
+    TargetPattern absoluteUniverseScopePattern = null;
+    try {
+      absoluteUniverseScopePattern =
+          targetPatternParser.parse(targetPatternParser.absolutize(universeScopePatternString));
+    } catch (TargetParsingException e) {
+      return QueryExpressionMapper.identity();
+    }
     return QueryExpressionMapper.compose(
         ImmutableList.of(
-            new RdepsToAllRdepsQueryExpressionMapper(targetPatternParser, universeScopePattern),
+            new RdepsToAllRdepsQueryExpressionMapper(
+                targetPatternParser, absoluteUniverseScopePattern),
             new FilteredDirectRdepsInUniverseExpressionMapper(
-                targetPatternParser, universeScopePattern)));
+                targetPatternParser, absoluteUniverseScopePattern)));
   }
 
   @Override
@@ -616,10 +632,11 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
       Iterable<Target> targets, QueryExpressionContext<Target> context)
       throws InterruptedException {
     return processRawReverseDeps(
-        getReverseDepsOfLabels(Iterables.transform(targets, Target::getLabel)));
+        getReverseDepsOfLabels(Iterables.transform(targets, Target::getLabel), context));
   }
 
-  protected Map<SkyKey, Collection<Target>> getReverseDepsOfLabels(Iterable<Label> targetLabels)
+  protected Map<SkyKey, Collection<Target>> getReverseDepsOfLabels(
+      Iterable<Label> targetLabels, QueryExpressionContext<Target> context)
       throws InterruptedException {
     return getRawReverseDeps(Iterables.transform(targetLabels, label -> label));
   }
@@ -777,11 +794,6 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
     return new UniquifierImpl<>(SkyKeyKeyExtractor.INSTANCE, queryEvaluationParallelismLevel);
   }
 
-  private ImmutableSet<PathFragment> getIgnoredSubdirectories(TargetPatternKey targetPatternKey)
-      throws InterruptedException {
-    return targetPatternKey.getAllIgnoredSubdirectoriesToExclude(ignoredPatternsSupplier);
-  }
-
   @ThreadSafe
   @Override
   public Collection<Target> getSiblingTargetsInPackage(Target target) {
@@ -794,7 +806,10 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
       QueryExpression owner, String pattern, Callback<Target> callback) {
     TargetPatternKey targetPatternKey;
     try {
-      targetPatternKey = TargetPatternValue.key(pattern, FilteringPolicies.NO_FILTER, parserPrefix);
+      targetPatternKey =
+          TargetPatternValue.key(
+              SignedTargetPattern.parse(pattern, TargetPattern.mainRepoParser(parserPrefix)),
+              FilteringPolicies.NO_FILTER);
     } catch (TargetParsingException tpe) {
       try {
         handleError(owner, tpe.getMessage(), tpe.getDetailedExitCode());
@@ -809,15 +824,7 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
   @ThreadSafe
   public QueryTaskFuture<Void> evalTargetPatternKey(
       QueryExpression owner, TargetPatternKey targetPatternKey, Callback<Target> callback) {
-    ImmutableSet<PathFragment> ignoredSubdirectoriesToExclude;
-    try {
-      ignoredSubdirectoriesToExclude = getIgnoredSubdirectories(targetPatternKey);
-    } catch (InterruptedException ie) {
-      return immediateCancelledFuture();
-    }
     TargetPattern patternToEval = targetPatternKey.getParsedPattern();
-    ImmutableSet<PathFragment> additionalSubdirectoriesToExclude =
-        targetPatternKey.getExcludedSubdirectories();
     AsyncFunction<TargetParsingException, Void> reportBuildFileErrorAsyncFunction =
         exn -> {
           handleError(owner, exn.getMessage(), exn.getDetailedExitCode());
@@ -836,8 +843,8 @@ public class SkyQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
     ListenableFuture<Void> evalFuture =
         patternToEval.evalAsync(
             resolver,
-            ignoredSubdirectoriesToExclude,
-            additionalSubdirectoriesToExclude,
+            ignoredPatternsSupplier,
+            targetPatternKey.getExcludedSubdirectories(),
             filteredCallback,
             QueryException.class,
             executor);

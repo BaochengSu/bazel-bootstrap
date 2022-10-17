@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -49,7 +50,12 @@ public class WorkerMultiplexerTest {
   public void setUp() throws IOException {
     fileSystem = new InMemoryFileSystem(BlazeClock.instance(), DigestHashFunction.SHA256);
     logPath = fileSystem.getPath("/tmp/logs4");
-    fileSystem.createDirectoryAndParents(logPath);
+    logPath.createDirectoryAndParents();
+  }
+
+  @After
+  public void tearDown() {
+    WorkerMultiplexerManager.reset();
   }
 
   @Test

@@ -22,10 +22,12 @@ import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.BuildFailedException;
 import com.google.devtools.build.lib.analysis.ViewCreationFailedException;
+import com.google.devtools.build.lib.analysis.util.AnalysisMock;
 import com.google.devtools.build.lib.buildtool.util.BuildIntegrationTestCase;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -35,6 +37,12 @@ import org.junit.runners.JUnit4;
  */
 @RunWith(JUnit4.class)
 public class GenQueryIntegrationTest extends BuildIntegrationTestCase {
+
+  @Before
+  public void stageEmbeddedTools() throws Exception {
+    AnalysisMock.get().setupMockToolsRepository(mockToolsConfig);
+  }
+
   @Test
   public void testDoesNotFailHorribly() throws Exception {
     write(
@@ -162,16 +170,15 @@ public class GenQueryIntegrationTest extends BuildIntegrationTestCase {
     write("c/BUILD", "sh_library(name = 'c', deps = ['//z:a'])");
     assertQueryResult(
         "//fruits:q",
-        // Results are ordered in reverse dependency order (nodes, then their dependencies), and in
-        // reverse alphabetic order for ties.
+        // Results are ordered in lexicographical order (uses graphless genquery by default).
+        "//a:z",
+        "//c:c",
+        "//fruits:1",
+        "//fruits:a",
+        "//fruits:c",
         "//fruits:melon",
         "//fruits:z",
-        "//fruits:c",
-        "//fruits:a",
-        "//fruits:1",
-        "//c:c",
-        "//z:a",
-        "//a:z");
+        "//z:a");
   }
 
   @Test
@@ -186,7 +193,7 @@ public class GenQueryIntegrationTest extends BuildIntegrationTestCase {
         "sh_library(name='tropical', deps=[':papaya'])",
         "sh_library(name='papaya')");
 
-    assertQueryResult("//food:q", "//food:fruit_salad", "//fruits:tropical", "//fruits:papaya");
+    assertQueryResult("//food:q", "//food:fruit_salad", "//fruits:papaya", "//fruits:tropical");
 
     write("fruits/BUILD",
         "sh_library(name='tropical', deps=[':papaya', ':coconut'])",
@@ -196,9 +203,9 @@ public class GenQueryIntegrationTest extends BuildIntegrationTestCase {
     assertQueryResult(
         "//food:q",
         "//food:fruit_salad",
-        "//fruits:tropical",
+        "//fruits:coconut",
         "//fruits:papaya",
-        "//fruits:coconut");
+        "//fruits:tropical");
   }
 
   @Test
@@ -219,11 +226,11 @@ public class GenQueryIntegrationTest extends BuildIntegrationTestCase {
 
     assertQueryResult(
         "//fruits:q",
-        "//spices:q",
+        "//fruits:pear",
+        "//fruits:plum",
         "//spices:cinnamon",
         "//spices:nutmeg",
-        "//fruits:pear",
-        "//fruits:plum");
+        "//spices:q");
   }
 
   /**
@@ -261,8 +268,8 @@ public class GenQueryIntegrationTest extends BuildIntegrationTestCase {
     for (int i = 0; i < 20; i += 2) {
       expected.add(i / 2, "//spices:in" + i);
     }
-    Collections.sort(expected, Collections.reverseOrder());
     expected.add(0, "//spices:top");
+    Collections.sort(expected);
     assertQueryResult("//spices:q", expected.toArray(new String[0]));
   }
 
@@ -358,10 +365,7 @@ public class GenQueryIntegrationTest extends BuildIntegrationTestCase {
         "  opts = ['--output=location'],",
         "  scope = ['//foo:foo'],",
         ")");
-    assertQueryResult(
-        "//foo:gen-buildfiles",
-        "//foo:bzl.bzl",
-        "//foo:BUILD");
+    assertQueryResult("//foo:gen-buildfiles", "//foo:BUILD", "//foo:bzl.bzl");
     assertThrows(
         ViewCreationFailedException.class, () -> buildTarget("//foo:gen-buildfiles-location"));
     events.assertContainsError(

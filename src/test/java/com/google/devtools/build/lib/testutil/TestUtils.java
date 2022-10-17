@@ -14,12 +14,12 @@
 
 package com.google.devtools.build.lib.testutil;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import com.google.devtools.build.lib.vfs.DigestHashFunction;
+import com.google.devtools.build.lib.vfs.FileSystem;
+import com.google.devtools.build.lib.vfs.JavaIoFileSystem;
+import com.google.devtools.build.lib.vfs.Path;
 import java.io.File;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -49,8 +49,14 @@ public class TestUtils {
     return POOL;
   }
 
+  /**
+   * Returns the path to a fixed temporary directory, with back-slashes turned into slashes. The
+   * directory is guaranteed to exist and be unique for the test <em>target</em>. Since test
+   * <em>cases</em> may run in parallel, prefer using {@link #createUniqueTmpDir} instead, which
+   * also guarantees that the directory is empty.
+   */
   public static String tmpDir() {
-    return tmpDirFile().getAbsolutePath().replaceAll("\\\\", "/");
+    return tmpDirFile().getAbsolutePath().replace('\\', '/');
   }
 
   static String getUserValue(String key) {
@@ -61,10 +67,48 @@ public class TestUtils {
     return value;
   }
 
+  /**
+   * Returns a fixed temporary directory, guaranteed to exist and be unique for the test
+   * <em>target</em>. Since test <em>cases</em> may run in parallel, prefer using {@link
+   * #createUniqueTmpDir} instead, which also guarantees that the directory is empty.
+   */
   public static File tmpDirFile() {
-    File tmpDir;
+    File tmpDir = tmpDirRoot();
 
-    // Flag value specified in environment?
+    // Ensure tmpDir exists
+    if (!tmpDir.isDirectory()) {
+      tmpDir.mkdirs();
+    }
+    return tmpDir;
+  }
+
+  /**
+   * Creates a unique and empty temporary directory.
+   *
+   * @param fileSystem The file system the directory should be created on. If null, uses the Java
+   *     file system.
+   * @return A newly created directory, extremely likely to be unique.
+   */
+  public static Path createUniqueTmpDir(FileSystem fileSystem) throws IOException {
+    if (fileSystem == null) {
+      fileSystem = new JavaIoFileSystem(DigestHashFunction.SHA256);
+    }
+    File tmpDirRoot = tmpDirRoot();
+    Path path = fileSystem.getPath(tmpDirRoot.getPath()).getRelative(UUID.randomUUID().toString());
+    path.createDirectoryAndParents();
+    return path;
+  }
+
+  /**
+   * Creates a unique and empty temporary directory and returns the path, with backslashes turned
+   * into slashes.
+   */
+  public static String createUniqueTmpDirString() throws IOException {
+    return createUniqueTmpDir(null).getPathString().replace('\\', '/');
+  }
+
+  private static File tmpDirRoot() {
+    File tmpDir; // Flag value specified in environment?
     String tmpDirStr = getUserValue("TEST_TMPDIR");
 
     if (tmpDirStr != null && tmpDirStr.length() > 0) {
@@ -82,15 +126,10 @@ public class TestUtils {
       tmpDir = new File(tmpDir, username);
       tmpDir = new File(tmpDir, "tmp");
     }
-
-    // Ensure tmpDir exists
-    if (!tmpDir.isDirectory()) {
-      tmpDir.mkdirs();
-    }
     return tmpDir;
   }
 
-  public static File makeTempDir() throws IOException {
+  public static File makeTmpDir() throws IOException {
     File dir = File.createTempFile(TestUtils.class.getName(), ".temp", tmpDirFile());
     if (!dir.delete()) {
       throw new IOException("Cannot remove a temporary file " + dir);
@@ -117,20 +156,6 @@ public class TestUtils {
     }
 
     return randomSeed;
-  }
-
-  public static byte[] serializeObject(Object obj) throws IOException {
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    try (ObjectOutputStream objectStream = new ObjectOutputStream(outputStream)) {
-      objectStream.writeObject(obj);
-    }
-    return outputStream.toByteArray();
-  }
-
-  public static Object deserializeObject(byte[] buf) throws IOException, ClassNotFoundException {
-    try (ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(buf))) {
-      return inStream.readObject();
-    }
   }
 
   /**

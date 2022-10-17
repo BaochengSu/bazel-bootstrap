@@ -5,20 +5,21 @@ title: Building JavaScript Outputs
 
 # Building JavaScript Outputs
 
-Bazel supports an incremental and customizable means of building and testing
-JavaScript outputs from JavaScript and TypeScript sources.
+This page describes the features, rules, and workflows related to building
+and testing JavaScript outputs.
 
-It can also support build steps needed for frameworks like Angular.
-
-**Note:** This document describes Bazel features and workflows that are useful,
-but the Bazel team has not fully verified and does not officially support
-these features and workflows.
+**Note:** The Bazel team has not fully verified and does not officially support
+the features and workflows described on this page.
 
 ## Overview
 
+Bazel supports an incremental and customizable means of building and
+testing JavaScript outputs from JavaScript and TypeScript sources. Bazel also
+supports build steps needed for frameworks such as Angular.
+
 Bazel rules for building JavaScript outputs are split into three layers, since
 you can use JavaScript without TypeScript, and TypeScript without Angular.
-This document assumes you are already familiar with Bazel and uses the
+This page assumes you are already familiar with Bazel and uses the
 [Angular for Bazel sample project](https://github.com/angular/angular-bazel-example)
 to illustrate the recommended configuration. You can use the sample project as a
 starting point and add your own code to it to start building with Bazel.
@@ -31,13 +32,13 @@ Started"](getting-started.html) material before proceeding.
 To set up your environment for building JavaScript outputs with Bazel, do the
 following:
 
-### Step 1: Installing Bazel
+### Installing Bazel
 
 You can either [Install Bazel](install.html) following the same steps that you
 would for backend development, or you can install NodeJS with npm and run
-`npm install -g @bazel/bazel`.
+`npm install -g @bazel/bazelisk`.
 
-### Step 2: Installing iBazel
+### Installing iBazel
 
 iBazel, or iterative Bazel, is a "watchdog" version of Bazel that automatically
 runs whenever your source files change. Use it to auto-run your tests and
@@ -61,28 +62,28 @@ yarn global add @bazel/ibazel
 
 To use `ibazel`, simply replace `bazel` with `ibazel` in your Bazel commands.
 
-### Step 3: Configuring the `bazel.rc` file
+### Configuring the `.bazelrc` file
 
 Any Bazel build flag or option that can be placed on the command line can also
-be set in the project's [`bazel.rc` file](guide.html#bazelrc)
+be set in the project's [`.bazelrc` file](guide.html#bazelrc)
 so that it is applied every time Bazel builds or tests the project.
 
 Based on how you want to share Bazel settings across your project and team(s),
 you can use any combination of the following techniques:
 
-*   **To use the same Bazel settings for the project**, create a `tools/bazel.rc`
+*   **To use the same Bazel settings for the project**, create a `.bazelrc`
     file at the root of the Bazel workspace. Adding it to the workspace will
     check the file into version control and propagate it to others working on
     the project as well as the CI system.
 
 *   **To personalize Bazel settings for the project but not share them,**
-    create a `.bazel.rc` file at the root of the project and add the file to
+    create a `.bazelrc` file at the root of the project and add the file to
     your `.gitignore` list.
 
 *   **To personalize Bazel settings for all of your projects on your
-    local machine,** create a `.bazel.rc` file in your home directory.
+    local machine,** create a `.bazelrc` file in your home directory.
 
-Here's an example `tools/bazel.rc` file to share with your team. Modify this
+Here's an example `.bazelrc` file to share with your team. Modify this
 template as needed.
 
 ```
@@ -135,8 +136,8 @@ yarn add -D @bazel/buildifier
 ```
 
 then add scripts to your `package.json` that run Buildifier.
-We've selected a set of enabled warnings here, you could add and remove from
-this list.
+Here is a set of enabled warnings you could add and remove from
+this list:
 
 ```json
 "scripts": {
@@ -147,8 +148,6 @@ this list.
 ```
 
 > The Bazel team is aware that this configuration is not ergonomic. Follow https://github.com/bazelbuild/buildtools/issues/479
-
-> Also the Buildifier tool is not available on Windows. Follow https://github.com/bazelbuild/buildtools/issues/375
 
 ## Building JavaScript
 
@@ -161,8 +160,7 @@ See the documentation on that site for setup steps and to configure targets.
 
 ## Building TypeScript
 
-See the https://www.npmjs.com/package/@bazel/typescript package.
-
+See the [@bazel/typescript](https://www.npmjs.com/package/@bazel/typescript) NPM package.
 
 ### Compiling TypeScript inputs (`ts_library`)
 
@@ -178,8 +176,8 @@ rule targets that depend on the current target, including transitively.
 **Tip:** You can try out the `ts_library` rule by running bazel build src in
 the [sample project](https://github.com/alexeagle/angular-bazel-example/wiki).
 
-**Note:** We recommend standardizing your TypeScript settings into a single
-`tsconfig.json` file or as few `tsconfig.json` files as possible.
+**Recommendation:** Standardize your TypeScript settings into
+a single `tsconfig.json` file or as few `tsconfig.json` files as possible.
 
 Note the following:
 

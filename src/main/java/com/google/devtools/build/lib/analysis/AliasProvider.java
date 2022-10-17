@@ -19,16 +19,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
 import com.google.devtools.build.lib.skyframe.ConfiguredTargetAndData;
-import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 
 /** A provider that gives information about the aliases a rule was resolved through. */
-@AutoCodec
 @Immutable
 public final class AliasProvider implements TransitiveInfoProvider {
   // We don't expect long alias chains, so it's better to have a list instead of a nested set
   private final ImmutableList<Label> aliasChain;
 
-  public AliasProvider(ImmutableList<Label> aliasChain) {
+  private AliasProvider(ImmutableList<Label> aliasChain) {
     Preconditions.checkState(!aliasChain.isEmpty());
     this.aliasChain = aliasChain;
   }
@@ -115,5 +113,13 @@ public final class AliasProvider implements TransitiveInfoProvider {
     }
 
     return result.toString();
+  }
+
+  /**
+   * Returns {@code true} iff the given {@link TransitiveInfoCollection} has an {@link
+   * AliasProvider}.
+   */
+  public static boolean isAlias(TransitiveInfoCollection dep) {
+    return dep.getProvider(AliasProvider.class) != null;
   }
 }

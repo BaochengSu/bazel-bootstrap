@@ -19,6 +19,7 @@ java_test(
         "EvaluationTestCase.java",
         "Examples.java",
         "FunctionTest.java",
+        "ImmutableKeyTrackingDictTest.java",
         "MethodLibraryTest.java",
         "MutabilityTest.java",
         "PrinterTest.java",
@@ -30,6 +31,7 @@ java_test(
         "StarlarkThreadDebuggingTest.java",
         "StarlarkThreadTest.java",
     ],
+    jvm_flags = ["-Dfile.encoding=UTF8"],
     deps = [
         "//src/main/java/net/starlark/java/annot",
         "//src/main/java/net/starlark/java/eval",
@@ -53,6 +55,7 @@ java_test(
         "//src/main/java/net/starlark/java/eval",
         "//src/main/java/net/starlark/java/lib/json",
         "//src/main/java/net/starlark/java/syntax",
+        "//third_party:error_prone_annotations",
         "//third_party:guava",
     ],
 )

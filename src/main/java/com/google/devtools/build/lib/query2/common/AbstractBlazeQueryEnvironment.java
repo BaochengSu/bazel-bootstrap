@@ -16,6 +16,7 @@ package com.google.devtools.build.lib.query2.common;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
@@ -45,6 +46,7 @@ import com.google.devtools.build.lib.server.FailureDetails.Query.Code;
 import com.google.devtools.build.lib.util.DetailedExitCode;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -90,25 +92,23 @@ public abstract class AbstractBlazeQueryEnvironment<T> extends AbstractQueryEnvi
   @Override
   public abstract void close();
 
-  private static DependencyFilter constructDependencyFilter(
-      Set<Setting> settings) {
+  private static DependencyFilter constructDependencyFilter(Set<Setting> settings) {
     DependencyFilter specifiedFilter =
         settings.contains(Setting.ONLY_TARGET_DEPS)
             ? DependencyFilter.ONLY_TARGET_DEPS
             : DependencyFilter.ALL_DEPS;
     if (settings.contains(Setting.NO_IMPLICIT_DEPS)) {
-      specifiedFilter = DependencyFilter.and(specifiedFilter, DependencyFilter.NO_IMPLICIT_DEPS);
+      specifiedFilter = specifiedFilter.and(DependencyFilter.NO_IMPLICIT_DEPS);
     }
     if (settings.contains(Setting.NO_NODEP_DEPS)) {
-      specifiedFilter = DependencyFilter.and(specifiedFilter, DependencyFilter.NO_NODEP_ATTRIBUTES);
+      specifiedFilter = specifiedFilter.and(DependencyFilter.NO_NODEP_ATTRIBUTES);
     }
     return specifiedFilter;
   }
 
   /**
-   * Used by {@link #evaluateQuery} to evaluate the given {@code expr}. The caller,
-   * {@link #evaluateQuery}, not {@link #evalTopLevelInternal}, is responsible for managing
-   * {@code callback}.
+   * Used by {@link #evaluateQuery} to evaluate the given {@code expr}. The caller, ({@link
+   * #evaluateQuery}), is responsible for managing {@code callback}.
    */
   protected void evalTopLevelInternal(QueryExpression expr, OutputFormatterCallback<T> callback)
       throws QueryException, InterruptedException {
@@ -156,8 +156,6 @@ public abstract class AbstractBlazeQueryEnvironment<T> extends AbstractQueryEnvi
       failFast = false;
     } catch (QueryException e) {
       throw new QueryException(e, expr);
-    } catch (InterruptedException e) {
-      throw e;
     } finally {
       try {
         callback.close(failFast);
@@ -275,6 +273,20 @@ public abstract class AbstractBlazeQueryEnvironment<T> extends AbstractQueryEnvi
       resultBuilder.put(label, target);
     }
     return resultBuilder.build();
+  }
+
+  protected void validateScopeOfTargets(Set<Target> targets) throws QueryException {
+    // Sets.filter would be more convenient here, but can't deal with exceptions.
+    if (labelFilter != Predicates.<Label>alwaysTrue()) {
+      // The labelFilter is always true for bazel query; it's only used for genquery rules.
+      Iterator<Target> targetIterator = targets.iterator();
+      while (targetIterator.hasNext()) {
+        Target target = targetIterator.next();
+        if (!validateScope(target.getLabel(), strictScope)) {
+          targetIterator.remove();
+        }
+      }
+    }
   }
 
   protected boolean validateScope(Label label, boolean strict) throws QueryException {

@@ -52,7 +52,10 @@ public final class GraphNodeAspect extends NativeAspectClass implements Configur
 
   @Override
   public AspectDefinition getDefinition(AspectParameters aspectParameters) {
-    return new AspectDefinition.Builder(this).propagateAlongAllAttributes().build();
+    return new AspectDefinition.Builder(this)
+        .propagateAlongAllAttributes()
+        .requireStarlarkProviders(CcInfo.PROVIDER.id())
+        .build();
   }
 
   @Override
@@ -61,7 +64,7 @@ public final class GraphNodeAspect extends NativeAspectClass implements Configur
       RuleContext ruleContext,
       AspectParameters params,
       String toolsRepository)
-      throws ActionConflictException {
+      throws ActionConflictException, InterruptedException {
     ImmutableList.Builder<GraphNodeInfo> children = ImmutableList.builder();
     if (ruleContext.attributes().has("deps")) {
       children.addAll(

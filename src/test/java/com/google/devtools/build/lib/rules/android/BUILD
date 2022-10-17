@@ -16,6 +16,7 @@ java_test(
     name = "AarImportTest",
     srcs = ["AarImportTest.java"],
     deps = [
+        ":AndroidBuildViewTestCase",
         "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/actions:commandline_item",
@@ -27,7 +28,6 @@ java_test(
         "//src/main/java/com/google/devtools/build/lib/rules/java:java-compilation",
         "//src/main/java/com/google/devtools/build/lib/rules/java:java-rules",
         "//src/test/java/com/google/devtools/build/lib/actions/util",
-        "//src/test/java/com/google/devtools/build/lib/analysis/util",
         "//third_party:guava",
         "//third_party:junit4",
         "//third_party:truth",
@@ -38,6 +38,7 @@ java_test(
     name = "AndroidStarlarkTest",
     srcs = ["AndroidStarlarkTest.java"],
     deps = [
+        ":AndroidBuildViewTestCase",
         "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
         "//src/main/java/com/google/devtools/build/lib/packages",
@@ -45,6 +46,7 @@ java_test(
         "//src/main/java/net/starlark/java/syntax",
         "//src/test/java/com/google/devtools/build/lib/analysis/util",
         "//src/test/java/com/google/devtools/build/lib/packages:testutil",
+        "//src/test/java/com/google/devtools/build/lib/testutil:TestConstants",
         "//third_party:guava",
         "//third_party:junit4",
         "//third_party:truth",
@@ -66,8 +68,8 @@ java_test(
     name = "AndroidCommonTest",
     srcs = ["AndroidCommonTest.java"],
     deps = [
+        ":AndroidBuildViewTestCase",
         "//src/main/java/com/google/devtools/build/lib/rules/android",
-        "//src/test/java/com/google/devtools/build/lib/analysis/util",
         "//third_party:junit4",
         "//third_party:truth",
     ],
@@ -81,6 +83,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/actions:commandline_item",
         "//src/main/java/com/google/devtools/build/lib/analysis:analysis_cluster",
+        "//src/main/java/com/google/devtools/build/lib/analysis:config/build_configuration",
         "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
         "//src/main/java/com/google/devtools/build/lib/analysis:file_provider",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
@@ -92,6 +95,7 @@ java_library(
         "//src/test/java/com/google/devtools/build/lib/actions/util",
         "//src/test/java/com/google/devtools/build/lib/analysis/util",
         "//src/test/java/com/google/devtools/build/lib/rules/java:java_compile_action_test_helper",
+        "//src/test/java/com/google/devtools/build/lib/testutil:TestConstants",
         "//third_party:guava",
         "//third_party:jsr305",
         "//third_party:junit4",
@@ -123,9 +127,12 @@ java_test(
         "//src/main/java/com/google/devtools/build/lib/vfs",
         "//src/main/protobuf:android_deploy_info_java_proto",
         "//src/test/java/com/google/devtools/build/lib/actions/util",
+        "//src/test/java/com/google/devtools/build/lib/analysis/util",
         "//src/test/java/com/google/devtools/build/lib/packages:testutil",
         "//src/test/java/com/google/devtools/build/lib/rules/java:java_compile_action_test_helper",
+        "//src/test/java/com/google/devtools/build/lib/testutil",
         "//src/test/java/com/google/devtools/build/lib/testutil:JunitUtils",
+        "//src/test/java/com/google/devtools/build/lib/testutil:TestConstants",
         "//third_party:guava",
         "//third_party:junit4",
         "//third_party:truth",
@@ -137,14 +144,12 @@ java_test(
     srcs = ["AndroidPlatformsTest.java"],
     deps = [
         ":AndroidBuildViewTestCase",
-        "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
         "//src/main/java/com/google/devtools/build/lib/rules/android",
         "//src/main/java/com/google/devtools/build/lib/rules/cpp",
         "//src/test/java/com/google/devtools/build/lib/packages:testutil",
         "//src/test/java/com/google/devtools/build/lib/testutil:TestConstants",
-        "//third_party:guava",
         "//third_party:junit4",
         "//third_party:truth",
     ],
@@ -185,7 +190,6 @@ java_test(
     srcs = ["AndroidAssetsTest.java"],
     deps = [
         ":ResourceTestBase",
-        "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/analysis:analysis_cluster",
         "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
@@ -211,8 +215,10 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
         "//src/main/java/com/google/devtools/build/lib/events",
         "//src/main/java/com/google/devtools/build/lib/skyframe:configured_target_key",
+        "//src/main/java/com/google/devtools/build/lib/skyframe:starlark_builtins_value",
         "//src/main/java/com/google/devtools/build/lib/vfs",
         "//src/main/java/com/google/devtools/build/lib/vfs/inmemoryfs",
+        "//src/main/java/com/google/devtools/build/skyframe",
         "//third_party:guava",
         "//third_party:junit4",
         "//third_party:truth",
@@ -262,6 +268,7 @@ java_test(
         "//src/main/java/com/google/devtools/build/lib/rules/android",
         "//src/main/java/com/google/devtools/build/lib/skyframe:configured_target_and_data",
         "//src/test/java/com/google/devtools/build/lib/actions/util",
+        "//third_party:guava",
         "//third_party:junit4",
         "//third_party:truth",
     ],
@@ -296,6 +303,7 @@ java_test(
     name = "AndroidDeviceTest",
     srcs = ["AndroidDeviceTest.java"],
     deps = [
+        ":AndroidBuildViewTestCase",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/analysis:actions/template_expansion_action",
         "//src/main/java/com/google/devtools/build/lib/analysis:analysis_cluster",
@@ -315,6 +323,7 @@ java_library(
     name = "AndroidMultidexBaseTest",
     srcs = ["AndroidMultidexBaseTest.java"],
     deps = [
+        ":AndroidBuildViewTestCase",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/analysis:analysis_cluster",
         "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
@@ -343,7 +352,6 @@ java_test(
     srcs = ["AndroidDataBindingTest.java"],
     deps = [
         ":AndroidBuildViewTestCase",
-        "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
@@ -361,6 +369,7 @@ java_test(
 
 java_test(
     name = "AndroidDataBindingV2Test",
+    timeout = "long",
     srcs = ["AndroidDataBindingV2Test.java"],
     tags = ["manual"],
     deps = [
@@ -384,6 +393,7 @@ java_test(
     name = "AndroidSdkTest",
     srcs = ["AndroidSdkTest.java"],
     deps = [
+        ":AndroidBuildViewTestCase",
         "//src/main/java/com/google/devtools/build/lib/rules/android",
         "//src/test/java/com/google/devtools/build/lib/analysis/util",
         "//third_party:junit4",
@@ -417,6 +427,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
         "//src/main/java/com/google/devtools/build/lib/analysis:file_provider",
         "//src/main/java/com/google/devtools/build/lib/analysis:required_config_fragments_provider",
+        "//src/main/java/com/google/devtools/build/lib/cmdline",
         "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
         "//src/main/java/com/google/devtools/build/lib/rules/android",
         "//src/main/java/com/google/devtools/build/lib/rules/java:java-rules",
@@ -440,20 +451,5 @@ java_test(
         "//third_party:guava",
         "//third_party:junit4",
         "//third_party:truth",
-    ],
-)
-
-test_suite(
-    name = "windows_tests",
-    tags = [
-        "-no_windows",
-        "-slow",
-    ],
-)
-
-test_suite(
-    name = "all_windows_tests",
-    tests = [
-        ":windows_tests",
     ],
 )

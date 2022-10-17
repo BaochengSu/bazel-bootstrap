@@ -57,7 +57,25 @@ public class FdoHelper {
         FdoPrefetchHintsProvider provider = attributes.getFdoPrefetch();
         prefetchHints = provider.getInputFile();
       }
-      if (cppConfiguration
+
+      if (cppConfiguration.getPropellerOptimizeAbsoluteCCProfile() != null
+          || cppConfiguration.getPropellerOptimizeAbsoluteLdProfile() != null) {
+        Artifact ccArtifact = null;
+        if (cppConfiguration.getPropellerOptimizeAbsoluteCCProfile() != null) {
+          ccArtifact =
+              PropellerOptimizeInputFile.createAbsoluteArtifact(
+                  ruleContext, cppConfiguration.getPropellerOptimizeAbsoluteCCProfile());
+        }
+        Artifact ldArtifact = null;
+        if (cppConfiguration.getPropellerOptimizeAbsoluteLdProfile() != null) {
+          ldArtifact =
+              PropellerOptimizeInputFile.createAbsoluteArtifact(
+                  ruleContext, cppConfiguration.getPropellerOptimizeAbsoluteLdProfile());
+        }
+        if (ccArtifact != null || ldArtifact != null) {
+          propellerOptimizeInputFile = new PropellerOptimizeInputFile(ccArtifact, ldArtifact);
+        }
+      } else if (cppConfiguration
               .getPropellerOptimizeLabelUnsafeSinceItCanReturnValueFromWrongConfiguration()
           != null) {
         PropellerOptimizeProvider provider = attributes.getPropellerOptimize();
@@ -151,11 +169,11 @@ public class FdoHelper {
           branchFdoMode = BranchFdoMode.LLVM_CS_FDO;
         }
       }
-      if (branchFdoMode != BranchFdoMode.XBINARY_FDO
+      if ((branchFdoMode != BranchFdoMode.XBINARY_FDO)
+          && (branchFdoMode != BranchFdoMode.AUTO_FDO)
           && cppConfiguration.getXFdoProfileLabelUnsafeSinceItCanReturnValueFromWrongConfiguration()
               != null) {
-        ruleContext.throwWithRuleError(
-            "--xbinary_fdo cannot accept profile input other than *.xfdo");
+        ruleContext.throwWithRuleError("--xbinary_fdo only accepts *.xfdo and *.afdo");
       }
 
       if (configuration.isCodeCoverageEnabled()) {
@@ -291,7 +309,7 @@ public class FdoHelper {
         new SpawnAction.Builder()
             .addInput(profile1)
             .addInput(profile2)
-            .addTransitiveInputs(attributes.getAllFilesMiddleman())
+            .addTransitiveInputs(attributes.getAllFiles())
             .addOutput(profileArtifact)
             .useDefaultShellEnvironment()
             .setExecutable(
@@ -428,7 +446,7 @@ public class FdoHelper {
     ruleContext.registerAction(
         new SpawnAction.Builder()
             .addInput(rawProfileArtifact)
-            .addTransitiveInputs(attributes.getAllFilesMiddleman())
+            .addTransitiveInputs(attributes.getAllFiles())
             .addOutput(profileArtifact)
             .useDefaultShellEnvironment()
             .setExecutable(

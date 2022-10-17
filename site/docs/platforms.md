@@ -5,6 +5,7 @@ title: Platforms
 
 # Platforms
 
+
 Bazel can build and test code on a variety of hardware, operating systems, and
 system configurations, using many different versions of build tools such as
 linkers and compilers. To help manage this complexity, Bazel has a concept of
@@ -129,7 +130,7 @@ Windows.
 ```python
 cc_library(
     name = "win_driver_lib",
-    srcs = "win_driver_lib.cc",
+    srcs = ["win_driver_lib.cc"],
     target_compatible_with = [
         "@platforms//cpu:x86_64",
         "@platforms//os:windows",
@@ -137,9 +138,10 @@ cc_library(
 )
 ```
 
-When building for anything but 64-bit Windows we say that `:win_driver_lib` is
-incompatible.  Incompatibility is transitive. Any targets that transitively
-depend on an incompatible target are themselves considered incompatible.
+`:win_driver_lib` is *only* compatible for building with 64-bit Windows and
+incompatible with all else. Incompatibility is transitive. Any targets
+that transitively depend on an incompatible target are themselves considered
+incompatible.
 
 ### When are targets skipped?
 
@@ -148,11 +150,11 @@ build as part of a target pattern expansion. For example, the following two
 invocations skip any incompatible targets found in a target pattern expansion.
 
 ```console
-$ bazel build --platforms=//:myplatform //...`
+$ bazel build --platforms=//:myplatform //...
 ```
 
 ```console
-$ bazel build --platforms=//:myplatform //:all`
+$ bazel build --platforms=//:myplatform //:all
 ```
 
 Incompatible tests in a [`test_suite`](be/general.html#test_suite) are
@@ -177,7 +179,7 @@ FAILED: Build did NOT complete successfully
 
 For more flexibility in expressing constraints, use the
 `@platforms//:incompatible`
-[`constraint_value`](platform.html#constraint_value) that no platform
+[`constraint_value`](be/platform.html#constraint_value) that no platform
 satisfies.
 
 Use [`select()`](functions.html#select) in combination with
@@ -189,12 +191,12 @@ constraints list is equivalent to "compatible with everything".
 ```python
 cc_library(
     name = "unixish_lib",
-    srcs = "unixish_lib.cc",
+    srcs = ["unixish_lib.cc"],
     target_compatible_with = select({
         "@platforms//os:osx": [],
         "@platforms//os:linux": [],
         "//conditions:default": ["@platforms//:incompatible"],
-    ],
+    }),
 )
 ```
 
@@ -208,7 +210,7 @@ The above can be interpreted as follows:
 
 To make your constraints more readable, use
 [skylib](https://github.com/bazelbuild/bazel-skylib)'s
-[`selects.with_or()`](https://github.com/bazelbuild/bazel-skylib/blob/master/docs/selects_doc.md#selectswith_or).
+[`selects.with_or()`](https://github.com/bazelbuild/bazel-skylib/blob/main/docs/selects_doc.md#selectswith_or).
 
 You can express inverse compatibility in a similar way. The following example
 describes a library that is compatible with everything _except_ for ARM.
@@ -216,7 +218,7 @@ describes a library that is compatible with everything _except_ for ARM.
 ```python
 cc_library(
     name = "non_arm_lib",
-    srcs = "non_arm_lib.cc",
+    srcs = ["non_arm_lib.cc"],
     target_compatible_with = select({
         "@platforms//cpu:arm": ["@platforms//:incompatible"],
         "//conditions:default": [],

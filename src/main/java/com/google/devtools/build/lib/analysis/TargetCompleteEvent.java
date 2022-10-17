@@ -15,9 +15,12 @@
 package com.google.devtools.build.lib.analysis;
 
 import static com.google.devtools.build.lib.buildeventstream.TestFileNameConstants.BASELINE_COVERAGE;
+import static java.nio.charset.StandardCharsets.ISO_8859_1;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.actions.Artifact;
@@ -63,7 +66,7 @@ import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.skyframe.SkyValue;
-import java.nio.charset.StandardCharsets;
+import com.google.protobuf.util.Durations;
 import java.util.Collection;
 import java.util.function.Function;
 import javax.annotation.Nullable;
@@ -112,10 +115,11 @@ public final class TargetCompleteEvent
   private final NestedSet<Cause> rootCauses;
   private final ImmutableList<BuildEventId> postedAfter;
   private final CompletionContext completionContext;
-  private final NestedSet<ArtifactsInOutputGroup> outputs;
+  private final ImmutableMap<String, ArtifactsInOutputGroup> outputs;
   private final NestedSet<Artifact> baselineCoverageArtifacts;
   private final Label aliasLabel;
   private final boolean isTest;
+  private final boolean announceTargetSummary;
   @Nullable private final Long testTimeoutSeconds;
   @Nullable private final TestProvider.TestParams testParams;
   private final BuildEvent configurationEvent;
@@ -128,8 +132,9 @@ public final class TargetCompleteEvent
       ConfiguredTargetAndData targetAndData,
       NestedSet<Cause> rootCauses,
       CompletionContext completionContext,
-      NestedSet<ArtifactsInOutputGroup> outputs,
-      boolean isTest) {
+      ImmutableMap<String, ArtifactsInOutputGroup> outputs,
+      boolean isTest,
+      boolean announceTargetSummary) {
     this.rootCauses =
         (rootCauses == null) ? NestedSetBuilder.emptySet(Order.STABLE_ORDER) : rootCauses;
     this.executableTargetData = new ExecutableTargetData(targetAndData);
@@ -154,6 +159,7 @@ public final class TargetCompleteEvent
     this.completionContext = completionContext;
     this.outputs = outputs;
     this.isTest = isTest;
+    this.announceTargetSummary = announceTargetSummary;
     this.testTimeoutSeconds = isTest ? getTestTimeoutSeconds(targetAndData) : null;
     BuildConfiguration configuration = targetAndData.getConfiguration();
     this.configEventId =
@@ -183,7 +189,8 @@ public final class TargetCompleteEvent
       AttributeMap attributes =
           ConfiguredAttributeMapper.of(
               (Rule) targetAndData.getTarget(),
-              targetAndData.getConfiguredTarget().getConfigConditions());
+              targetAndData.getConfiguredTarget().getConfigConditions(),
+              configuration.checksum());
       // Every build rule (implicitly) has a "tags" attribute. However other rule configured targets
       // are repository rules (which don't have a tags attribute); morevoer, thanks to the virtual
       // "external" package, they are user visible as targets and can create a completed event as
@@ -200,16 +207,20 @@ public final class TargetCompleteEvent
   public static TargetCompleteEvent successfulBuild(
       ConfiguredTargetAndData ct,
       CompletionContext completionContext,
-      NestedSet<ArtifactsInOutputGroup> outputs) {
-    return new TargetCompleteEvent(ct, null, completionContext, outputs, false);
+      ImmutableMap<String, ArtifactsInOutputGroup> outputs,
+      boolean announceTargetSummary) {
+    return new TargetCompleteEvent(
+        ct, null, completionContext, outputs, false, announceTargetSummary);
   }
 
   /** Construct a successful target completion event for a target that will be tested. */
   public static TargetCompleteEvent successfulBuildSchedulingTest(
       ConfiguredTargetAndData ct,
       CompletionContext completionContext,
-      NestedSet<ArtifactsInOutputGroup> outputs) {
-    return new TargetCompleteEvent(ct, null, completionContext, outputs, true);
+      ImmutableMap<String, ArtifactsInOutputGroup> outputs,
+      boolean announceTargetSummary) {
+    return new TargetCompleteEvent(
+        ct, null, completionContext, outputs, true, announceTargetSummary);
   }
 
   /**
@@ -219,9 +230,11 @@ public final class TargetCompleteEvent
       ConfiguredTargetAndData ct,
       CompletionContext completionContext,
       NestedSet<Cause> rootCauses,
-      NestedSet<ArtifactsInOutputGroup> outputs) {
+      ImmutableMap<String, ArtifactsInOutputGroup> outputs,
+      boolean announceTargetSummary) {
     Preconditions.checkArgument(!rootCauses.isEmpty());
-    return new TargetCompleteEvent(ct, rootCauses, completionContext, outputs, false);
+    return new TargetCompleteEvent(
+        ct, rootCauses, completionContext, outputs, false, announceTargetSummary);
   }
 
   /** Returns the label of the target associated with the event. */
@@ -249,8 +262,8 @@ public final class TargetCompleteEvent
 
   public Iterable<Artifact> getLegacyFilteredImportantArtifacts() {
     // TODO(ulfjack): This duplicates code in ArtifactsToBuild.
-    NestedSetBuilder<Artifact> builder = new NestedSetBuilder<>(outputs.getOrder());
-    for (ArtifactsInOutputGroup artifactsInOutputGroup : outputs.toList()) {
+    NestedSetBuilder<Artifact> builder = NestedSetBuilder.stableOrder();
+    for (ArtifactsInOutputGroup artifactsInOutputGroup : outputs.values()) {
       if (artifactsInOutputGroup.areImportant()) {
         builder.addTransitive(artifactsInOutputGroup.getArtifacts());
       }
@@ -266,7 +279,7 @@ public final class TargetCompleteEvent
   }
 
   @Override
-  public Collection<BuildEventId> getChildrenEvents() {
+  public ImmutableList<BuildEventId> getChildrenEvents() {
     ImmutableList.Builder<BuildEventId> childrenBuilder = ImmutableList.builder();
     for (Cause cause : getRootCauses().toList()) {
       childrenBuilder.add(cause.getIdProto());
@@ -275,7 +288,6 @@ public final class TargetCompleteEvent
       // For tests, announce all the test actions that will minimally happen (except for
       // interruption). If after the result of a test action another attempt is necessary,
       // it will be announced with the action that made the new attempt necessary.
-      Label label = getLabel();
       for (int run = 0; run < Math.max(testParams.getRuns(), 1); run++) {
         for (int shard = 0; shard < Math.max(testParams.getShards(), 1); shard++) {
           childrenBuilder.add(BuildEventIdUtil.testResult(label, run, shard, configEventId));
@@ -283,11 +295,24 @@ public final class TargetCompleteEvent
       }
       childrenBuilder.add(BuildEventIdUtil.testSummary(label, configEventId));
     }
+    if (announceTargetSummary) {
+      childrenBuilder.add(BuildEventIdUtil.targetSummary(aliasLabel, configEventId));
+    }
     return childrenBuilder.build();
+  }
+
+  public CompletionContext getCompletionContext() {
+    return completionContext;
+  }
+
+  @Nullable
+  public ArtifactsInOutputGroup getOutputGroup(String outputGroup) {
+    return outputs.get(outputGroup);
   }
 
   // TODO(aehlig): remove as soon as we managed to get rid of the deprecated "important_output"
   // field.
+
   private static void addImportantOutputs(
       CompletionContext completionContext,
       TargetComplete.Builder builder,
@@ -295,10 +320,6 @@ public final class TargetCompleteEvent
       Iterable<Artifact> artifacts) {
     addImportantOutputs(
         completionContext, builder, Artifact::getRootRelativePathString, converters, artifacts);
-  }
-
-  private static Iterable<Artifact> filterFilesets(Iterable<Artifact> artifacts) {
-    return Iterables.filter(artifacts, artifact -> !artifact.isFileset());
   }
 
   private static void addImportantOutputs(
@@ -328,6 +349,10 @@ public final class TargetCompleteEvent
         });
   }
 
+  private static Iterable<Artifact> filterFilesets(Iterable<Artifact> artifacts) {
+    return Iterables.filter(artifacts, artifact -> !artifact.isFileset());
+  }
+
   public static BuildEventStreamProtos.File.Builder newFileFromArtifact(
       String name, Artifact artifact) {
     return newFileFromArtifact(name, artifact, PathFragment.EMPTY_FRAGMENT);
@@ -335,9 +360,8 @@ public final class TargetCompleteEvent
 
   public static BuildEventStreamProtos.File.Builder newFileFromArtifact(
       String name, Artifact artifact, PathFragment relPath) {
-    File.Builder builder = File.newBuilder();
     if (name == null) {
-      String pathString = artifact.getRootRelativePath().getRelative(relPath).getPathString();
+      name = artifact.getRootRelativePath().getRelative(relPath).getPathString();
       if (OS.getCurrent() != OS.WINDOWS) {
         // TODO(b/36360490): Unix file names are currently always Latin-1 strings, even if they
         // contain UTF-8 bytes. Protobuf specifies string fields to contain UTF-8 and passing a
@@ -346,15 +370,12 @@ public final class TargetCompleteEvent
         // Bazel (eg. by standardizing on UTF-8 on Unix systems) we will need to silently swap out
         // the encoding at the protobuf library boundary. Windows does not suffer from this issue
         // due to the corresponding OS APIs supporting UTF-16.
-        pathString =
-            new String(pathString.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
+        name = new String(name.getBytes(ISO_8859_1), UTF_8);
       }
-      builder.setName(pathString);
-    } else {
-      builder.setName(name);
     }
-    builder.addAllPathPrefix(artifact.getRoot().getComponents());
-    return builder;
+    return File.newBuilder()
+        .setName(name)
+        .addAllPathPrefix(artifact.getRoot().getExecPath().segments());
   }
 
   public static BuildEventStreamProtos.File.Builder newFileFromArtifact(Artifact artifact) {
@@ -362,9 +383,9 @@ public final class TargetCompleteEvent
   }
 
   @Override
-  public Collection<LocalFile> referencedLocalFiles() {
+  public ImmutableList<LocalFile> referencedLocalFiles() {
     ImmutableList.Builder<LocalFile> builder = ImmutableList.builder();
-    for (ArtifactsInOutputGroup group : outputs.toList()) {
+    for (ArtifactsInOutputGroup group : outputs.values()) {
       if (group.areImportant()) {
         completionContext.visitArtifacts(
             filterFilesets(group.getArtifacts().toList()),
@@ -373,7 +394,8 @@ public final class TargetCompleteEvent
               public void accept(Artifact artifact) {
                 builder.add(
                     new LocalFile(
-                        completionContext.pathResolver().toPath(artifact), LocalFileType.OUTPUT));
+                        completionContext.pathResolver().toPath(artifact),
+                        LocalFileType.OUTPUT_FILE));
               }
 
               @Override
@@ -415,6 +437,7 @@ public final class TargetCompleteEvent
     builder.addAllOutputGroup(getOutputFilesByGroup(converters.artifactGroupNamer()));
 
     if (isTest) {
+      builder.setTestTimeout(Durations.fromSeconds(testTimeoutSeconds));
       builder.setTestTimeoutSeconds(testTimeoutSeconds);
     }
 
@@ -424,15 +447,14 @@ public final class TargetCompleteEvent
         builder.addDirectoryOutput(newFileFromArtifact(artifact).build());
       }
     }
-    // TODO(aehlig): remove direct reporting of artifacts as soon as clients no longer
-    // need it.
+    // TODO(aehlig): remove direct reporting of artifacts as soon as clients no longer need it.
     if (converters.getOptions().legacyImportantOutputs) {
       addImportantOutputs(completionContext, builder, converters, filteredImportantArtifacts);
       if (baselineCoverageArtifacts != null) {
         addImportantOutputs(
             completionContext,
             builder,
-            (artifact -> BASELINE_COVERAGE),
+            artifact -> BASELINE_COVERAGE,
             converters,
             baselineCoverageArtifacts.toList());
       }
@@ -443,14 +465,21 @@ public final class TargetCompleteEvent
   }
 
   @Override
-  public Collection<BuildEventId> postedAfter() {
+  public ImmutableList<BuildEventId> postedAfter() {
     return postedAfter;
   }
 
   @Override
   public ReportedArtifacts reportedArtifacts() {
+    return toReportedArtifacts(outputs, completionContext, baselineCoverageArtifacts);
+  }
+
+  static ReportedArtifacts toReportedArtifacts(
+      ImmutableMap<String, ArtifactsInOutputGroup> outputs,
+      CompletionContext completionContext,
+      @Nullable NestedSet<Artifact> baselineCoverageArtifacts) {
     ImmutableSet.Builder<NestedSet<Artifact>> builder = ImmutableSet.builder();
-    for (ArtifactsInOutputGroup artifactsInGroup : outputs.toList()) {
+    for (ArtifactsInOutputGroup artifactsInGroup : outputs.values()) {
       if (artifactsInGroup.areImportant()) {
         builder.add(artifactsInGroup.getArtifacts());
       }
@@ -471,16 +500,27 @@ public final class TargetCompleteEvent
   }
 
   private Iterable<OutputGroup> getOutputFilesByGroup(ArtifactGroupNamer namer) {
+    return toOutputGroupProtos(outputs, namer, baselineCoverageArtifacts);
+  }
+
+  /** Returns {@link OutputGroup} protos for given output groups and optional coverage artifacts. */
+  static ImmutableList<OutputGroup> toOutputGroupProtos(
+      ImmutableMap<String, ArtifactsInOutputGroup> outputs,
+      ArtifactGroupNamer namer,
+      @Nullable NestedSet<Artifact> baselineCoverageArtifacts) {
     ImmutableList.Builder<OutputGroup> groups = ImmutableList.builder();
-    for (ArtifactsInOutputGroup artifactsInOutputGroup : outputs.toList()) {
-      if (!artifactsInOutputGroup.areImportant()) {
-        continue;
-      }
-      OutputGroup.Builder groupBuilder = OutputGroup.newBuilder();
-      groupBuilder.setName(artifactsInOutputGroup.getOutputGroup());
-      groupBuilder.addFileSets(namer.apply(artifactsInOutputGroup.getArtifacts().toNode()));
-      groups.add(groupBuilder.build());
-    }
+    outputs.forEach(
+        (outputGroup, artifactsInOutputGroup) -> {
+          if (!artifactsInOutputGroup.areImportant()) {
+            return;
+          }
+          groups.add(
+              OutputGroup.newBuilder()
+                  .setName(outputGroup)
+                  .setIncomplete(artifactsInOutputGroup.isIncomplete())
+                  .addFileSets(namer.apply(artifactsInOutputGroup.getArtifacts().toNode()))
+                  .build());
+        });
     if (baselineCoverageArtifacts != null) {
       groups.add(
           OutputGroup.newBuilder()

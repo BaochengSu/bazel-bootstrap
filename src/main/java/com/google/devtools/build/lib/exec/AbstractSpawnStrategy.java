@@ -25,6 +25,7 @@ import com.google.devtools.build.lib.actions.Artifact.ArtifactExpander;
 import com.google.devtools.build.lib.actions.ArtifactPathResolver;
 import com.google.devtools.build.lib.actions.EnvironmentalExecException;
 import com.google.devtools.build.lib.actions.ExecException;
+import com.google.devtools.build.lib.actions.ForbiddenActionInputException;
 import com.google.devtools.build.lib.actions.LostInputsActionExecutionException;
 import com.google.devtools.build.lib.actions.LostInputsExecException;
 import com.google.devtools.build.lib.actions.MetadataProvider;
@@ -34,6 +35,7 @@ import com.google.devtools.build.lib.actions.SpawnExecutedEvent;
 import com.google.devtools.build.lib.actions.SpawnResult;
 import com.google.devtools.build.lib.actions.SpawnResult.Status;
 import com.google.devtools.build.lib.actions.Spawns;
+import com.google.devtools.build.lib.actions.UserExecException;
 import com.google.devtools.build.lib.actions.cache.MetadataHandler;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
@@ -162,6 +164,13 @@ public abstract class AbstractSpawnStrategy implements SandboxedSpawnStrategy {
       ex = e;
       spawnResult = e.getSpawnResult();
       // Log the Spawn and re-throw.
+    } catch (ForbiddenActionInputException e) {
+      throw new UserExecException(
+          e,
+          FailureDetail.newBuilder()
+              .setMessage("Exec failed due to forbidden input")
+              .setSpawn(FailureDetails.Spawn.newBuilder().setCode(Code.FORBIDDEN_INPUT))
+              .build());
     }
 
     SpawnLogContext spawnLogContext = actionExecutionContext.getContext(SpawnLogContext.class);
@@ -173,7 +182,7 @@ public abstract class AbstractSpawnStrategy implements SandboxedSpawnStrategy {
             context.getInputMapping(PathFragment.EMPTY_FRAGMENT),
             context.getTimeout(),
             spawnResult);
-      } catch (IOException e) {
+      } catch (IOException | ForbiddenActionInputException e) {
         actionExecutionContext
             .getEventHandler()
             .handle(
@@ -190,12 +199,7 @@ public abstract class AbstractSpawnStrategy implements SandboxedSpawnStrategy {
       String message =
           !Strings.isNullOrEmpty(resultMessage)
               ? resultMessage
-              : CommandFailureUtils.describeCommandFailure(
-                  verboseFailures,
-                  spawn.getArguments(),
-                  spawn.getEnvironment(),
-                  cwd,
-                  spawn.getExecutionPlatform());
+              : CommandFailureUtils.describeCommandFailure(verboseFailures, cwd, spawn);
       throw new SpawnExecException(message, spawnResult, /*forciblyRunRemotely=*/false);
     }
     return ImmutableList.of(spawnResult);
@@ -230,7 +234,8 @@ public abstract class AbstractSpawnStrategy implements SandboxedSpawnStrategy {
     }
 
     @Override
-    public void prefetchInputs() throws IOException, InterruptedException {
+    public void prefetchInputs()
+        throws IOException, ForbiddenActionInputException, InterruptedException {
       if (Spawns.shouldPrefetchInputsForLocalExecution(spawn)) {
         actionExecutionContext
             .getActionInputPrefetcher()
@@ -265,6 +270,11 @@ public abstract class AbstractSpawnStrategy implements SandboxedSpawnStrategy {
     }
 
     @Override
+    public SpawnInputExpander getSpawnInputExpander() {
+      return spawnInputExpander;
+    }
+
+    @Override
     public void lockOutputFiles() throws InterruptedException {
       if (stopConcurrentSpawns != null) {
         stopConcurrentSpawns.stop();
@@ -288,7 +298,7 @@ public abstract class AbstractSpawnStrategy implements SandboxedSpawnStrategy {
 
     @Override
     public SortedMap<PathFragment, ActionInput> getInputMapping(PathFragment baseDirectory)
-        throws IOException {
+        throws IOException, ForbiddenActionInputException {
       if (lazyInputMapping == null || !inputMappingBaseDirectory.equals(baseDirectory)) {
         try (SilentCloseable c =
             Profiler.instance().profile("AbstractSpawnStrategy.getInputMapping")) {

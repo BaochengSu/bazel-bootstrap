@@ -39,6 +39,8 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
   private static final Int32[] smallints = new Int32[100_000];
 
   static final StarlarkInt ZERO = StarlarkInt.of(0);
+  private static final StarlarkInt ONE = StarlarkInt.of(1);
+  private static final StarlarkInt MINUS_ONE = StarlarkInt.of(-1);
 
   /** Only nested classes of {@code StarlarkInt} are allowed to inherit it. */
   private StarlarkInt() {}
@@ -119,14 +121,9 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
         prefixBase = 16;
       }
       if (prefixBase != 0) {
-        digits = s.substring(2); // strip prefix
-        if (base == 0) {
+        if (base == 0 || base == prefixBase) {
           base = prefixBase;
-        } else if (base != prefixBase) {
-          throw new NumberFormatException(
-              String.format(
-                  "invalid base-%d literal: %s (%s prefix wants base %d)",
-                  base, Starlark.repr(stringForErrors), s.substring(0, 2), prefixBase));
+          digits = s.substring(2); // strip prefix
         }
       }
     }
@@ -184,6 +181,11 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     }
 
     @Override
+    protected long toLongFast() {
+      return (long) v;
+    }
+
+    @Override
     public BigInteger toBigInteger() {
       return BigInteger.valueOf(v);
     }
@@ -196,6 +198,11 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     @Override
     public int signum() {
       return Integer.signum(v);
+    }
+
+    @Override
+    public void repr(Printer printer) {
+      printer.append(v);
     }
 
     @Override
@@ -224,6 +231,11 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     }
 
     @Override
+    protected long toLongFast() {
+      return v;
+    }
+
+    @Override
     public BigInteger toBigInteger() {
       return BigInteger.valueOf(v);
     }
@@ -236,6 +248,11 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     @Override
     public int signum() {
       return Long.signum(v);
+    }
+
+    @Override
+    public void repr(Printer printer) {
+      printer.append(v);
     }
 
     @Override
@@ -274,6 +291,11 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     }
 
     @Override
+    public void repr(Printer printer) {
+      printer.append(v.toString());
+    }
+
+    @Override
     public int hashCode() {
       return 0xee914a1b * v.hashCode() ^ 0x6406918f;
     }
@@ -304,9 +326,7 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
   }
 
   @Override
-  public void repr(Printer printer) {
-    printer.append(toString());
-  }
+  public abstract void repr(Printer printer);
 
   /** Returns the signed int32 value of this StarlarkInt, or fails if not exactly representable. */
   public int toInt(String what) throws EvalException {
@@ -316,6 +336,19 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
   /** Returns the signed int64 value of this StarlarkInt, or fails if not exactly representable. */
   public long toLong(String what) throws EvalException {
     throw Starlark.errorf("got %s for %s, want value in the signed 64-bit range", this, what);
+  }
+
+  // A preallocated exception used to indicate overflow errors without the cost of allocation.
+  private static final Overflow OVERFLOW = new Overflow();
+
+  private static final class Overflow extends Exception {}
+
+  /**
+   * Similar to {@link #toLong(String)}, but faster: exception is not allocated and stack trace is
+   * not collected.
+   */
+  protected long toLongFast() throws Overflow {
+    throw OVERFLOW;
   }
 
   /** Returns the nearest IEEE-754 double-precision value closest to this int, which may be ±Inf. */
@@ -391,19 +424,27 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
 
   // binary operators
 
-  // In the common case, both operands are int32, so the operations
-  // can be done using longs with minimal fuss around overflows.
-  // All other combinations are promoted to BigInteger.
-  // TODO(adonovan): use long x long operations even if one or both
-  // operands are Int64; promote to Big x Big only upon overflow.
-  // (See the revision history for the necessary overflow checks.)
-
-  /** Returns a value whose signum is equal to x - y. */
+  /** Returns signum(x - y). */
   public static int compare(StarlarkInt x, StarlarkInt y) {
-    if (x instanceof Int32 && y instanceof Int32) {
-      return Integer.compare(((Int32) x).v, ((Int32) y).v);
+    // If both arguments are big, we compare BigIntegers.
+    // If neither argument is big, we compare longs.
+    // If only one argument is big, its magnitude is greater
+    // than the other operand, so only its sign matters.
+    //
+    // We avoid unnecessary branches.
+    try {
+      long xl = x.toLongFast();
+      try {
+        long yl = y.toLongFast();
+        return Long.compare(xl, yl); // (long, long)
+      } catch (Overflow unused) {
+        return -((Big) y).v.signum(); // (long, big)
+      }
+    } catch (Overflow unused) {
+      return y instanceof Big
+          ? ((Big) x).v.compareTo(((Big) y).v) // (big, big)
+          : ((Big) x).v.signum(); // (big, long)
     }
-    return x.toBigInteger().compareTo(y.toBigInteger());
   }
 
   /** Returns x + y. */
@@ -412,6 +453,19 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
       long xl = ((Int32) x).v;
       long yl = ((Int32) y).v;
       return StarlarkInt.of(xl + yl);
+    }
+
+    // We avoid Math.addExact and its overheads of exception allocation.
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
+      long zl = xl + yl;
+      boolean overflow = ((xl ^ zl) & (yl ^ zl)) < 0; // see Hacker's Delight, chapter 2
+      if (!overflow) {
+        return StarlarkInt.of(zl);
+      }
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -428,6 +482,19 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
       return StarlarkInt.of(xl - yl);
     }
 
+    // We avoid Math.subtractExact and its overhead of exception allocation.
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
+      long zl = xl - yl;
+      boolean overflow = ((xl ^ yl) & (xl ^ zl)) < 0; // see Hacker's Delight, chapter 2
+      if (!overflow) {
+        return StarlarkInt.of(zl);
+      }
+    } catch (Overflow unused) {
+      /* fall through */
+    }
+
     BigInteger xbig = x.toBigInteger();
     BigInteger ybig = y.toBigInteger();
     BigInteger zbig = xbig.subtract(ybig);
@@ -436,16 +503,68 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
 
   /** Returns x * y. */
   public static StarlarkInt multiply(StarlarkInt x, StarlarkInt y) {
+    // Fast path for common case: int32 * int32.
     if (x instanceof Int32 && y instanceof Int32) {
       long xl = ((Int32) x).v;
       long yl = ((Int32) y).v;
       return StarlarkInt.of(xl * yl);
     }
 
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
+
+      // Signed int128 multiplication, using Hacker's Delight 8-2
+      // (High-Order Half of 64-Bit Product) extended to 128 bits.
+      // TODO(adonovan): use Math.multiplyHigh when Java 9 becomes available.
+      long xlo = xl & 0xFFFFFFFFL;
+      long xhi = xl >> 32;
+      long ylo = yl & 0xFFFFFFFFL;
+      long yhi = yl >> 32;
+      long zlo = xlo * ylo;
+      long t = xhi * ylo + (zlo >>> 32);
+      long z1 = t & 0xFFFFFFFFL;
+      long z2 = t >> 32;
+      z1 += xlo * yhi;
+
+      // high and low arms of result
+      long z128hi = xhi * yhi + z2 + (z1 >> 32);
+      long z128lo = xl * yl;
+
+      // Check int128 result is within int64 range.
+      if (z128hi == (z128lo & Long.MIN_VALUE) >> 63) {
+        return StarlarkInt.of(z128lo);
+      }
+
+      /* overflow */
+
+    } catch (Overflow unused) {
+      /* fall through */
+    }
+
+    // Avoid unnecessary conversion to BigInteger if the other operand is -1, 0, 1.
+    // (Also makes self-test below faster.)
+    if (x == ZERO || y == ONE) {
+      return x;
+    } else if (y == ZERO || x == ONE) {
+      return y;
+    } else if (x == MINUS_ONE) {
+      return StarlarkInt.uminus(y);
+    } else if (y == MINUS_ONE) {
+      return StarlarkInt.uminus(x);
+    }
+
     BigInteger xbig = x.toBigInteger();
     BigInteger ybig = y.toBigInteger();
     BigInteger zbig = xbig.multiply(ybig);
-    return StarlarkInt.of(zbig);
+    StarlarkInt z = StarlarkInt.of(zbig);
+    // cheap self-test
+    if (!(z instanceof Big)) {
+      throw new AssertionError(
+          String.format(
+              "bug in multiplication: %s * %s = %s, must be long multiplication", x, y, z));
+    }
+    return z;
   }
 
   /** Returns x // y (floor of integer division). */
@@ -453,16 +572,19 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     if (y == ZERO) {
       throw Starlark.errorf("integer division by zero");
     }
-    if (x instanceof Int32 && y instanceof Int32) {
-      long xl = ((Int32) x).v;
-      long yl = ((Int32) y).v;
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
       // http://python-history.blogspot.com/2010/08/why-pythons-integer-division-floors.html
-      long quo = xl / yl;
-      long rem = xl % yl;
-      if ((xl < 0) != (yl < 0) && rem != 0) {
-        quo--;
+      if (xl == Long.MIN_VALUE && yl == -1) {
+        /* sole case in which quotient doesn't fit in long */
+      } else {
+        long quo = Math.floorDiv(xl, yl);
+        return StarlarkInt.of(quo);
       }
-      return StarlarkInt.of(quo);
+      /* overflow */
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -479,15 +601,13 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     if (y == ZERO) {
       throw Starlark.errorf("integer modulo by zero");
     }
-    if (x instanceof Int32 && y instanceof Int32) {
-      long xl = ((Int32) x).v;
-      long yl = ((Int32) y).v;
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
       // In Starlark, the sign of the result is the sign of the divisor.
-      long z = xl % yl;
-      if ((xl < 0) != (yl < 0) && z != 0) {
-        z += yl;
-      }
-      return StarlarkInt.of(z);
+      return StarlarkInt.of(Math.floorMod(xl, yl));
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -505,12 +625,14 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     if (yi < 0) {
       throw Starlark.errorf("negative shift count: %d", yi);
     }
-    if (x instanceof Int32) {
-      long xl = ((Int32) x).v;
-      if (yi >= Integer.SIZE) {
+    try {
+      long xl = x.toLongFast();
+      if (yi >= Long.SIZE) {
         return xl < 0 ? StarlarkInt.of(-1) : ZERO;
       }
       return StarlarkInt.of(xl >> yi);
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -526,13 +648,15 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     } else if (yi >= 512) {
       throw Starlark.errorf("shift count too large: %d", yi);
     }
-    if (x instanceof Int32) {
-      long xl = ((Int32) x).v;
+    try {
+      long xl = x.toLongFast();
       long z = xl << yi; // only uses low 6 bits of yi
       if ((z >> yi) == xl && yi < 64) {
         return StarlarkInt.of(z);
       }
       /* overflow */
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -542,10 +666,12 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
 
   /** Returns x ^ y. */
   public static StarlarkInt xor(StarlarkInt x, StarlarkInt y) {
-    if (x instanceof Int32 && y instanceof Int32) {
-      long xl = ((Int32) x).v;
-      long yl = ((Int32) y).v;
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
       return StarlarkInt.of(xl ^ yl);
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -556,10 +682,12 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
 
   /** Returns x | y. */
   public static StarlarkInt or(StarlarkInt x, StarlarkInt y) {
-    if (x instanceof Int32 && y instanceof Int32) {
-      long xl = ((Int32) x).v;
-      long yl = ((Int32) y).v;
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
       return StarlarkInt.of(xl | yl);
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -570,10 +698,12 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
 
   /** Returns x & y. */
   public static StarlarkInt and(StarlarkInt x, StarlarkInt y) {
-    if (x instanceof Int32 && y instanceof Int32) {
-      long xl = ((Int32) x).v;
-      long yl = ((Int32) y).v;
+    try {
+      long xl = x.toLongFast();
+      long yl = y.toLongFast();
       return StarlarkInt.of(xl & yl);
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
     BigInteger xbig = x.toBigInteger();
@@ -584,14 +714,15 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
 
   /** Returns ~x. */
   public static StarlarkInt bitnot(StarlarkInt x) {
-    if (x instanceof Int32) {
-      long xl = ((Int32) x).v;
+    try {
+      long xl = x.toLongFast();
       return StarlarkInt.of(~xl);
+    } catch (Overflow unused) {
+      /* fall through */
     }
 
-    BigInteger xbig = x.toBigInteger();
-    BigInteger ybig = MINUS1BIG.subtract(xbig);
-    return StarlarkInt.of(ybig);
+    BigInteger xbig = ((Big) x).v;
+    return StarlarkInt.of(xbig.not());
   }
 
   /** Returns -x. */
@@ -612,8 +743,6 @@ public abstract class StarlarkInt implements StarlarkValue, Comparable<StarlarkI
     BigInteger ybig = xbig.negate();
     return StarlarkInt.of(ybig);
   }
-
-  private static final BigInteger MINUS1BIG = BigInteger.ONE.negate();
 
   /** Reports whether int x exactly equals float y. */
   static boolean intEqualsFloat(StarlarkInt x, StarlarkFloat y) {

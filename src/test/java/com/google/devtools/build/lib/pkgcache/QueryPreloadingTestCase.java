@@ -26,11 +26,13 @@ import com.google.devtools.build.lib.packages.util.PackageLoadingTestCase;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
 import com.google.devtools.build.lib.skyframe.TransitiveTargetKey;
 import com.google.devtools.build.lib.testutil.ManualClock;
+import com.google.devtools.build.lib.util.AbruptExitException;
 import com.google.devtools.build.lib.vfs.DigestHashFunction;
 import com.google.devtools.build.lib.vfs.FileStatus;
 import com.google.devtools.build.lib.vfs.FileSystem;
 import com.google.devtools.build.lib.vfs.ModifiedFileSet;
 import com.google.devtools.build.lib.vfs.Path;
+import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.lib.vfs.inmemoryfs.InMemoryFileSystem;
 import com.google.devtools.build.skyframe.DelegatingWalkableGraph;
@@ -161,11 +163,12 @@ public abstract class QueryPreloadingTestCase extends PackageLoadingTestCase {
         .containsAtLeastElementsIn(asLabelSet(expectedLabels));
   }
 
-  protected void syncPackages() throws InterruptedException {
+  protected void syncPackages() throws InterruptedException, AbruptExitException {
     syncPackages(ModifiedFileSet.EVERYTHING_MODIFIED);
   }
 
-  protected void syncPackages(ModifiedFileSet modifiedFileSet) throws InterruptedException {
+  protected void syncPackages(ModifiedFileSet modifiedFileSet)
+      throws InterruptedException, AbruptExitException {
     getSkyframeExecutor()
         .invalidateFilesUnderPathForTesting(
             reporter, modifiedFileSet, Root.fromPath(rootDirectory));
@@ -178,18 +181,18 @@ public abstract class QueryPreloadingTestCase extends PackageLoadingTestCase {
   }
 
   protected static class CustomInMemoryFs extends InMemoryFileSystem {
-    private final Map<Path, FileStatus> stubbedStats = Maps.newHashMap();
+    private final Map<PathFragment, FileStatus> stubbedStats = Maps.newHashMap();
 
     public CustomInMemoryFs(ManualClock manualClock) {
       super(manualClock, DigestHashFunction.SHA256);
     }
 
     public void stubStat(Path path, @Nullable FileStatus stubbedResult) {
-      stubbedStats.put(path, stubbedResult);
+      stubbedStats.put(path.asFragment(), stubbedResult);
     }
 
     @Override
-    public FileStatus statIfFound(Path path, boolean followSymlinks) throws IOException {
+    public FileStatus statIfFound(PathFragment path, boolean followSymlinks) throws IOException {
       if (stubbedStats.containsKey(path)) {
         return stubbedStats.get(path);
       }

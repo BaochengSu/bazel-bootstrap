@@ -34,12 +34,21 @@ java_library(
 java_library(
     name = "testutil",
     testonly = 1,
-    srcs = ["TestUtils.java"],
+    srcs = [
+        "SandboxHelper.java",
+        "TestUtils.java",
+    ],
     deps = [
+        "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:execution_requirements",
+        "//src/main/java/com/google/devtools/build/lib/actions:localhost_capacity",
+        "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
+        "//src/main/java/com/google/devtools/build/lib/sandbox",
         "//src/main/java/com/google/devtools/build/lib/shell",
         "//src/main/java/com/google/devtools/build/lib/vfs",
+        "//src/main/java/com/google/devtools/build/lib/vfs:pathfragment",
         "//src/main/java/com/google/devtools/build/lib/worker",
+        "//src/test/java/com/google/devtools/build/lib/actions/util",
         "//third_party:guava",
     ],
 )
@@ -58,7 +67,10 @@ java_binary(
 
 java_library(
     name = "WorkerTests_lib",
-    srcs = glob(["*Test.java"]),
+    srcs = glob(
+        ["*Test.java"],
+        exclude = ["WorkRequestHandlerTest.java"],
+    ),
     deps = [
         ":testutil",
         "//src/main/java/com/google/devtools/build/lib:runtime",
@@ -80,7 +92,6 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/worker",
         "//src/main/java/com/google/devtools/common/options",
         "//src/main/protobuf:worker_protocol_java_proto",
-        "//src/test/java/com/google/devtools/build/lib/actions/util",
         "//src/test/java/com/google/devtools/build/lib/testutil:TestUtils",
         "//src/test/java/com/google/devtools/build/lib/vfs/util",
         "//third_party:apache_commons_pool2",

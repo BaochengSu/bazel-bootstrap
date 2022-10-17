@@ -15,6 +15,7 @@
 package com.google.devtools.build.lib.buildtool.util;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -35,6 +36,9 @@ import com.google.devtools.build.lib.buildtool.BuildRequestOptions;
 import com.google.devtools.build.lib.buildtool.BuildResult;
 import com.google.devtools.build.lib.buildtool.BuildTool;
 import com.google.devtools.build.lib.clock.JavaClock;
+import com.google.devtools.build.lib.cmdline.Label;
+import com.google.devtools.build.lib.events.Reporter;
+import com.google.devtools.build.lib.events.StoredEventHandler;
 import com.google.devtools.build.lib.events.util.EventCollectionApparatus;
 import com.google.devtools.build.lib.exec.BinTools;
 import com.google.devtools.build.lib.exec.ExecutionOptions;
@@ -46,6 +50,7 @@ import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.lib.runtime.BlazeCommand;
 import com.google.devtools.build.lib.runtime.BlazeCommandResult;
+import com.google.devtools.build.lib.runtime.BlazeCommandUtils;
 import com.google.devtools.build.lib.runtime.BlazeModule;
 import com.google.devtools.build.lib.runtime.BlazeRuntime;
 import com.google.devtools.build.lib.runtime.ClientOptions;
@@ -68,9 +73,13 @@ import com.google.devtools.common.options.InvocationPolicyEnforcer;
 import com.google.devtools.common.options.OptionsBase;
 import com.google.devtools.common.options.OptionsParser;
 import com.google.devtools.common.options.OptionsParsingException;
+import com.google.protobuf.Any;
+import com.google.protobuf.Message;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -91,8 +100,10 @@ public class BlazeRuntimeWrapper {
   private ImmutableSet<ConfiguredTarget> topLevelTargets;
 
   private OptionsParser optionsParser;
-  private ImmutableList.Builder<String> optionsToParse = new ImmutableList.Builder<>();
+  private final List<String> optionsToParse = new ArrayList<>();
+  private final Map<String, Object> starlarkOptions = new HashMap<>();
   private final List<Class<? extends OptionsBase>> additionalOptionsClasses = new ArrayList<>();
+  private final List<String> crashMessages = new ArrayList<>();
 
   private final List<Object> eventBusSubscribers = new ArrayList<>();
 
@@ -167,7 +178,7 @@ public class BlazeRuntimeWrapper {
       Iterables.addAll(
           options, module.getCommandOptions(DummyBuildCommand.class.getAnnotation(Command.class)));
     }
-    options.addAll(runtime.getRuleClassProvider().getConfigurationOptions());
+    options.addAll(runtime.getRuleClassProvider().getFragmentRegistry().getOptionsClasses());
     return OptionsParser.builder().optionsClasses(options).build();
   }
 
@@ -195,8 +206,20 @@ public class BlazeRuntimeWrapper {
   }
 
   /** Creates a new command environment; executeBuild does this automatically if you do not. */
-  public final CommandEnvironment newCommand(Class<? extends BlazeCommand> buildCommand)
+  public final CommandEnvironment newCommand(Class<? extends BlazeCommand> command)
       throws Exception {
+    return newCommandWithExtensions(command, /*extensions=*/ ImmutableList.of());
+  }
+
+  /**
+   * Creates a new command environment with additional proto extensions as if they were passed to
+   * the blaze server.
+   */
+  public final CommandEnvironment newCommandWithExtensions(
+      Class<? extends BlazeCommand> command, List<Message> extensions) throws Exception {
+    additionalOptionsClasses.addAll(
+        BlazeCommandUtils.getOptions(
+            command, runtime.getBlazeModules(), runtime.getRuleClassProvider()));
     initializeOptionsParser();
     commandCreated = true;
     if (env != null) {
@@ -206,16 +229,19 @@ public class BlazeRuntimeWrapper {
     checkNotNull(
         optionsParser,
         "The options parser must be initialized before creating a new command environment");
+    optionsParser.setStarlarkOptions(starlarkOptions);
 
     env =
         runtime
             .getWorkspace()
             .initCommand(
-                buildCommand.getAnnotation(Command.class),
+                command.getAnnotation(Command.class),
                 optionsParser,
                 new ArrayList<>(),
                 0L,
-                0L);
+                0L,
+                extensions.stream().map(Any::pack).collect(toImmutableList()),
+                this.crashMessages::add);
     return env;
   }
 
@@ -232,7 +258,8 @@ public class BlazeRuntimeWrapper {
   }
 
   public void resetOptions() {
-    optionsToParse = new ImmutableList.Builder<>();
+    optionsToParse.clear();
+    starlarkOptions.clear();
   }
 
   public void addOptions(String... args) {
@@ -243,8 +270,12 @@ public class BlazeRuntimeWrapper {
     optionsToParse.addAll(args);
   }
 
+  public void addStarlarkOption(String label, Object value) {
+    starlarkOptions.put(Label.parseAbsoluteUnchecked(label).getCanonicalForm(), value);
+  }
+
   public ImmutableList<String> getOptions() {
-    return optionsToParse.build();
+    return ImmutableList.copyOf(optionsToParse);
   }
 
   public <O extends OptionsBase> O getOptions(Class<O> optionsClass) {
@@ -264,7 +295,7 @@ public class BlazeRuntimeWrapper {
   public void initializeOptionsParser() throws OptionsParsingException {
     // Create the options parser and parse all the options collected so far
     optionsParser = createOptionsParser();
-    optionsParser.parse(optionsToParse.build());
+    optionsParser.parse(optionsToParse);
     // Enforce the test invocation policy once the options have been added
     enforceTestInvocationPolicy(optionsParser);
   }
@@ -276,8 +307,8 @@ public class BlazeRuntimeWrapper {
     }
     commandCreated = false;
     BuildTool buildTool = new BuildTool(env);
-    try (OutErr.SystemPatcher systemOutErrPatcher =
-        env.getReporter().getOutErr().getSystemPatcher()) {
+    Reporter reporter = env.getReporter();
+    try (OutErr.SystemPatcher systemOutErrPatcher = reporter.getOutErr().getSystemPatcher()) {
       Profiler.instance()
           .start(
               /*profiledTasks=*/ ImmutableSet.of(),
@@ -288,10 +319,14 @@ public class BlazeRuntimeWrapper {
               /*recordAllDurations=*/ false,
               new JavaClock(),
               /*execStartTimeNanos=*/ 42,
-              /*enabledCpuUsageProfiling=*/ false,
               /*slimProfile=*/ false,
               /*includePrimaryOutput=*/ false,
-              /*includeTargetLabel=*/ false);
+              /*includeTargetLabel=*/ false,
+              /*collectTaskHistograms=*/ true,
+              runtime.getBugReporter());
+
+      StoredEventHandler storedEventHandler = new StoredEventHandler();
+      reporter.addHandler(storedEventHandler);
 
       // This cannot go into newCommand, because we hook up the EventCollectionApparatus as a
       // module, and after that ran, further changes to the apparatus aren't reflected on the
@@ -299,10 +334,15 @@ public class BlazeRuntimeWrapper {
       for (BlazeModule module : runtime.getBlazeModules()) {
         module.beforeCommand(env);
       }
+      reporter.removeHandler(storedEventHandler);
+
       EventBus eventBus = env.getEventBus();
       for (Object subscriber : eventBusSubscribers) {
         eventBus.register(subscriber);
       }
+
+      // Replay events from beforeCommand, just as BlazeCommandDispatcher does.
+      storedEventHandler.replayOn(reporter);
 
       env.beforeCommand(InvocationPolicy.getDefaultInstance());
 
@@ -334,11 +374,11 @@ public class BlazeRuntimeWrapper {
             crash != null ? crash.getThrowable() : null,
             detailedExitCode,
             /*startSuspendCount=*/ 0);
-        getSkyframeExecutor().notifyCommandComplete(env.getReporter());
+        getSkyframeExecutor().notifyCommandComplete(reporter);
         if (crash != null) {
           runtime
               .getBugReporter()
-              .handleCrash(crash, CrashContext.keepAlive().reportingTo(env.getReporter()));
+              .handleCrash(crash, CrashContext.keepAlive().reportingTo(reporter));
         }
       }
     } finally {
@@ -353,19 +393,20 @@ public class BlazeRuntimeWrapper {
   }
 
   BuildRequest createRequest(String commandName, List<String> targets) {
-    BuildRequest request =
-        BuildRequest.create(
-            commandName,
-            optionsParser,
-            null,
-            targets,
-            env.getReporter().getOutErr(),
-            env.getCommandId(),
-            runtime.getClock().currentTimeMillis());
+
+    BuildRequest.Builder builder =
+        BuildRequest.builder()
+            .setCommandName(commandName)
+            .setId(env.getCommandId())
+            .setOptions(optionsParser)
+            .setStartupOptions(null)
+            .setOutErr(env.getReporter().getOutErr())
+            .setTargets(targets)
+            .setStartTimeMillis(runtime.getClock().currentTimeMillis());
     if ("test".equals(commandName)) {
-      request.setRunTests();
+      builder.setRunTests(true);
     }
-    return request;
+    return builder.build();
   }
 
   public BuildRequest getLastRequest() {
@@ -382,5 +423,9 @@ public class BlazeRuntimeWrapper {
 
   public ImmutableSet<ConfiguredTarget> getTopLevelTargets() {
     return topLevelTargets;
+  }
+
+  public List<String> getCrashMessages() {
+    return crashMessages;
   }
 }

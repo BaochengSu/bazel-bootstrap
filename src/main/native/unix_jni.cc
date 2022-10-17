@@ -81,10 +81,17 @@ void PostException(JNIEnv *env, int error_number, const std::string& message) {
                    // (aka EOPNOTSUPP)
       exception_classname = "java/lang/UnsupportedOperationException";
       break;
+    case EINVAL:  // Invalid argument
+      exception_classname =
+          "com/google/devtools/build/lib/unix/InvalidArgumentIOException";
+      break;
+    case ELOOP:  // Too many symbolic links encountered
+      exception_classname =
+          "com/google/devtools/build/lib/vfs/FileSymlinkLoopException";
+      break;
     case EBADF:         // Bad file number or descriptor already closed.
     case ENAMETOOLONG:  // File name too long
     case ENODATA:    // No data available
-    case EINVAL:     // Invalid argument
 #if defined(EMULTIHOP)
     case EMULTIHOP:  // Multihop attempted
 #endif
@@ -98,7 +105,6 @@ void PostException(JNIEnv *env, int error_number, const std::string& message) {
     case EROFS:      // Read-only file system
     case EEXIST:     // File exists
     case EMLINK:     // Too many links
-    case ELOOP:      // Too many symbolic links encountered
     case EISDIR:     // Is a directory
     case ENOTDIR:    // Not a directory
     case ENOTEMPTY:  // Directory not empty
@@ -276,6 +282,22 @@ static void SetIntField(JNIEnv *env,
   CHECK(fid != nullptr);
   env->SetIntField(object, fid, val);
 }
+
+// RAII class for jstring.
+class JStringLatin1Holder {
+  const char *const chars;
+
+ public:
+  JStringLatin1Holder(JNIEnv *env, jstring string)
+      : chars(GetStringLatin1Chars(env, string)) {}
+
+  ~JStringLatin1Holder() { ReleaseStringLatin1Chars(chars); }
+
+  operator const char *() const { return chars; }
+
+  operator std::string() const { return chars; }
+};
+
 }  // namespace
 
 extern "C" JNIEXPORT void JNICALL
@@ -463,6 +485,46 @@ Java_com_google_devtools_build_lib_unix_NativePosixFiles_mkdir(JNIEnv *env,
   }
   ReleaseStringLatin1Chars(path_chars);
   return result;
+}
+
+/*
+ * Class:     com.google.devtools.build.lib.unix.NativePosixFiles
+ * Method:    mkdirWritable
+ * Signature: (Ljava/lang/String;I)Z
+ * Throws:    java.io.IOException
+ */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_google_devtools_build_lib_unix_NativePosixFiles_mkdirWritable(
+    JNIEnv *env, jclass clazz, jstring path) {
+  JStringLatin1Holder path_chars(env, path);
+
+  portable_stat_struct statbuf;
+  int r;
+  do {
+    r = portable_lstat(path_chars, &statbuf);
+  } while (r != 0 && errno == EINTR);
+
+  if (r != 0) {
+    if (errno != ENOENT) {
+      PostException(env, errno, path_chars);
+      return false;
+    }
+    // directory does not exist.
+    if (::mkdir(path_chars, 0777) == -1) {
+      PostException(env, errno, path_chars);
+    }
+    return true;
+  }
+  // path already exists
+  if (!S_ISDIR(statbuf.st_mode)) {
+    PostException(env, ENOTDIR, path_chars);
+    return false;
+  }
+  // Make sure the mode is correct.
+  if ((statbuf.st_mode & 0777) != 0777 && ::chmod(path_chars, 0777) == -1) {
+    PostException(env, errno, path_chars);
+  }
+  return false;
 }
 
 /*
@@ -1113,7 +1175,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_google_devtools_build_lib_unix_NativePosixSystem_sysctlbynameGetLong(
     JNIEnv *env, jclass clazz, jstring name) {
   const char *name_chars = GetStringLatin1Chars(env, name);
-  long r;
+  int64_t r;
   size_t len = sizeof(r);
   if (portable_sysctlbyname(name_chars, &r, &len) == -1) {
     PostException(env, errno, std::string("sysctlbyname(") + name_chars + ")");

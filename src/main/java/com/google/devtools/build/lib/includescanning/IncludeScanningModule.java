@@ -14,14 +14,14 @@
 package com.google.devtools.build.lib.includescanning;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Supplier;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Maps;
 import com.google.common.flogger.GoogleLogger;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.devtools.build.lib.actions.ActionExecutionContext;
 import com.google.devtools.build.lib.actions.ActionExecutionMetadata;
 import com.google.devtools.build.lib.actions.ActionGraph;
@@ -29,11 +29,9 @@ import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ArtifactFactory;
 import com.google.devtools.build.lib.actions.ArtifactResolver;
 import com.google.devtools.build.lib.actions.ExecException;
-import com.google.devtools.build.lib.analysis.ArtifactsToOwnerLabels;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.concurrent.ExecutorUtil;
-import com.google.devtools.build.lib.concurrent.NamedForkJoinPool;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadHostile;
 import com.google.devtools.build.lib.exec.ExecutorBuilder;
 import com.google.devtools.build.lib.exec.ExecutorLifecycleListener;
@@ -41,7 +39,6 @@ import com.google.devtools.build.lib.exec.ModuleActionContextRegistry;
 import com.google.devtools.build.lib.includescanning.IncludeParser.Inclusion;
 import com.google.devtools.build.lib.rules.cpp.CppIncludeExtractionContext;
 import com.google.devtools.build.lib.rules.cpp.CppIncludeScanningContext;
-import com.google.devtools.build.lib.rules.cpp.IncludeScanner;
 import com.google.devtools.build.lib.rules.cpp.IncludeScanner.IncludeScanningHeaderData;
 import com.google.devtools.build.lib.rules.cpp.SwigIncludeScanningContext;
 import com.google.devtools.build.lib.runtime.BlazeModule;
@@ -64,8 +61,11 @@ import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Module that provides implementations of {@link CppIncludeExtractionContext},
@@ -114,7 +114,7 @@ public class IncludeScanningModule extends BlazeModule {
   public Iterable<Class<? extends OptionsBase>> getCommandOptions(Command command) {
     return "build".equals(command.name())
         ? ImmutableList.of(IncludeScanningOptions.class)
-        : ImmutableList.<Class<? extends OptionsBase>>of();
+        : ImmutableList.of();
   }
 
   @Override
@@ -168,17 +168,14 @@ public class IncludeScanningModule extends BlazeModule {
     private final Supplier<ExecutorService> includePool;
     private final ConcurrentMap<Artifact, ListenableFuture<Collection<Inclusion>>> cache =
         new ConcurrentHashMap<>();
-    private final boolean useAsyncIncludeScanner;
 
     SwigIncludeScanningContextImpl(
         CommandEnvironment env,
         Supplier<SpawnIncludeScanner> spawnScannerSupplier,
-        Supplier<ExecutorService> includePool,
-        boolean useAsyncIncludeScanner) {
+        Supplier<ExecutorService> includePool) {
       this.env = env;
       this.spawnScannerSupplier = spawnScannerSupplier;
       this.includePool = includePool;
-      this.useAsyncIncludeScanner = useAsyncIncludeScanner;
     }
 
     @Override
@@ -199,69 +196,53 @@ public class IncludeScanningModule extends BlazeModule {
               swigIncludePaths,
               env.getDirectories(),
               env.getSkyframeBuildView().getArtifactFactory(),
-              env.getExecRoot(),
-              useAsyncIncludeScanner);
-      ImmutableMap.Builder<PathFragment, Artifact> pathToLegalOutputArtifact =
-          ImmutableMap.builder();
-      for (Artifact path : legalOutputPaths) {
-        pathToLegalOutputArtifact.put(path.getExecPath(), path);
-      }
+              env.getExecRoot());
       try {
-        scanner
-            .processAsync(
-                source,
-                ImmutableList.of(source),
-                // For Swig include scanning just point to the output file in the map.
-                new IncludeScanningHeaderData.Builder(
-                        pathToLegalOutputArtifact.build(), /*modularHeaders=*/ ImmutableSet.of())
-                    .build(),
-                ImmutableList.of(),
-                includes,
-                actionExecutionMetadata,
-                actionExecContext,
-                grepIncludes)
-            .get();
-      } catch (ExecutionException e) {
-        Throwables.throwIfInstanceOf(e.getCause(), ExecException.class);
-        Throwables.throwIfInstanceOf(e.getCause(), InterruptedException.class);
-        if (e.getCause() instanceof IORuntimeException) {
-          throw ((IORuntimeException) e.getCause()).getCauseIOException();
-        }
-        Throwables.throwIfUnchecked(e.getCause());
-        throw new IllegalStateException(e.getCause());
+        scanner.processAsync(
+            source,
+            ImmutableList.of(source),
+            // For Swig include scanning just point to the output file in the map.
+            new IncludeScanningHeaderData.Builder(
+                    Maps.uniqueIndex(legalOutputPaths, Artifact::getExecPath),
+                    /*modularHeaders=*/ ImmutableSet.of())
+                .build(),
+            ImmutableList.of(),
+            includes,
+            actionExecutionMetadata,
+            actionExecContext,
+            grepIncludes);
+      } catch (IORuntimeException e) {
+        throw e.getCauseIOException();
       }
     }
   }
 
   /**
-   * Lifecycle manager for the include scanner. Maintains a {@linkplain
-   * IncludeScanner.IncludeScannerSupplier supplier} which can be used to access the (potentially
-   * shared) scanners and exposes {@linkplain #getSwigActionContext() action} {@linkplain
-   * #getCppActionContext() contexts} based on them.
+   * Lifecycle manager for the include scanner. Maintains an {@linkplain IncludeScannerSupplier
+   * supplier} which can be used to access the (potentially shared) scanners and exposes {@linkplain
+   * #getSwigActionContext() action} {@linkplain #getCppActionContext() contexts} based on them.
    */
-  private static class IncludeScannerLifecycleManager implements ExecutorLifecycleListener {
+  private static final class IncludeScannerLifecycleManager implements ExecutorLifecycleListener {
     private final CommandEnvironment env;
-    private final BuildRequest buildRequest;
+    private final IncludeScanningOptions options;
 
     private final Supplier<SpawnIncludeScanner> spawnScannerSupplier;
-    private final boolean useAsyncIncludeScanner;
-    private IncludeScannerSupplierImpl includeScannerSupplier;
+    private IncludeScannerSupplier includeScannerSupplier;
     private ExecutorService includePool;
 
-    public IncludeScannerLifecycleManager(
+    IncludeScannerLifecycleManager(
         CommandEnvironment env,
         BuildRequest buildRequest,
         MutableSupplier<SpawnIncludeScanner> spawnScannerSupplier) {
       this.env = env;
-      this.buildRequest = buildRequest;
+      this.options = buildRequest.getOptions(IncludeScanningOptions.class);
 
-      IncludeScanningOptions options = buildRequest.getOptions(IncludeScanningOptions.class);
       spawnScannerSupplier.set(
           new SpawnIncludeScanner(
               env.getExecRoot(),
-              options.experimentalRemoteExtractionThreshold));
+              options.experimentalRemoteExtractionThreshold,
+              env.getSkyframeExecutor().getSyscalls()));
       this.spawnScannerSupplier = spawnScannerSupplier;
-      useAsyncIncludeScanner = options.useAsyncIncludeScanner;
       env.getEventBus().register(this);
     }
 
@@ -270,14 +251,12 @@ public class IncludeScanningModule extends BlazeModule {
     }
 
     private SwigIncludeScanningContextImpl getSwigActionContext() {
-      return new SwigIncludeScanningContextImpl(
-          env, spawnScannerSupplier, () -> includePool, useAsyncIncludeScanner);
+      return new SwigIncludeScanningContextImpl(env, spawnScannerSupplier, () -> includePool);
     }
 
     @Override
     public void executionPhaseStarting(
-        ActionGraph actionGraph,
-        Supplier<ArtifactsToOwnerLabels> topLevelArtifactsToAccountingGroups)
+        ActionGraph actionGraph, Supplier<ImmutableSet<Artifact>> topLevelArtifacts)
         throws AbruptExitException, InterruptedException {
       try {
         includeScannerSupplier.init(
@@ -302,31 +281,45 @@ public class IncludeScanningModule extends BlazeModule {
     }
 
     @Override
-    public void executionPhaseEnding() {}
+    public void executionPhaseEnding() {
+      if (options.experimentalReuseIncludeScanningThreads) {
+        if (includePool != null && !includePool.isShutdown()) {
+          ExecutorUtil.uninterruptibleShutdownNow(includePool);
+        }
+        includePool = null;
+      }
+    }
 
     @Override
     public void executorCreated() {
-      IncludeScanningOptions options = buildRequest.getOptions(IncludeScanningOptions.class);
       int threads = options.includeScanningParallelism;
       if (threads > 0) {
         logger.atInfo().log("Include scanning configured to use a pool with %d threads", threads);
-        if (options.useAsyncIncludeScanner) {
-          includePool = NamedForkJoinPool.newNamedPool("Include scanner", threads);
+        if (options.experimentalReuseIncludeScanningThreads) {
+          includePool =
+              new ThreadPoolExecutor(
+                  threads,
+                  threads,
+                  0L,
+                  TimeUnit.SECONDS,
+                  new SynchronousQueue<Runnable>(),
+                  new ThreadFactoryBuilder().setNameFormat("Include scanner" + " %d").build(),
+                  (r, e) -> r.run());
         } else {
           includePool = ExecutorUtil.newSlackPool(threads, "Include scanner");
         }
+
       } else {
         logger.atInfo().log("Include scanning configured to use a direct executor");
         includePool = MoreExecutors.newDirectExecutorService();
       }
       includeScannerSupplier =
-          new IncludeScannerSupplierImpl(
+          new IncludeScannerSupplier(
               env.getDirectories(),
               includePool,
               env.getSkyframeBuildView().getArtifactFactory(),
               spawnScannerSupplier,
-              env.getExecRoot(),
-              options.useAsyncIncludeScanner);
+              env.getExecRoot());
 
       spawnScannerSupplier.get().setOutputService(env.getOutputService());
       spawnScannerSupplier.get().setInMemoryOutput(options.inMemoryIncludesFiles);

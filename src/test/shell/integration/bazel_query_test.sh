@@ -180,10 +180,10 @@ EOF
 function assert_depth_query_idempotence() {
   order_results="$1"
   if $order_results ; then
-    add_to_bazelrc "query --order_output=auto"
+    order_output_arg=--order_output=auto
     universe_arg=""
   else
-    add_to_bazelrc "query --order_output=no"
+    order_output_arg=--order_output=no
     universe_arg=--universe_scope=//depth:*
   fi
   make_depth_tests
@@ -191,8 +191,8 @@ function assert_depth_query_idempotence() {
   for run in {1..5}; do
     # Only compare the output stream with the query results.
     mv -f $TEST_log $last_log
-    bazel query 'deps(//depth:one, 4)' $universe_arg > $TEST_log \
-        || fail "Expected success"
+    bazel query 'deps(//depth:one, 4)' $order_output_arg $universe_arg \
+        > $TEST_log || fail "Expected success"
     if [ $run -gt 1 ]; then
       if $order_results ; then
         diff $TEST_log $last_log || \
@@ -551,6 +551,55 @@ EOF
   expect_not_log "^${TEST_TMPDIR}/.*/foo/BUILD:[0-9]*:[0-9]*"
 }
 
+function test_proto_output_source_files() {
+  rm -rf foo
+  mkdir -p foo
+  cat > foo/BUILD <<EOF
+py_binary(
+  name = "main",
+  srcs = ["main.py"],
+)
+EOF
+  touch foo/main.py || fail "Could not touch foo/main.py"
+
+  bazel query --output=proto \
+    --incompatible_display_source_file_location \
+    '//foo:main.py' >& $TEST_log || fail "Expected success"
+
+  expect_log "${TEST_TMPDIR}/.*/foo/main.py:1:1" $TEST_log
+  expect_not_log "${TEST_TMPDIR}/.*/foo/BUILD:[0-9]*:[0-9]*" $TEST_log
+
+  bazel query --output=proto \
+    --noincompatible_display_source_file_location \
+    '//foo:main.py' >& $TEST_log || fail "Expected success"
+  expect_log "${TEST_TMPDIR}/.*/foo/BUILD:[0-9]*:[0-9]*" $TEST_log
+  expect_not_log "${TEST_TMPDIR}/.*/foo/main.py:1:1" $TEST_log
+}
+
+function test_xml_output_source_files() {
+  rm -rf foo
+  mkdir -p foo
+  cat > foo/BUILD <<EOF
+py_binary(
+  name = "main",
+  srcs = ["main.py"],
+)
+EOF
+  touch foo/main.py || fail "Could not touch foo/main.py"
+
+  bazel query --output=xml \
+    --incompatible_display_source_file_location \
+    '//foo:main.py' >& $TEST_log || fail "Expected success"
+  expect_log "location=\"${TEST_TMPDIR}/.*/foo/main.py:1:1"
+  expect_not_log "location=\"${TEST_TMPDIR}/.*/foo/BUILD:[0-9]*:[0-9]*"
+
+  bazel query --output=xml \
+    --noincompatible_display_source_file_location \
+    '//foo:main.py' >& $TEST_log || fail "Expected success"
+  expect_log "location=\"${TEST_TMPDIR}/.*/foo/BUILD:[0-9]*:[0-9]*"
+  expect_not_log "location=\"${TEST_TMPDIR}/.*/foo/main.py:1:1"
+}
+
 function test_subdirectory_named_external() {
   mkdir -p foo/external foo/bar
   cat > foo/external/BUILD <<EOF
@@ -645,8 +694,7 @@ EOF
 //foo:b
 //foo:a
 EOF
-  bazel build --experimental_genquery_use_graphless_query \
-      //foo:somepath >& $TEST_log || fail "Expected success"
+  bazel build //foo:somepath >& $TEST_log || fail "Expected success"
   assert_equals "$(cat foo/expected_sp_output)" "$(cat bazel-bin/foo/somepath)"
 
   # Allpaths in genquery outputs in lexicographical order (just like all other
@@ -657,9 +705,97 @@ EOF
 //foo:b
 //foo:c
 EOF
-  bazel build --experimental_genquery_use_graphless_query \
-      //foo:allpaths >& $TEST_log || fail "Expected success"
+  bazel build //foo:allpaths >& $TEST_log || fail "Expected success"
   assert_equals "$(cat foo/expected_ap_output)" "$(cat bazel-bin/foo/allpaths)"
+}
+
+function test_graphless_query_matches_graphless_genquery_output() {
+  rm -rf foo
+  mkdir -p foo
+  cat > foo/BUILD <<EOF
+sh_library(name = "b", deps = [":c"])
+sh_library(name = "c", deps = [":a"])
+sh_library(name = "a")
+genquery(
+    name = "q",
+    expression = "deps(//foo:b)",
+    scope = ["//foo:b"],
+)
+EOF
+
+  cat > foo/expected_lexicographical_result <<EOF
+//foo:a
+//foo:b
+//foo:c
+EOF
+
+  # Genquery uses a graphless blaze environment by default.
+  bazel build --experimental_genquery_use_graphless_query \
+      //foo:q || fail "Expected success"
+
+  # The --incompatible_lexicographical_output flag is used to
+  # switch order_output=auto to use graphless query and output in
+  # lexicographical order.
+  bazel query --incompatible_lexicographical_output \
+      "deps(//foo:b)" | grep foo >& foo/query_output || fail "Expected success"
+
+  # The outputs of graphless query and graphless genquery should be the same and
+  # should both be in lexicographical order.
+  assert_equals \
+      "$(cat foo/expected_lexicographical_result)" "$(cat foo/query_output)"
+  assert_equals \
+      "$(cat foo/expected_lexicographical_result)" "$(cat bazel-bin/foo/q)"
+}
+
+function test_lexicographical_output_does_not_affect_order_output_no() {
+  rm -rf foo
+  mkdir -p foo
+  cat > foo/BUILD <<EOF
+sh_library(name = "b", deps = [":c"])
+sh_library(name = "c", deps = [":a"])
+sh_library(name = "a")
+genquery(
+    name = "q",
+    expression = "deps(//foo:b)",
+    scope = ["//foo:b"],
+)
+EOF
+
+  bazel query --order_output=no \
+      "deps(//foo:b)" | grep foo >& foo/query_output \
+      || fail "Expected success"
+  bazel query --order_output=no \
+      --incompatible_lexicographical_output \
+      "deps(//foo:b)" | grep foo >& foo/lex_query_output \
+      || fail "Expected success"
+
+  # The --incompatible_lexicographical_output flag should not affect query
+  # order_output=no. Note that there is a chance it may output in
+  # lexicographical order since it is unordered.
+  assert_equals \
+      "$(cat foo/query_output)" "$(cat foo/lex_query_output)"
+}
+
+function test_lexicographical_output_does_not_affect_somepath() {
+  rm -rf foo
+  mkdir -p foo
+  cat > foo/BUILD <<EOF
+sh_library(name = "b", deps = [":c"])
+sh_library(name = "c", deps = [":a"])
+sh_library(name = "a")
+EOF
+
+  cat > foo/expected_deps_output <<EOF
+//foo:b
+//foo:c
+//foo:a
+EOF
+
+  bazel query --incompatible_lexicographical_output \
+      "somepath(//foo:b, //foo:a)" | grep foo >& foo/query_output
+
+  assert_equals \
+      "$(cat foo/expected_deps_output)" "$(cat foo/query_output)"
 }
 
 # Regression test for https://github.com/bazelbuild/bazel/issues/8582.
@@ -818,39 +954,36 @@ function test_query_failure_exit_code_behavior() {
   bazel query --keep_going '$x' >& "$TEST_log" && fail "Expected failure"
   exit_code="$?"
   assert_equals 7 "$exit_code"
+}
 
-  bazel query \
-      --experimental_query_failure_exit_code_behavior=underlying \
-      //targetdoesnotexist >& "$TEST_log" && fail "Expected failure"
-  exit_code="$?"
-  assert_equals 1 "$exit_code"
-  bazel query --keep_going \
-      --experimental_query_failure_exit_code_behavior=underlying \
-      //targetdoesnotexist >& "$TEST_log" && fail "Expected failure"
-  exit_code="$?"
-  assert_equals 1 "$exit_code"
+function test_query_environment_keep_going_does_not_fail() {
+  rm -rf foo
+  mkdir -p foo
+  cat > foo/BUILD <<EOF
+sh_library(name = "a", deps = [":b", "//other:doesnotexist"])
+sh_library(name = "b")
+EOF
 
-  bazel query \
-      --experimental_query_failure_exit_code_behavior=underlying \
-      '$x' >& "$TEST_log" && fail "Expected failure"
-  exit_code="$?"
-  assert_equals 7 "$exit_code"
-  bazel query --keep_going \
-      --experimental_query_failure_exit_code_behavior=underlying \
-      '$x' >& "$TEST_log" && fail "Expected failure"
-  exit_code="$?"
-  assert_equals 7 "$exit_code"
-
-  bazel query \
-      --experimental_query_failure_exit_code_behavior=seven \
-      //targetdoesnotexist >& "$TEST_log" && fail "Expected failure"
-  exit_code="$?"
-  assert_equals 7 "$exit_code"
-  bazel query --keep_going \
-      --experimental_query_failure_exit_code_behavior=seven \
-      //targetdoesnotexist >& "$TEST_log" && fail "Expected failure"
-  exit_code="$?"
-  assert_equals 7 "$exit_code"
+  # Ensure that --keep_going works for both graphless and non-graphless blaze
+  # query environments for each function.
+  for incompatible in "--incompatible" "--noincompatible"
+  do
+    for command in \
+        "somepath(//foo:a, //foo:b)" \
+        "deps(//foo:a)" \
+        "rdeps(//foo:a, //foo:b)" \
+        "allpaths(//foo:a, //foo:b)"
+    do
+      bazel query "$incompatible"_lexicographical_output --keep_going \
+        --output=label_kind "$command" \
+        >& "$TEST_log" && fail "Expected failure"
+      exit_code="$?"
+      assert_equals 3 $exit_code
+      expect_log "sh_library rule //foo:a"
+      expect_log "sh_library rule //foo:b"
+      expect_log "errors were encountered while computing transitive closure"
+    done
+  done
 }
 
 function test_unnecessary_external_workspaces_not_loaded() {
@@ -867,6 +1000,44 @@ filegroup(
 )
 EOF
   bazel query '//:*' || fail "Expected success"
+}
+
+function test_query_sees_aspect_hints_deps_on_starlark_rule() {
+  local package="aspect_hints"
+  mkdir -p "${package}"
+
+  cat > "${package}/custom_rule.bzl" <<EOF
+
+def _rule_impl(ctx):
+    return []
+
+custom_rule = rule(
+    implementation = _rule_impl,
+    attrs = {
+        "deps": attr.label_list(),
+    }
+)
+EOF
+
+  cat > "${package}/BUILD" <<EOF
+load("//${package}:custom_rule.bzl", "custom_rule")
+
+custom_rule(name = "hint")
+
+custom_rule(
+    name = "foo",
+    deps = [":bar"],
+)
+custom_rule(
+    name = "bar",
+    aspect_hints = [":hint"],
+)
+EOF
+
+  bazel query "somepath(//${package}:foo, //${package}:hint)"  >& $TEST_log \
+    || fail "Expected success"
+
+  expect_log "//${package}:hint"
 }
 
 run_suite "${PRODUCT_NAME} query tests"

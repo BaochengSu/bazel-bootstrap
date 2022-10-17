@@ -13,8 +13,9 @@
 // limitations under the License.
 package com.google.devtools.build.lib.analysis;
 
-import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
+import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
+import com.google.devtools.build.lib.packages.AttributeMap;
 import com.google.devtools.build.lib.packages.RuleClass;
 
 /**
@@ -85,10 +86,9 @@ import com.google.devtools.build.lib.packages.RuleClass;
  *     result in three things:
  *
  *     <ul>
- *       <li>A set of actions. These should be passed to {@link
- *           RuleContext#registerAction(ActionAnalysisMetadata...)}, although for more common cases
- *           (e.g. {@link com.google.devtools.build.lib.analysis.actions.SpawnAction}), shortcuts
- *           are provided.
+ *       <li>A set of actions. These should be passed to {@link RuleContext#registerAction},
+ *           although for more common cases (e.g. {@link
+ *           com.google.devtools.build.lib.analysis.actions.SpawnAction}), shortcuts are provided.
  *       <li>A set of artifacts (files produced by actions). These should be created using methods
  *           of {@link RuleContext}. Each artifact thus created must have a generating action.
  *       <li>A set of {@link com.google.devtools.build.lib.analysis.TransitiveInfoProvider}s that
@@ -123,4 +123,11 @@ import com.google.devtools.build.lib.packages.RuleClass;
  */
 public interface RuleConfiguredTargetFactory
     extends RuleClass.ConfiguredTargetFactory<
-        ConfiguredTarget, RuleContext, ActionConflictException> {}
+        ConfiguredTarget, RuleContext, ActionConflictException> {
+
+  /** Adds any rule implementation-specific requirements to the given builder. */
+  default void addRuleImplSpecificRequiredConfigFragments(
+      RequiredConfigFragmentsProvider.Builder requiredFragments,
+      AttributeMap attributes,
+      BuildConfiguration configuration) {}
+}

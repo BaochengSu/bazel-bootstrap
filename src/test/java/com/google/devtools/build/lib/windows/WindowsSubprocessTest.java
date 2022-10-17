@@ -34,11 +34,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Unit tests for {@link WindowsSubprocess}.
- */
+/** Unit tests for {@link WindowsSubprocess}. */
 @RunWith(JUnit4.class)
-@TestSpec(localOnly = true, supportedOs = OS.WINDOWS)
+@TestSpec(supportedOs = OS.WINDOWS)
 public class WindowsSubprocessTest {
   private String mockSubprocess;
   private String mockBinary;
@@ -140,8 +138,8 @@ public class WindowsSubprocessTest {
     // Windows allows streams to be read after the process has died.
     assertThat(inputStream.available()).isAnyOf(0, 5);
     inputStream.close();
-    assertThrows(IllegalStateException.class, inputStream::available)
-        .getMessage()
+    assertThat(assertThrows(IllegalStateException.class, inputStream::available))
+        .hasMessageThat()
         .contains("Stream already closed");
   }
 

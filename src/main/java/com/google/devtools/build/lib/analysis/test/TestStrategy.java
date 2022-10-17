@@ -186,7 +186,7 @@ public abstract class TestStrategy implements TestActionContext {
     }
 
     // Execute the test using the alias in the runfiles tree, as mandated by the Test Encyclopedia.
-    args.add(execSettings.getExecutable().getRootRelativePath().getCallablePathString());
+    args.add(execSettings.getExecutable().getRunfilesPath().getCallablePathString());
     Iterables.addAll(args, execSettings.getArgs().arguments());
     return ImmutableList.copyOf(args);
   }
@@ -225,13 +225,13 @@ public abstract class TestStrategy implements TestActionContext {
         : getTestAttempts(action, /*defaultTestAttempts=*/ 1);
   }
 
-  public int getTestAttemptsForFlakyTest(TestRunnerAction action) {
-    return getTestAttempts(action, /*defaultTestAttempts=*/ 3);
-  }
-
   private int getTestAttempts(TestRunnerAction action, int defaultTestAttempts) {
     Label testLabel = action.getOwner().getLabel();
     return getTestAttemptsPerLabel(executionOptions, testLabel, defaultTestAttempts);
+  }
+
+  public int getTestAttemptsForFlakyTest(TestRunnerAction action) {
+    return getTestAttempts(action, /*defaultTestAttempts=*/ 3);
   }
 
   private static int getTestAttemptsPerLabel(

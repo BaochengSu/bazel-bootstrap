@@ -18,6 +18,7 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.CommandLine;
@@ -30,10 +31,12 @@ import com.google.devtools.build.lib.analysis.actions.CustomCommandLine;
 import com.google.devtools.build.lib.analysis.actions.SpawnAction;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
+import com.google.devtools.build.lib.collect.nestedset.Order;
+import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
+import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.rules.cpp.CppHelper;
 import com.google.devtools.build.lib.rules.java.JavaConfiguration.OneVersionEnforcementLevel;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import javax.annotation.Nullable;
 
@@ -349,10 +352,18 @@ public class DeployArchiveBuilder {
     Artifact singlejar = JavaToolchainProvider.from(ruleContext).getSingleJar();
     boolean usingNativeSinglejar = !singlejar.getFilename().endsWith(".jar");
 
+    String toolchainIdentifier = null;
+    try {
+      toolchainIdentifier =
+          CppHelper.getToolchainUsingDefaultCcToolchainAttribute(ruleContext)
+              .getToolchainIdentifier();
+    } catch (RuleErrorException e) {
+      // Something went wrong loading the toolchain, which is an exceptional condition.
+      throw new IllegalStateException("Unable to load cc toolchain", e);
+    }
     CommandLine commandLine =
         semantics.buildSingleJarCommandLine(
-            CppHelper.getToolchainUsingDefaultCcToolchainAttribute(ruleContext)
-                .getToolchainIdentifier(),
+            toolchainIdentifier,
             outputJar,
             javaStartClass,
             deployManifestLines,
@@ -370,14 +381,19 @@ public class DeployArchiveBuilder {
       commandLine = CommandLine.concat(commandLine, ImmutableList.of("--check_desugar_deps"));
     }
 
-    List<String> jvmArgs = ImmutableList.of(SINGLEJAR_MAX_MEMORY);
+    NestedSet<String> jvmArgs = NestedSetBuilder.create(Order.STABLE_ORDER, SINGLEJAR_MAX_MEMORY);
+
+    ImmutableMap.Builder<String, String> executionInfo = ImmutableMap.builder();
+    executionInfo.putAll(
+        TargetUtils.getExecutionInfo(ruleContext.getRule(), ruleContext.isAllowTagsPropagation()));
 
     if (!usingNativeSinglejar) {
+      executionInfo.putAll(ExecutionRequirements.WORKER_MODE_ENABLED);
       ruleContext.registerAction(
           new SpawnAction.Builder()
               .useDefaultShellEnvironment()
               .addTransitiveInputs(inputs.build())
-              .addTransitiveInputs(JavaRuntimeInfo.forHost(ruleContext).javaBaseInputsMiddleman())
+              .addTransitiveInputs(JavaRuntimeInfo.forHost(ruleContext).javaBaseInputs())
               .addOutput(outputJar)
               .setResources(DEPLOY_ACTION_RESOURCE_SET)
               .setJarExecutable(JavaCommon.getHostJavaExecutable(ruleContext), singlejar, jvmArgs)
@@ -386,7 +402,7 @@ public class DeployArchiveBuilder {
                   ParamFileInfo.builder(ParameterFileType.SHELL_QUOTED).setUseAlways(true).build())
               .setProgressMessage("Building deploy jar %s", outputJar.prettyPrint())
               .setMnemonic("JavaDeployJar")
-              .setExecutionInfo(ExecutionRequirements.WORKER_MODE_ENABLED)
+              .setExecutionInfo(executionInfo.build())
               .build(ruleContext));
     } else {
       ruleContext.registerAction(
@@ -401,6 +417,7 @@ public class DeployArchiveBuilder {
                   ParamFileInfo.builder(ParameterFileType.SHELL_QUOTED).setUseAlways(true).build())
               .setProgressMessage("Building deploy jar %s", outputJar.prettyPrint())
               .setMnemonic("JavaDeployJar")
+              .setExecutionInfo(executionInfo.build())
               .build(ruleContext));
     }
   }

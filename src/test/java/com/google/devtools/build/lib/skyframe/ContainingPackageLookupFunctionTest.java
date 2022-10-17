@@ -21,12 +21,14 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.testing.EqualsTester;
 import com.google.devtools.build.lib.actions.FileStateValue;
 import com.google.devtools.build.lib.actions.FileValue;
+import com.google.devtools.build.lib.actions.ThreadStateReceiver;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.ServerDirectories;
 import com.google.devtools.build.lib.analysis.util.AnalysisMock;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.events.NullEventHandler;
+import com.google.devtools.build.lib.io.FileSymlinkCycleUniquenessFunction;
 import com.google.devtools.build.lib.packages.RuleClassProvider;
 import com.google.devtools.build.lib.packages.WorkspaceFileValue;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
@@ -34,7 +36,6 @@ import com.google.devtools.build.lib.rules.repository.LocalRepositoryFunction;
 import com.google.devtools.build.lib.rules.repository.LocalRepositoryRule;
 import com.google.devtools.build.lib.rules.repository.RepositoryDelegatorFunction;
 import com.google.devtools.build.lib.rules.repository.RepositoryFunction;
-import com.google.devtools.build.lib.rules.repository.RepositoryLoaderFunction;
 import com.google.devtools.build.lib.skyframe.ContainingPackageLookupValue.ContainingPackage;
 import com.google.devtools.build.lib.skyframe.ContainingPackageLookupValue.NoContainingPackage;
 import com.google.devtools.build.lib.skyframe.ExternalFilesHelper.ExternalFileAction;
@@ -111,7 +112,19 @@ public class ContainingPackageLookupFunctionTest extends FoundationTestCase {
             BazelSkyframeExecutorConstants.BUILD_FILES_BY_PRIORITY,
             BazelSkyframeExecutorConstants.EXTERNAL_PACKAGE_HELPER));
     skyFunctions.put(
-        SkyFunctions.PACKAGE, new PackageFunction(null, null, null, null, null, null, null, null));
+        SkyFunctions.PACKAGE,
+        new PackageFunction(
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            /*packageProgress=*/ null,
+            PackageFunction.ActionOnIOExceptionReadingBuildFile.UseOriginalIOException.INSTANCE,
+            PackageFunction.IncrementalityIntent.INCREMENTAL,
+            k -> ThreadStateReceiver.NULL_INSTANCE));
     skyFunctions.put(
         SkyFunctions.IGNORED_PACKAGE_PREFIXES,
         new IgnoredPackagePrefixesFunction(
@@ -145,7 +158,7 @@ public class ContainingPackageLookupFunctionTest extends FoundationTestCase {
         SkyFunctions.LOCAL_REPOSITORY_LOOKUP,
         new LocalRepositoryLookupFunction(BazelSkyframeExecutorConstants.EXTERNAL_PACKAGE_HELPER));
     skyFunctions.put(
-        SkyFunctions.FILE_SYMLINK_CYCLE_UNIQUENESS, new FileSymlinkCycleUniquenessFunction());
+        FileSymlinkCycleUniquenessFunction.NAME, new FileSymlinkCycleUniquenessFunction());
     ImmutableMap<String, RepositoryFunction> repositoryHandlers =
         ImmutableMap.of(
             LocalRepositoryRule.NAME, (RepositoryFunction) new LocalRepositoryFunction());
@@ -159,7 +172,6 @@ public class ContainingPackageLookupFunctionTest extends FoundationTestCase {
             directories,
             ManagedDirectoriesKnowledge.NO_MANAGED_DIRECTORIES,
             BazelSkyframeExecutorConstants.EXTERNAL_PACKAGE_HELPER));
-    skyFunctions.put(SkyFunctions.REPOSITORY, new RepositoryLoaderFunction());
 
     differencer = new SequencedRecordingDifferencer();
     evaluator = new InMemoryMemoizingEvaluator(skyFunctions, differencer);
@@ -172,6 +184,7 @@ public class ContainingPackageLookupFunctionTest extends FoundationTestCase {
         differencer, RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY);
     RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE.set(
         differencer, Optional.empty());
+    RepositoryDelegatorFunction.ENABLE_BZLMOD.set(differencer, false);
   }
 
   private ContainingPackageLookupValue lookupContainingPackage(String packageName)
@@ -294,7 +307,9 @@ public class ContainingPackageLookupFunctionTest extends FoundationTestCase {
     assertThat(value.hasContainingPackage()).isFalse();
     assertThat(value.getClass()).isEqualTo(NoContainingPackage.class);
     assertThat(value.getReasonForNoContainingPackage())
-        .isEqualTo("The repository '@some_repo' could not be resolved");
+        .isEqualTo(
+            "The repository '@some_repo' could not be resolved: Repository '@some_repo' is not"
+                + " defined");
   }
 
   @Test

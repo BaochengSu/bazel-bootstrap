@@ -17,6 +17,9 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.ActionInputHelper;
+import com.google.devtools.build.lib.actions.ForbiddenActionInputException;
+import com.google.devtools.build.lib.actions.Spawn;
+import com.google.devtools.build.lib.exec.SpawnInputExpander;
 import com.google.devtools.build.lib.exec.SpawnRunner.SpawnExecutionContext;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
@@ -40,7 +43,11 @@ public interface RemotePathResolver {
    * ActionInput}.
    */
   SortedMap<PathFragment, ActionInput> getInputMapping(SpawnExecutionContext context)
-      throws IOException;
+      throws IOException, ForbiddenActionInputException;
+
+  void walkInputs(
+      Spawn spawn, SpawnExecutionContext context, SpawnInputExpander.InputVisitor visitor)
+      throws IOException, ForbiddenActionInputException;
 
   /** Resolves the output path relative to input root for the given {@link Path}. */
   String localPathToOutputPath(Path path);
@@ -94,8 +101,22 @@ public interface RemotePathResolver {
 
     @Override
     public SortedMap<PathFragment, ActionInput> getInputMapping(SpawnExecutionContext context)
-        throws IOException {
+        throws IOException, ForbiddenActionInputException {
       return context.getInputMapping(PathFragment.EMPTY_FRAGMENT);
+    }
+
+    @Override
+    public void walkInputs(
+        Spawn spawn, SpawnExecutionContext context, SpawnInputExpander.InputVisitor visitor)
+        throws IOException, ForbiddenActionInputException {
+      context
+          .getSpawnInputExpander()
+          .walkInputs(
+              spawn,
+              context.getArtifactExpander(),
+              PathFragment.EMPTY_FRAGMENT,
+              context.getMetadataProvider(),
+              visitor);
     }
 
     @Override
@@ -151,11 +172,25 @@ public interface RemotePathResolver {
 
     @Override
     public SortedMap<PathFragment, ActionInput> getInputMapping(SpawnExecutionContext context)
-        throws IOException {
+        throws IOException, ForbiddenActionInputException {
       // The "root directory" of the action from the point of view of RBE is the parent directory of
       // the execroot locally. This is so that paths of artifacts in external repositories don't
       // start with an uplevel reference.
       return context.getInputMapping(PathFragment.create(checkNotNull(getWorkingDirectory())));
+    }
+
+    @Override
+    public void walkInputs(
+        Spawn spawn, SpawnExecutionContext context, SpawnInputExpander.InputVisitor visitor)
+        throws IOException, ForbiddenActionInputException {
+      context
+          .getSpawnInputExpander()
+          .walkInputs(
+              spawn,
+              context.getArtifactExpander(),
+              PathFragment.create(checkNotNull(getWorkingDirectory())),
+              context.getMetadataProvider(),
+              visitor);
     }
 
     private Path getBase() {

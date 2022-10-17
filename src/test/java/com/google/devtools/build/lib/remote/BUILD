@@ -16,6 +16,7 @@ filegroup(
         "//src/test/java/com/google/devtools/build/lib/remote/merkletree:srcs",
         "//src/test/java/com/google/devtools/build/lib/remote/options:srcs",
         "//src/test/java/com/google/devtools/build/lib/remote/util:srcs",
+        "//src/test/java/com/google/devtools/build/lib/remote/zstd:srcs",
     ],
     visibility = ["//src/test/java/com/google/devtools/build/lib:__pkg__"],
 )
@@ -42,6 +43,8 @@ java_test(
     deps = [
         "//src/main/java/com/google/devtools/build/lib:runtime",
         "//src/main/java/com/google/devtools/build/lib/actions",
+        "//src/main/java/com/google/devtools/build/lib/actions:action_input_helper",
+        "//src/main/java/com/google/devtools/build/lib/actions:action_lookup_data",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/actions:execution_requirements",
         "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
@@ -113,5 +116,6 @@ java_test(
         "@remoteapis//:build_bazel_remote_execution_v2_remote_execution_java_grpc",
         "@remoteapis//:build_bazel_remote_execution_v2_remote_execution_java_proto",
         "@remoteapis//:build_bazel_semver_semver_java_proto",
+        "@zstd-jni//:zstd-jni",
     ],
 )

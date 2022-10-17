@@ -19,8 +19,6 @@
 
 set -euo pipefail
 
-JAVA_TOOLS_JAVA_VERSION="$1"; shift
-
 # --- begin runfiles.bash initialization ---
 if [[ ! -d "${RUNFILES_DIR:-/dev/null}" && ! -f "${RUNFILES_MANIFEST_FILE:-/dev/null}" ]]; then
     if [[ -f "$0.runfiles_manifest" ]]; then
@@ -71,8 +69,8 @@ fi
 function expect_path_in_java_tools() {
   path="$1"; shift
 
-  (zipinfo -1 $(rlocation io_bazel/src/java_tools_dist_${JAVA_TOOLS_JAVA_VERSION}.zip) \
-    | grep -c "$path") >& ${TEST_log} || fail "Path $path not found in java_tools_${JAVA_TOOLS_JAVA_VERSION}.zip"
+  (zipinfo -1 $(rlocation io_bazel/src/java_tools_dist.zip) \
+    | grep -c "$path") >& ${TEST_log} || fail "Path $path not found in java_tools_dist.zip"
 }
 
 function test_java_tools_has_ijar() {
@@ -141,21 +139,21 @@ function test_java_tools_has_javac() {
 }
 
 function test_java_tools_has_jacocoagent() {
-  expect_path_in_java_tools "third_party/java/jacoco/org.jacoco.agent-0.8.3-sources.jar"
-  expect_path_in_java_tools "third_party/java/jacoco/org.jacoco.core-0.8.3-sources.jar"
-  expect_path_in_java_tools "third_party/java/jacoco/org.jacoco.report-0.8.3-sources.jar"
-  expect_path_in_java_tools "third_party/asm/asm-analysis-8.0-sources.jar"
-  expect_path_in_java_tools "third_party/asm/asm-commons-8.0-sources.jar"
-  expect_path_in_java_tools "third_party/asm/asm-8.0-sources.jar"
+  expect_path_in_java_tools "third_party/java/jacoco/org.jacoco.agent-.*-sources.jar"
+  expect_path_in_java_tools "third_party/java/jacoco/org.jacoco.core-.*-sources.jar"
+  expect_path_in_java_tools "third_party/java/jacoco/org.jacoco.report-.*-sources.jar"
+  expect_path_in_java_tools "third_party/asm/asm-analysis-.*-sources.jar"
+  expect_path_in_java_tools "third_party/asm/asm-commons-.*-sources.jar"
+  expect_path_in_java_tools "third_party/asm/asm-.*-sources.jar"
 }
 
 function test_java_tools_has_proguard() {
   expect_path_in_java_tools "third_party/java/proguard"
-  expect_path_in_java_tools "third_party/java/proguard/proguard5.3.3"
-  expect_path_in_java_tools "third_party/java/proguard/proguard5.3.3/bin"
-  expect_path_in_java_tools "third_party/java/proguard/proguard5.3.3/buildscripts"
-  expect_path_in_java_tools "third_party/java/proguard/proguard5.3.3/src"
-  expect_path_in_java_tools "third_party/java/proguard/proguard5.3.3/src/proguard"
+  expect_path_in_java_tools "third_party/java/proguard/proguard6.2.2"
+  expect_path_in_java_tools "third_party/java/proguard/proguard6.2.2/bin"
+  expect_path_in_java_tools "third_party/java/proguard/proguard6.2.2/buildscripts"
+  expect_path_in_java_tools "third_party/java/proguard/proguard6.2.2/src"
+  expect_path_in_java_tools "third_party/java/proguard/proguard6.2.2/src/proguard"
 }
 
 run_suite "Java tools archive tests"

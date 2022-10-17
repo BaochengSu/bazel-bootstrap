@@ -59,6 +59,7 @@ import com.google.devtools.build.lib.runtime.CommandEnvironment;
 import com.google.devtools.build.lib.runtime.CommonCommandOptions;
 import com.google.devtools.build.lib.runtime.CountingArtifactGroupNamer;
 import com.google.devtools.build.lib.runtime.SynchronizedOutputStream;
+import com.google.devtools.build.lib.runtime.TargetSummaryPublisher;
 import com.google.devtools.build.lib.server.FailureDetails.BuildProgress;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.util.AbruptExitException;
@@ -319,17 +320,17 @@ public abstract class BuildEventServiceModule<BESOptionsT extends BuildEventServ
 
     CountingArtifactGroupNamer artifactGroupNamer = new CountingArtifactGroupNamer();
 
-    // We need to wait for the previous invocation before we check the whitelist of commands to
+    // We need to wait for the previous invocation before we check the list of allowed commands to
     // allow completing previous runs using BES, for example:
     //   bazel build (..run with async BES..)
-    //   bazel info <-- Doesn't run with BES unless we wait before checking the whitelist.
+    //   bazel info <-- Doesn't run with BES unless we wait before checking {@code allowedCommands}.
     boolean commandIsShutdown = "shutdown".equals(cmdEnv.getCommandName());
     waitForPreviousInvocation(commandIsShutdown);
     if (commandIsShutdown && uploaderFactoryToCleanup != null) {
       uploaderFactoryToCleanup.shutdown();
     }
 
-    if (!whitelistedCommands(besOptions).contains(cmdEnv.getCommandName())) {
+    if (!allowedCommands(besOptions).contains(cmdEnv.getCommandName())) {
       // Exit early if the running command isn't supported.
       return;
     }
@@ -360,10 +361,15 @@ public abstract class BuildEventServiceModule<BESOptionsT extends BuildEventServ
       return;
     }
 
+    if (bepOptions.publishTargetSummary) {
+      cmdEnv.getEventBus().register(new TargetSummaryPublisher(cmdEnv.getEventBus()));
+    }
+
     streamer =
         new BuildEventStreamer.Builder()
             .buildEventTransports(bepTransports)
             .besStreamOptions(besStreamOptions)
+            .publishTargetSummaries(bepOptions.publishTargetSummary)
             .artifactGroupNamer(artifactGroupNamer)
             .oomMessage(parsingResult.getOptions(CommonCommandOptions.class).oomMessage)
             .build();
@@ -686,7 +692,7 @@ public abstract class BuildEventServiceModule<BESOptionsT extends BuildEventServ
         new BuildEventServiceProtoUtil.Builder()
             .buildRequestId(buildRequestId)
             .invocationId(invocationId)
-            .projectId(besOptions.projectId)
+            .projectId(besOptions.instanceName)
             .commandName(cmdEnv.getCommandName())
             .keywords(getBesKeywords(besOptions, cmdEnv.getRuntime().getStartupOptionsProvider()))
             .build();
@@ -821,7 +827,7 @@ public abstract class BuildEventServiceModule<BESOptionsT extends BuildEventServ
 
   protected abstract void clearBesClient();
 
-  protected abstract Set<String> whitelistedCommands(BESOptionsT besOptions);
+  protected abstract Set<String> allowedCommands(BESOptionsT besOptions);
 
   protected Set<String> getBesKeywords(
       BESOptionsT besOptions, @Nullable OptionsParsingResult startupOptionsProvider) {

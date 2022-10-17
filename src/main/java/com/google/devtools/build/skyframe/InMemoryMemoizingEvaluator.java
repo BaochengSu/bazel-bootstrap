@@ -18,10 +18,12 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.concurrent.AbstractQueueVisitor;
 import com.google.devtools.build.lib.events.Event;
+import com.google.devtools.build.lib.events.ExtendedEventHandler;
+import com.google.devtools.build.lib.profiler.AutoProfiler;
+import com.google.devtools.build.lib.profiler.GoogleAutoProfilerUtils;
 import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.skyframe.Differencer.Diff;
@@ -30,6 +32,7 @@ import com.google.devtools.build.skyframe.InvalidatingNodeVisitor.DirtyingInvali
 import com.google.devtools.build.skyframe.InvalidatingNodeVisitor.InvalidationState;
 import com.google.devtools.build.skyframe.QueryableGraph.Reason;
 import java.io.PrintStream;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -50,7 +53,7 @@ import javax.annotation.Nullable;
  */
 public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
 
-  private final ImmutableMap<SkyFunctionName, ? extends SkyFunction> skyFunctions;
+  private final ImmutableMap<SkyFunctionName, SkyFunction> skyFunctions;
   private final DirtyTrackingProgressReceiver progressReceiver;
   // Not final only for testing.
   private InMemoryGraph graph;
@@ -60,7 +63,7 @@ public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
   private Set<SkyKey> valuesToDelete = new LinkedHashSet<>();
   private Set<SkyKey> valuesToDirty = new LinkedHashSet<>();
   private Map<SkyKey, SkyValue> valuesToInject = new HashMap<>();
-  private final InvalidationState deleterState = new DeletingInvalidationState();
+  private final DeletingInvalidationState deleterState = new DeletingInvalidationState();
   private final Differencer differencer;
   private final GraphInconsistencyReceiver graphInconsistencyReceiver;
   private final EventFilter eventFilter;
@@ -78,12 +81,12 @@ public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
   private final AtomicBoolean evaluating = new AtomicBoolean(false);
 
   public InMemoryMemoizingEvaluator(
-      Map<SkyFunctionName, ? extends SkyFunction> skyFunctions, Differencer differencer) {
+      Map<SkyFunctionName, SkyFunction> skyFunctions, Differencer differencer) {
     this(skyFunctions, differencer, null);
   }
 
   public InMemoryMemoizingEvaluator(
-      Map<SkyFunctionName, ? extends SkyFunction> skyFunctions,
+      Map<SkyFunctionName, SkyFunction> skyFunctions,
       Differencer differencer,
       @Nullable EvaluationProgressReceiver progressReceiver) {
     this(
@@ -97,7 +100,7 @@ public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
   }
 
   public InMemoryMemoizingEvaluator(
-      Map<SkyFunctionName, ? extends SkyFunction> skyFunctions,
+      Map<SkyFunctionName, SkyFunction> skyFunctions,
       Differencer differencer,
       @Nullable EvaluationProgressReceiver progressReceiver,
       GraphInconsistencyReceiver graphInconsistencyReceiver,
@@ -118,16 +121,24 @@ public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
     Iterables.addAll(valuesToDirty, diff);
   }
 
+  private static final Duration MIN_TIME_TO_LOG_DELETION = Duration.ofMillis(10);
+
   @Override
   public void delete(Predicate<SkyKey> deletePredicate) {
-    valuesToDelete.addAll(
-        Maps.filterEntries(
-                graph.getAllValues(),
-                input -> {
-                  Preconditions.checkNotNull(input.getKey(), "Null SkyKey in entry: %s", input);
-                  return input.getValue().isDirty() || deletePredicate.test(input.getKey());
-                })
-            .keySet());
+    try (AutoProfiler ignored =
+        GoogleAutoProfilerUtils.logged("deletion marking", MIN_TIME_TO_LOG_DELETION)) {
+      Set<SkyKey> toDelete = Sets.newConcurrentHashSet();
+      graph
+          .getAllValuesMutable()
+          .forEachEntry(
+              /*parallelismThreshold=*/ 1024,
+              e -> {
+                if (e.getValue().isDirty() || deletePredicate.test(e.getKey())) {
+                  toDelete.add(e.getKey());
+                }
+              });
+      valuesToDelete.addAll(toDelete);
+    }
   }
 
   @Override
@@ -197,7 +208,9 @@ public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
                             AbstractQueueVisitor.createExecutorService(
                                 evaluationContext.getParallelism(), "skyframe-evaluator")),
                 new SimpleCycleDetector(),
-                EvaluationVersionBehavior.GRAPH_VERSION);
+                EvaluationVersionBehavior.GRAPH_VERSION,
+                evaluationContext.getCPUHeavySkyKeysThreadPoolSize(),
+                evaluationContext.getExecutionPhaseThreadPoolSize());
         result = evaluator.eval(roots);
       }
       return EvaluationResult.<T>builder()
@@ -283,6 +296,11 @@ public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
   private void setAndCheckEvaluateState(boolean newValue, Object requestInfo) {
     Preconditions.checkState(evaluating.getAndSet(newValue) != newValue,
         "Re-entrant evaluation for request: %s", requestInfo);
+  }
+
+  @Override
+  public void postLoggingStats(ExtendedEventHandler eventHandler) {
+    eventHandler.post(new SkyframeGraphStatsEvent(graph.valuesSize()));
   }
 
   @Override
@@ -384,7 +402,7 @@ public final class InMemoryMemoizingEvaluator implements MemoizingEvaluator {
     }
   }
 
-  public ImmutableMap<SkyFunctionName, ? extends SkyFunction> getSkyFunctionsForTesting() {
+  public ImmutableMap<SkyFunctionName, SkyFunction> getSkyFunctionsForTesting() {
     return skyFunctions;
   }
 

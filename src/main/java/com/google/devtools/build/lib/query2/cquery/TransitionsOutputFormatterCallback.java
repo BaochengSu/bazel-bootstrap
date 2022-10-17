@@ -41,7 +41,7 @@ import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
-import com.google.devtools.build.lib.packages.Rule;
+import com.google.devtools.build.lib.packages.RuleTransitionData;
 import com.google.devtools.build.lib.packages.Target;
 import com.google.devtools.build.lib.query2.engine.QueryEnvironment.TargetAccessor;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
@@ -54,7 +54,6 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import net.starlark.java.eval.EvalException;
 
 /**
  * Output formatter that prints {@link ConfigurationTransition} information for rule configured
@@ -65,7 +64,7 @@ class TransitionsOutputFormatterCallback extends CqueryThreadsafeCallback {
   protected final BuildConfiguration hostConfiguration;
 
   private final HashMap<Label, Target> partialResultMap;
-  @Nullable private final TransitionFactory<Rule> trimmingTransitionFactory;
+  @Nullable private final TransitionFactory<RuleTransitionData> trimmingTransitionFactory;
 
   @Override
   public String getName() {
@@ -83,7 +82,7 @@ class TransitionsOutputFormatterCallback extends CqueryThreadsafeCallback {
       SkyframeExecutor skyframeExecutor,
       TargetAccessor<KeyedConfiguredTarget> accessor,
       BuildConfiguration hostConfiguration,
-      @Nullable TransitionFactory<Rule> trimmingTransitionFactory) {
+      @Nullable TransitionFactory<RuleTransitionData> trimmingTransitionFactory) {
     super(eventHandler, options, out, skyframeExecutor, accessor);
     this.hostConfiguration = hostConfiguration;
     this.trimmingTransitionFactory = trimmingTransitionFactory;
@@ -134,7 +133,7 @@ class TransitionsOutputFormatterCallback extends CqueryThreadsafeCallback {
                     toolchainContexts,
                     DependencyResolver.shouldUseToolchainTransition(config, target),
                     trimmingTransitionFactory);
-      } catch (EvalException | InconsistentAspectOrderException e) {
+      } catch (DependencyResolver.Failure | InconsistentAspectOrderException e) {
         // This is an abuse of InterruptedException.
         throw new InterruptedException(e.getMessage());
       }
@@ -176,7 +175,7 @@ class TransitionsOutputFormatterCallback extends CqueryThreadsafeCallback {
                     toOptions.stream()
                         .map(
                             options -> {
-                              String checksum = options.computeChecksum();
+                              String checksum = options.checksum();
                               return checksum.equals(hostConfigurationChecksum)
                                   ? "HOST"
                                   : shortId(checksum);
@@ -194,14 +193,18 @@ class TransitionsOutputFormatterCallback extends CqueryThreadsafeCallback {
     }
   }
 
-  private String getRuleClassTransition(ConfiguredTarget ct, Target target) {
+  private static String getRuleClassTransition(ConfiguredTarget ct, Target target) {
     String output = "";
     if (ct instanceof RuleConfiguredTarget) {
-      TransitionFactory<Rule> factory =
+      TransitionFactory<RuleTransitionData> factory =
           target.getAssociatedRule().getRuleClassObject().getTransitionFactory();
       if (factory != null) {
         output =
-            factory.create(target.getAssociatedRule()).getClass().getSimpleName().concat(" -> ");
+            factory
+                .create(RuleTransitionData.create(target.getAssociatedRule()))
+                .getClass()
+                .getSimpleName()
+                .concat(" -> ");
       }
     }
     return output;

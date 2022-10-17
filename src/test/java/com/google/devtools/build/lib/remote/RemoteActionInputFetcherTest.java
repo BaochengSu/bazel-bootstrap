@@ -29,12 +29,14 @@ import com.google.common.util.concurrent.SettableFuture;
 import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
+import com.google.devtools.build.lib.actions.ArtifactRoot.RootType;
 import com.google.devtools.build.lib.actions.FileArtifactValue;
 import com.google.devtools.build.lib.actions.FileArtifactValue.RemoteFileArtifactValue;
 import com.google.devtools.build.lib.actions.MetadataProvider;
 import com.google.devtools.build.lib.actions.cache.VirtualActionInput;
 import com.google.devtools.build.lib.actions.util.ActionsTestUtil;
 import com.google.devtools.build.lib.clock.JavaClock;
+import com.google.devtools.build.lib.remote.common.BulkTransferException;
 import com.google.devtools.build.lib.remote.options.RemoteOptions;
 import com.google.devtools.build.lib.remote.util.DigestUtil;
 import com.google.devtools.build.lib.remote.util.InMemoryCacheClient;
@@ -76,7 +78,7 @@ public class RemoteActionInputFetcherTest {
     Path dev = fs.getPath("/dev");
     dev.createDirectory();
     dev.setWritable(false);
-    artifactRoot = ArtifactRoot.asDerivedRoot(execRoot, "root");
+    artifactRoot = ArtifactRoot.asDerivedRoot(execRoot, RootType.Output, "root");
     artifactRoot.getRoot().asPath().createDirectoryAndParents();
     options = Options.getDefaults(RemoteOptions.class);
     digestUtil = new DigestUtil(HASH_FUNCTION);
@@ -209,7 +211,7 @@ public class RemoteActionInputFetcherTest {
         .isEqualTo("hello world");
     assertThat(a1.getPath().isExecutable()).isTrue();
     assertThat(a1.getPath().isReadable()).isTrue();
-    assertThat(a1.getPath().isWritable()).isTrue();
+    assertThat(a1.getPath().isWritable()).isFalse();
   }
 
   @Test
@@ -383,7 +385,7 @@ public class RemoteActionInputFetcherTest {
     return a;
   }
 
-  private static RemoteCache newCache(
+  private RemoteCache newCache(
       RemoteOptions options, DigestUtil digestUtil, Map<Digest, ByteString> cacheEntries) {
     Map<Digest, byte[]> cacheEntriesByteArray =
         Maps.newHashMapWithExpectedSize(cacheEntries.size());

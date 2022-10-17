@@ -23,6 +23,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.google.common.flogger.GoogleLogger;
 import com.google.devtools.build.lib.collect.compacthashmap.CompactHashMap;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
@@ -36,9 +37,9 @@ import com.google.devtools.build.lib.util.GroupedList.GroupedListHelper;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.skyframe.EvaluationProgressReceiver.EvaluationState;
 import com.google.devtools.build.skyframe.NodeEntry.DependencyState;
-import com.google.devtools.build.skyframe.ParallelEvaluatorContext.EnqueueParentBehavior;
 import com.google.devtools.build.skyframe.QueryableGraph.Reason;
 import com.google.devtools.build.skyframe.proto.GraphInconsistency.Inconsistency;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -53,11 +54,14 @@ import javax.annotation.Nullable;
 
 /** A {@link SkyFunction.Environment} implementation for {@link ParallelEvaluator}. */
 class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
-
+  private static final GoogleLogger logger = GoogleLogger.forEnclosingClass();
   private static final SkyValue NULL_MARKER = new SkyValue() {};
   private static final boolean PREFETCH_OLD_DEPS =
       Boolean.parseBoolean(
           System.getProperty("skyframe.ParallelEvaluator.PrefetchOldDeps", "true"));
+  private static final boolean PREFETCH_AND_RETAIN_OLD_DEPS =
+      Boolean.parseBoolean(
+          System.getProperty("skyframe.SkyFunctionEnvironment.PrefetchAndRetainOldDeps", "false"));
 
   private boolean building = true;
   private SkyKey depErrorKey = null;
@@ -92,6 +96,14 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
    * map.
    */
   @Nullable private final Map<SkyKey, ValueWithMetadata> bubbleErrorInfo;
+
+  /**
+   * The current entries of the direct deps this node had at the previous version.
+   *
+   * <p>Used only when {@link #PREFETCH_AND_RETAIN_OLD_DEPS} is {@code true}, and used only for the
+   * values stored in the entries; do not do any NodeEntry operations on these.
+   */
+  private ImmutableMap<SkyKey, ? extends NodeEntry> oldDepsEntries = ImmutableMap.of();
 
   /**
    * The values previously declared as dependencies.
@@ -213,6 +225,10 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
     if (PREFETCH_OLD_DEPS) {
       request = new QueryableGraph.PrefetchDepsRequest(requestor, oldDeps, depKeys);
       evaluatorContext.getGraph().prefetchDeps(request);
+    } else if (PREFETCH_AND_RETAIN_OLD_DEPS) {
+      // TODO(b/175215425): Make PREFETCH_AND_RETAIN_OLD_DEPS the only behavior.
+      this.oldDepsEntries =
+          ImmutableMap.copyOf(evaluatorContext.getBatchValues(requestor, Reason.PREFETCH, oldDeps));
     }
     Map<SkyKey, ? extends NodeEntry> batchMap =
         evaluatorContext.getBatchValues(
@@ -436,8 +452,9 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
 
     Map<SkyKey, ? extends NodeEntry> missingEntries =
         evaluatorContext.getBatchValues(skyKey, Reason.DEP_REQUESTED, missingKeys);
-    int i = 0;
+    int i = -1;
     for (SkyKey key : keys) {
+      i++;
       if (result.get(i) != null) {
         continue;
       }
@@ -448,7 +465,6 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
       if (valueOrNullMarker != NULL_MARKER) {
         maybeUpdateMaxChildVersion(depEntry);
       }
-      i++;
     }
     return result;
   }
@@ -460,6 +476,7 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
    *   <li>{@link #bubbleErrorInfo}
    *   <li>{@link #previouslyRequestedDepsValues}
    *   <li>{@link #newlyRequestedDepsValues}
+   *   <li>{@link #oldDepsEntries}
    *   <li>{@link #evaluatorContext}'s graph accessing methods
    * </ol>
    *
@@ -543,13 +560,14 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
    *   <li>{@code bubbleErrorInfo}
    *   <li>{@link #previouslyRequestedDepsValues}
    *   <li>{@link #newlyRequestedDepsValues}
+   *   <li>{@link #oldDepsEntries}
    * </ol>
    *
    * <p>Returns {@code null} if no entries for {@code key} were found in any of those three maps.
    * (Note that none of the maps can have {@code null} as a value.)
    */
   @Nullable
-  SkyValue maybeGetValueFromErrorOrDeps(SkyKey key) {
+  SkyValue maybeGetValueFromErrorOrDeps(SkyKey key) throws InterruptedException {
     if (bubbleErrorInfo != null) {
       ValueWithMetadata bubbleErrorInfoValue = bubbleErrorInfo.get(key);
       if (bubbleErrorInfoValue != null) {
@@ -563,6 +581,10 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
     SkyValue newlyRequestedDepsValue = newlyRequestedDepsValues.get(key);
     if (newlyRequestedDepsValue != null) {
       return newlyRequestedDepsValue;
+    }
+    SkyValue oldDepsValueOrNullMarker = getValueOrNullMarker(oldDepsEntries.get(key));
+    if (oldDepsValueOrNullMarker != NULL_MARKER) {
+      return oldDepsValueOrNullMarker;
     }
     return null;
   }
@@ -783,24 +805,23 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
   }
 
   /**
-   * Apply the change to the graph (mostly) atomically and signal all nodes that are waiting for
-   * this node to complete. Adding nodes and signaling is not atomic, but may need to be changed for
-   * interruptibility.
+   * Applies the change to the graph (mostly) atomically and returns parents to potentially signal
+   * and enqueue.
    *
-   * <p>Parents are only enqueued if {@code enqueueParents} holds. Parents should be enqueued unless
-   * (1) this node is being built after the main evaluation has aborted, or (2) this node is being
-   * built with --nokeep_going, and so we are about to shut down the main evaluation anyway.
-   *
-   * <p>The reverse deps that would have been enqueued are returned if {@code enqueueParents} is
-   * {@link EnqueueParentBehavior#SIGNAL} or {@link EnqueueParentBehavior#NO_ACTION}, so that the
-   * caller may simulate actions on the parents if desired. Otherwise this method returns null.
+   * <p>Parents should be enqueued unless (1) this node is being built after the main evaluation has
+   * aborted, or (2) this node is being built with {@code --nokeep_going}, and so we are about to
+   * shut down the main evaluation anyway.
    */
-  Set<SkyKey> commit(NodeEntry primaryEntry, EnqueueParentBehavior enqueueParents)
-      throws InterruptedException {
+  Set<SkyKey> commitAndGetParents(NodeEntry primaryEntry) throws InterruptedException {
     // Construct the definitive error info, if there is one.
     if (errorInfo == null) {
       errorInfo = evaluatorContext.getErrorInfoManager().getErrorInfoToUse(
           skyKey, value != null, childErrorInfos);
+      // TODO(b/166268889, b/172223413): remove when fixed.
+      if (errorInfo != null && errorInfo.getException() instanceof IOException) {
+        logger.atInfo().withCause(errorInfo.getException()).log(
+            "Synthetic errorInfo for %s", skyKey);
+      }
     }
 
     // We have the following implications:
@@ -819,9 +840,6 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
       valueWithMetadata =
           ValueWithMetadata.error(errorInfo, eventsAndPostables.first, eventsAndPostables.second);
     } else {
-      // We must be enqueueing parents if we have a value.
-      Preconditions.checkState(
-          enqueueParents == EnqueueParentBehavior.ENQUEUE, "%s %s", skyKey, primaryEntry);
       valueWithMetadata =
           ValueWithMetadata.normal(
               value, errorInfo, eventsAndPostables.first, eventsAndPostables.second);
@@ -877,13 +895,11 @@ class SkyFunctionEnvironment extends AbstractSkyFunctionEnvironment {
         .evaluated(
             skyKey,
             evaluationState == EvaluationState.BUILT ? value : null,
+            evaluationState == EvaluationState.BUILT ? errorInfo : null,
             EvaluationSuccessStateSupplier.fromSkyValue(valueWithMetadata),
             evaluationState);
 
-    evaluatorContext.signalValuesAndEnqueueIfReady(
-        skyKey, reverseDeps, currentVersion, enqueueParents);
-
-    return enqueueParents == EnqueueParentBehavior.ENQUEUE ? null : reverseDeps;
+    return reverseDeps;
   }
 
   @Nullable

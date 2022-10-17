@@ -21,10 +21,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Streams;
 import com.google.devtools.build.lib.actions.Artifact;
-import com.google.devtools.build.lib.analysis.AnalysisUtils;
-import com.google.devtools.build.lib.analysis.RuleConfiguredTargetBuilder;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.Runfiles;
 import com.google.devtools.build.lib.analysis.Runfiles.Builder;
@@ -33,6 +30,7 @@ import com.google.devtools.build.lib.analysis.actions.CustomCommandLine;
 import com.google.devtools.build.lib.analysis.actions.LauncherFileWriteAction;
 import com.google.devtools.build.lib.analysis.actions.LauncherFileWriteAction.LaunchInfo;
 import com.google.devtools.build.lib.analysis.actions.LazyWritePathsFileAction;
+import com.google.devtools.build.lib.analysis.actions.SpawnAction;
 import com.google.devtools.build.lib.analysis.actions.Substitution;
 import com.google.devtools.build.lib.analysis.actions.Substitution.ComputedSubstitution;
 import com.google.devtools.build.lib.analysis.actions.Template;
@@ -43,12 +41,10 @@ import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.Type;
-import com.google.devtools.build.lib.rules.cpp.CcInfo;
 import com.google.devtools.build.lib.rules.cpp.CcToolchainFeatures.FeatureConfiguration;
 import com.google.devtools.build.lib.rules.cpp.CcToolchainProvider;
 import com.google.devtools.build.lib.rules.java.DeployArchiveBuilder;
 import com.google.devtools.build.lib.rules.java.DeployArchiveBuilder.Compression;
-import com.google.devtools.build.lib.rules.java.JavaCcLinkParamsProvider;
 import com.google.devtools.build.lib.rules.java.JavaCommon;
 import com.google.devtools.build.lib.rules.java.JavaCompilationArgsProvider;
 import com.google.devtools.build.lib.rules.java.JavaCompilationArgsProvider.ClasspathType;
@@ -66,7 +62,7 @@ import com.google.devtools.build.lib.rules.java.JavaUtil;
 import com.google.devtools.build.lib.rules.java.proto.GeneratedExtensionRegistryProvider;
 import com.google.devtools.build.lib.shell.ShellUtils;
 import com.google.devtools.build.lib.shell.ShellUtils.TokenizationException;
-import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
+import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec.VisibleForSerialization;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.util.ShellEscaper;
@@ -82,7 +78,8 @@ import javax.annotation.Nullable;
  */
 public class BazelJavaSemantics implements JavaSemantics {
 
-  @AutoCodec public static final BazelJavaSemantics INSTANCE = new BazelJavaSemantics();
+  @VisibleForSerialization
+  public static final BazelJavaSemantics INSTANCE = new BazelJavaSemantics();
 
   private static final Template STUB_SCRIPT =
       Template.forResource(BazelJavaSemantics.class, "java_stub_template.txt");
@@ -435,7 +432,7 @@ public class BazelJavaSemantics implements JavaSemantics {
             .addJoinedValues(
                 "classpath",
                 ";",
-                Iterables.transform(classpath.toList(), Artifact.OUTPUT_DIR_RELATIVE_PATH_STRING))
+                Iterables.transform(classpath.toList(), Artifact.RUNFILES_PATH_STRING))
             // TODO(laszlocsomor): Change the Launcher to accept multiple jvm_flags entries. As of
             // 2019-02-13 the Launcher accepts just one jvm_flags entry, which contains all the
             // flags, joined by TAB characters. The Launcher splits up the string to get the
@@ -504,29 +501,6 @@ public class BazelJavaSemantics implements JavaSemantics {
   public ImmutableList<String> getCompatibleJavacOptions(
       RuleContext ruleContext, JavaToolchainProvider toolchain) {
     return ImmutableList.of();
-  }
-
-  @Override
-  public void addProviders(
-      RuleContext ruleContext,
-      JavaCommon javaCommon,
-      Artifact gensrcJar,
-      RuleConfiguredTargetBuilder ruleBuilder) {
-    // TODO(plf): Figure out whether we can remove support for C++ dependencies in Bazel.
-    ImmutableList<? extends TransitiveInfoCollection> deps =
-        javaCommon.targetsTreatedAsDeps(ClasspathType.BOTH);
-    ImmutableList<CcInfo> ccInfos =
-        ImmutableList.<CcInfo>builder()
-            .addAll(AnalysisUtils.getProviders(deps, CcInfo.PROVIDER))
-            .addAll(
-                Streams.stream(AnalysisUtils.getProviders(deps, JavaCcLinkParamsProvider.PROVIDER))
-                    .map(JavaCcLinkParamsProvider::getCcInfo)
-                    .collect(ImmutableList.toImmutableList()))
-            .build();
-
-    // TODO(plf): return empty CcLinkingInfo because deps= in Java targets should not contain C++
-    // targets. We need to make sure that no one uses this functionality, though.
-    ruleBuilder.addNativeDeclaredProvider(new JavaCcLinkParamsProvider(CcInfo.merge(ccInfos)));
   }
 
   // TODO(dmarting): simplify that logic when we remove the legacy Bazel java_test behavior.
@@ -649,8 +623,7 @@ public class BazelJavaSemantics implements JavaSemantics {
   }
 
   @Override
-  public ImmutableList<Artifact> translate(RuleContext ruleContext, JavaConfiguration javaConfig,
-      List<Artifact> messages) {
+  public ImmutableList<Artifact> translate(RuleContext ruleContext, List<Artifact> messages) {
     return ImmutableList.<Artifact>of();
   }
 
@@ -678,7 +651,7 @@ public class BazelJavaSemantics implements JavaSemantics {
   @Override
   public PathFragment getDefaultJavaResourcePath(PathFragment path) {
     // Look for src/.../resources to match Maven repository structure.
-    List<String> segments = path.getSegments();
+    List<String> segments = path.splitToListOfSegments();
     for (int i = 0; i < segments.size() - 2; ++i) {
       if (segments.get(i).equals("src") && segments.get(i + 2).equals("resources")) {
         return path.subFragment(i + 3);
@@ -742,5 +715,10 @@ public class BazelJavaSemantics implements JavaSemantics {
 
   @Override
   public void checkDependencyRuleKinds(RuleContext ruleContext) {}
+
+  @Override
+  public void setLintProgressMessage(SpawnAction.Builder spawnAction) {
+    spawnAction.setProgressMessage("Running Android Lint for: %{label}");
+  }
 }
 

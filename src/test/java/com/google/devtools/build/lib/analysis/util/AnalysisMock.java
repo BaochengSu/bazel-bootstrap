@@ -14,9 +14,14 @@
 package com.google.devtools.build.lib.analysis.util;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.ConfiguredRuleClassProvider;
+import com.google.devtools.build.lib.bazel.bzlmod.BazelModuleResolutionFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.FakeRegistry;
+import com.google.devtools.build.lib.bazel.bzlmod.ModuleExtensionResolutionValue;
+import com.google.devtools.build.lib.bazel.bzlmod.ModuleFileFunction;
 import com.google.devtools.build.lib.bazel.rules.android.AndroidNdkRepositoryFunction;
 import com.google.devtools.build.lib.bazel.rules.android.AndroidNdkRepositoryRule;
 import com.google.devtools.build.lib.bazel.rules.android.AndroidSdkRepositoryFunction;
@@ -31,7 +36,6 @@ import com.google.devtools.build.lib.rules.repository.LocalRepositoryFunction;
 import com.google.devtools.build.lib.rules.repository.LocalRepositoryRule;
 import com.google.devtools.build.lib.rules.repository.RepositoryDelegatorFunction;
 import com.google.devtools.build.lib.rules.repository.RepositoryFunction;
-import com.google.devtools.build.lib.rules.repository.RepositoryLoaderFunction;
 import com.google.devtools.build.lib.skyframe.BazelSkyframeExecutorConstants;
 import com.google.devtools.build.lib.skyframe.ManagedDirectoriesKnowledge;
 import com.google.devtools.build.lib.skyframe.SkyFunctions;
@@ -40,6 +44,8 @@ import com.google.devtools.build.lib.testutil.TestConstants;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.skyframe.SkyFunction;
 import com.google.devtools.build.skyframe.SkyFunctionName;
+import com.google.devtools.build.skyframe.SkyKey;
+import com.google.devtools.build.skyframe.SkyValue;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.List;
@@ -86,14 +92,15 @@ public abstract class AnalysisMock extends LoadingMock {
   public abstract void setupMockClient(
       MockToolsConfig mockToolsConfig, List<String> getWorkspaceContents) throws IOException;
 
-  /**
-   * Returns the contents of WORKSPACE.
-   */
-  public abstract List<String> getWorkspaceContents(MockToolsConfig config);
+  /** Returns the contents of WORKSPACE. */
+  public abstract ImmutableList<String> getWorkspaceContents(MockToolsConfig config);
+
+  /** Returns the repos defined in the contents of WORKSPACE above. */
+  public abstract ImmutableList<String> getWorkspaceRepos();
 
   /**
-   * This is called from test setup to create any necessary mock workspace files in the
-   * <code>_embedded_binaries</code> directory.
+   * This is called from test setup to create any necessary mock workspace files in the <code>
+   * _embedded_binaries</code> directory.
    */
   public abstract void setupMockWorkspaceFiles(Path embeddedBinariesRoot) throws IOException;
 
@@ -131,8 +138,24 @@ public abstract class AnalysisMock extends LoadingMock {
             directories,
             ManagedDirectoriesKnowledge.NO_MANAGED_DIRECTORIES,
             BazelSkyframeExecutorConstants.EXTERNAL_PACKAGE_HELPER),
-        SkyFunctions.REPOSITORY,
-        new RepositoryLoaderFunction(),
+        SkyFunctions.MODULE_FILE,
+        new ModuleFileFunction(FakeRegistry.DEFAULT_FACTORY, directories.getWorkspace()),
+        SkyFunctions.BAZEL_MODULE_RESOLUTION,
+        new BazelModuleResolutionFunction(),
+        SkyFunctions.MODULE_EXTENSION_RESOLUTION,
+        new SkyFunction() {
+          @Override
+          public SkyValue compute(SkyKey skyKey, Environment env) {
+            // Dummy SkyFunction that returns nothing.
+            return ModuleExtensionResolutionValue.create(
+                ImmutableMap.of(), ImmutableMap.of(), ImmutableListMultimap.of());
+          }
+
+          @Override
+          public String extractTag(SkyKey skyKey) {
+            return null;
+          }
+        },
         CcSkyframeFdoSupportValue.SKYFUNCTION,
         new CcSkyframeFdoSupportFunction(directories));
   }
@@ -160,8 +183,13 @@ public abstract class AnalysisMock extends LoadingMock {
     }
 
     @Override
-    public List<String> getWorkspaceContents(MockToolsConfig mockToolsConfig) {
+    public ImmutableList<String> getWorkspaceContents(MockToolsConfig mockToolsConfig) {
       return delegate.getWorkspaceContents(mockToolsConfig);
+    }
+
+    @Override
+    public ImmutableList<String> getWorkspaceRepos() {
+      return delegate.getWorkspaceRepos();
     }
 
     @Override

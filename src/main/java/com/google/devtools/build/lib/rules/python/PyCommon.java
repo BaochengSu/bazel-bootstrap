@@ -25,7 +25,6 @@ import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.FailAction;
 import com.google.devtools.build.lib.actions.extra.ExtraActionInfo;
 import com.google.devtools.build.lib.actions.extra.PythonInfo;
-import com.google.devtools.build.lib.analysis.AnalysisEnvironment;
 import com.google.devtools.build.lib.analysis.FileProvider;
 import com.google.devtools.build.lib.analysis.OutputGroupInfo;
 import com.google.devtools.build.lib.analysis.PseudoAction;
@@ -36,7 +35,7 @@ import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
 import com.google.devtools.build.lib.analysis.Util;
 import com.google.devtools.build.lib.analysis.platform.ToolchainInfo;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesCollector;
-import com.google.devtools.build.lib.analysis.test.InstrumentedFilesCollector.LocalMetadataCollector;
+import com.google.devtools.build.lib.analysis.test.InstrumentedFilesCollector.InstrumentationSpec;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
@@ -52,6 +51,7 @@ import com.google.devtools.build.lib.rules.cpp.CppFileTypes;
 import com.google.devtools.build.lib.server.FailureDetails.FailAction.Code;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.util.FileType;
+import com.google.devtools.build.lib.util.FileTypeSet;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.protobuf.GeneratedMessage.GeneratedExtension;
@@ -67,20 +67,13 @@ import net.starlark.java.eval.Starlark;
 /** A helper class for analyzing a Python configured target. */
 public final class PyCommon {
 
+  private static final InstrumentationSpec INSTRUMENTATION_SPEC =
+      new InstrumentationSpec(FileTypeSet.of(PyRuleClasses.PYTHON_SOURCE))
+          .withSourceAttributes("srcs")
+          .withDependencyAttributes("deps", "data");
+
   /** Name of the version attribute. */
   public static final String PYTHON_VERSION_ATTRIBUTE = "python_version";
-
-  /**
-   * Name of the tag used by bazelbuild/rules_python to signal that a rule was instantiated through
-   * that repo.
-   */
-  private static final String MAGIC_TAG = "__PYTHON_RULES_MIGRATION_DO_NOT_USE_WILL_BREAK__";
-  /**
-   * Names of native rules that must be instantiated through bazelbuild/rules_python when {@code
-   * --incompatible_load_python_rules_from_bzl} is enabled.
-   */
-  private static final ImmutableList<String> RULES_REQUIRING_MAGIC_TAG =
-      ImmutableList.of("py_library", "py_binary", "py_test", "py_runtime");
 
   /**
    * Returns the Python version based on the {@code python_version} attribute of the given {@code
@@ -100,17 +93,6 @@ public final class PyCommon {
         PythonVersion.parseTargetOrSentinelValue(attrs.get(PYTHON_VERSION_ATTRIBUTE, Type.STRING));
     return pythonVersionAttr != PythonVersion._INTERNAL_SENTINEL ? pythonVersionAttr : null;
   }
-
-  private static final LocalMetadataCollector METADATA_COLLECTOR =
-      new LocalMetadataCollector() {
-        @Override
-        public void collectMetadataArtifacts(
-            Iterable<Artifact> artifacts,
-            AnalysisEnvironment analysisEnvironment,
-            NestedSetBuilder<Artifact> metadataFilesBuilder) {
-          // Python doesn't do any compilation, so we simply return the empty set.
-        }
-      };
 
   /** The context for the target this {@code PyCommon} is helping to analyze. */
   private final RuleContext ruleContext;
@@ -195,6 +177,9 @@ public final class PyCommon {
    */
   @Nullable private final Map<PathFragment, Artifact> convertedFiles;
 
+  // Null if requiresMainFile is false, or the main artifact couldn't be determined.
+  @Nullable private Artifact mainArtifact = null;
+
   private Artifact executable = null;
 
   private NestedSet<Artifact> filesToBuild = null;
@@ -205,20 +190,24 @@ public final class PyCommon {
         fieldName, expected.getStarlarkName(), actual.getStarlarkName());
   }
 
-  // TODO(bazel-team): validatePackageAndSources is the result of refactoring while preserving
+  // TODO(bazel-team): validateSources is the result of refactoring while preserving
   // legacy behavior across some (but not all) Google-internal uses of PyCommon. Ideally all call
   // sites should be updated to expect the same validation steps.
   public PyCommon(
-      RuleContext ruleContext, PythonSemantics semantics, boolean validatePackageAndSources) {
+      RuleContext ruleContext,
+      PythonSemantics semantics,
+      boolean validateSources,
+      boolean requiresMainFile) {
     this.ruleContext = ruleContext;
     this.semantics = semantics;
     this.version = ruleContext.getFragment(PythonConfiguration.class).getPythonVersion();
     this.sourcesVersion = initSrcsVersionAttr(ruleContext);
     this.dependencyTransitivePythonSources = initDependencyTransitivePythonSources(ruleContext);
     this.transitivePythonSources = initTransitivePythonSources(ruleContext);
+    this.mainArtifact = requiresMainFile ? initMainArtifact(ruleContext) : null;
     this.directPythonSources =
         initAndMaybeValidateDirectPythonSources(
-            ruleContext, semantics, /*validate=*/ validatePackageAndSources);
+            ruleContext, semantics, /*validate=*/ validateSources, this.mainArtifact);
     this.usesSharedLibraries = initUsesSharedLibraries(ruleContext);
     this.imports = initImports(ruleContext, semantics);
     this.hasPy2OnlySources = initHasPy2OnlySources(ruleContext, this.sourcesVersion);
@@ -227,10 +216,6 @@ public final class PyCommon {
     this.convertedFiles = makeAndInitConvertedFiles(ruleContext, version, this.sourcesVersion);
     validatePythonVersionAttr();
     validateLegacyProviderNotUsedIfDisabled();
-    maybeValidateLoadedFromBzl();
-    if (validatePackageAndSources) {
-      validatePackageName();
-    }
   }
 
   /** Returns the parsed value of the "srcs_version" attribute. */
@@ -282,7 +267,7 @@ public final class PyCommon {
   }
 
   private static List<Artifact> initAndMaybeValidateDirectPythonSources(
-      RuleContext ruleContext, PythonSemantics semantics, boolean validate) {
+      RuleContext ruleContext, PythonSemantics semantics, boolean validate, Artifact mainArtifact) {
     List<Artifact> sourceFiles = new ArrayList<>();
     // TODO(bazel-team): Need to get the transitive deps closure, not just the sources of the rule.
     for (TransitiveInfoCollection src :
@@ -290,9 +275,13 @@ public final class PyCommon {
       // Make sure that none of the sources contain hyphens.
       if (validate
           && semantics.prohibitHyphensInPackagePaths()
-          && Util.containsHyphen(src.getLabel().getPackageFragment())) {
+          && Util.containsHyphen(src.getLabel().getPackageFragment())
+          // It's ok to have hyphens in main file - usually no one imports it.
+          && (mainArtifact == null || !src.getLabel().equals(mainArtifact.getOwnerLabel()))) {
         ruleContext.attributeError(
-            "srcs", src.getLabel() + ": paths to Python packages may not contain '-'");
+            "srcs",
+            src.getLabel()
+                + ": paths to Python sources (besides the main source) may not contain '-'");
       }
       Iterable<Artifact> pySrcs =
           FileType.filter(
@@ -586,43 +575,6 @@ public final class PyCommon {
   }
 
   /**
-   * If {@code --incompatible_load_python_rules_from_bzl} is enabled, reports a rule error if the
-   * rule is one of the ones that has a redirect in bazelbuild/rules_python, and either 1) the magic
-   * tag {@code __PYTHON_RULES_MIGRATION_DO_NOT_USE_WILL_BREAK__} is not present, or 2) the target
-   * was not created in a macro.
-   *
-   * <p>No-op otherwise.
-   */
-  private void maybeValidateLoadedFromBzl() {
-    if (!ruleContext.getFragment(PythonConfiguration.class).loadPythonRulesFromBzl()) {
-      return;
-    }
-    String ruleName = ruleContext.getRule().getRuleClass();
-    if (!RULES_REQUIRING_MAGIC_TAG.contains(ruleName)) {
-      return;
-    }
-
-    boolean hasMagicTag =
-        ruleContext.attributes().get("tags", Type.STRING_LIST).contains(MAGIC_TAG);
-    if (!hasMagicTag || !ruleContext.getRule().wasCreatedByMacro()) {
-      ruleContext.ruleError(
-          "Direct access to the native Python rules is deprecated. Please load "
-              + ruleName
-              + " from the rules_python repository. See http://github.com/bazelbuild/rules_python "
-              + "and https://github.com/bazelbuild/bazel/issues/9006. You can temporarily bypass "
-              + "this error by setting --incompatible_load_python_rules_from_bzl=false.");
-    }
-  }
-
-  /** Checks that the package name of this Python rule does not contain a '-'. */
-  private void validatePackageName() {
-    if (semantics.prohibitHyphensInPackagePaths()
-        && Util.containsHyphen(ruleContext.getLabel().getPackageFragment())) {
-      ruleContext.ruleError("paths to Python packages may not contain '-'");
-    }
-  }
-
-  /**
    * If the Python version (as determined by the configuration) is inconsistent with {@link
    * #hasPy2OnlySources} or {@link #hasPy3OnlySources}, emits a {@link FailAction} that "generates"
    * the executable.
@@ -640,8 +592,7 @@ public final class PyCommon {
             + ": "
             + "This target is being built for Python %s but (transitively) includes Python %s-only "
             + "sources. You can get diagnostic information about which dependencies introduce this "
-            + "version requirement by running the `find_requirements` aspect. If this is used in a "
-            + "genrule, you may need to migrate from tools to exec_tools. For more info see "
+            + "version requirement by running the `find_requirements` aspect. For more info see "
             + "the documentation for the `srcs_version` attribute: "
             + semantics.getSrcsVersionDocURL();
 
@@ -904,12 +855,7 @@ public final class PyCommon {
 
     builder
         .addNativeDeclaredProvider(
-            InstrumentedFilesCollector.collect(
-                ruleContext,
-                semantics.getCoverageInstrumentationSpec(),
-                METADATA_COLLECTOR,
-                filesToBuild.toList(),
-                /* reportedToActualSources= */ NestedSetBuilder.create(Order.STABLE_ORDER)))
+            InstrumentedFilesCollector.collect(ruleContext, INSTRUMENTATION_SPEC))
         // Python targets are not really compilable. The best we can do is make sure that all
         // generated source files are ready.
         .addOutputGroup(OutputGroupInfo.FILES_TO_COMPILE, transitivePythonSources)
@@ -973,8 +919,8 @@ public final class PyCommon {
   @AutoCodec @AutoCodec.VisibleForSerialization
   static final GeneratedExtension<ExtraActionInfo, PythonInfo> PYTHON_INFO = PythonInfo.pythonInfo;
 
-  /** @return A String that is the full path to the main python entry point. */
-  public String determineMainExecutableSource(boolean withWorkspaceName) {
+  /** Returns the artifact for the main Python source file. */
+  private static Artifact initMainArtifact(RuleContext ruleContext) {
     String mainSourceName;
     Rule target = ruleContext.getRule();
     boolean explicitMain = target.isAttributeValueExplicitlySpecified("main");
@@ -985,6 +931,7 @@ public final class PyCommon {
       }
     } else {
       String ruleName = target.getName();
+      // TODO(blaze-team) Shouldn't the same check apply for all Python targets?
       if (ruleName.endsWith(".py")) {
         ruleContext.attributeError("name", "name must not end in '.py'");
       }
@@ -1011,6 +958,18 @@ public final class PyCommon {
 
     if (mainArtifact == null) {
       ruleContext.attributeError("srcs", buildNoMainMatchesErrorText(explicitMain, mainSourceName));
+    }
+
+    return mainArtifact;
+  }
+
+  /**
+   * Returns the path to the main python entry point, or null if this PyCommon was initialized with
+   * {@code requiresMainFile} set to false (or there was an error in determining the main artifact).
+   */
+  @Nullable
+  public String determineMainExecutableSource(boolean withWorkspaceName) {
+    if (mainArtifact == null) {
       return null;
     }
     if (!withWorkspaceName) {

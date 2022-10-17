@@ -26,7 +26,6 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/analysis:config/config_matching_provider",
         "//src/main/java/com/google/devtools/build/lib/analysis:config/fragment",
         "//src/main/java/com/google/devtools/build/lib/analysis:config/fragment_options",
-        "//src/main/java/com/google/devtools/build/lib/analysis:config/fragment_provider",
         "//src/main/java/com/google/devtools/build/lib/analysis:config/transitions/no_transition",
         "//src/main/java/com/google/devtools/build/lib/analysis:config/transitions/patch_transition",
         "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
@@ -58,20 +57,5 @@ java_test(
     runtime_deps = [
         ":ConfigRulesTests_lib",
         "//src/test/java/com/google/devtools/build/lib:test_runner",
-    ],
-)
-
-test_suite(
-    name = "windows_tests",
-    tags = [
-        "-no_windows",
-        "-slow",
-    ],
-)
-
-test_suite(
-    name = "all_windows_tests",
-    tests = [
-        ":windows_tests",
     ],
 )

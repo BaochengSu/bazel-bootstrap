@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Tests that bazel runs projects with Java 14 features.
+# Tests that bazel runs projects with Java 15 features.
 
 # --- begin runfiles.bash initialization ---
 if [[ ! -d "${RUNFILES_DIR:-/dev/null}" && ! -f "${RUNFILES_MANIFEST_FILE:-/dev/null}" ]]; then
@@ -54,9 +54,8 @@ if "$is_windows"; then
   export MSYS2_ARG_CONV_EXCL="*"
 fi
 
-JAVA_TOOLCHAIN="$1"; shift
 JAVA_TOOLS_ZIP="$1"; shift
-JAVA_RUNTIME="$1"; shift
+JAVA_TOOLS_PREBUILT_ZIP="$1"; shift
 
 echo "JAVA_TOOLS_ZIP=$JAVA_TOOLS_ZIP"
 
@@ -65,15 +64,14 @@ JAVA_TOOLS_RLOCATION=$(rlocation io_bazel/$JAVA_TOOLS_ZIP)
 
 if "$is_windows"; then
     JAVA_TOOLS_ZIP_FILE_URL="file:///${JAVA_TOOLS_RLOCATION}"
+    JAVA_TOOLS_PREBUILT_ZIP_FILE_URL="file:///$(rlocation io_bazel/$JAVA_TOOLS_PREBUILT_ZIP)"
 else
     JAVA_TOOLS_ZIP_FILE_URL="file://${JAVA_TOOLS_RLOCATION}"
+    JAVA_TOOLS_PREBUILT_ZIP_FILE_URL="file://$(rlocation io_bazel/$JAVA_TOOLS_PREBUILT_ZIP)"
 fi
 JAVA_TOOLS_ZIP_FILE_URL=${JAVA_TOOLS_ZIP_FILE_URL:-}
+JAVA_TOOLS_PREBUILT_ZIP_FILE_URL=${JAVA_TOOLS_PREBUILT_ZIP_FILE_URL:-}
 
-add_to_bazelrc "build --java_toolchain=${JAVA_TOOLCHAIN}"
-add_to_bazelrc "build --host_java_toolchain=${JAVA_TOOLCHAIN}"
-add_to_bazelrc "build --javabase=${JAVA_RUNTIME}"
-add_to_bazelrc "build --host_javabase=${JAVA_RUNTIME}"
 
 function set_up() {
     cat >>WORKSPACE <<EOF
@@ -81,13 +79,26 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 # java_tools versions only used to test Bazel with various JDK toolchains.
 
 http_archive(
-    name = "local_java_tools",
+    name = "remote_java_tools",
     urls = ["${JAVA_TOOLS_ZIP_FILE_URL}"]
+)
+http_archive(
+    name = "remote_java_tools_linux",
+    urls = ["${JAVA_TOOLS_PREBUILT_ZIP_FILE_URL}"]
+)
+http_archive(
+    name = "remote_java_tools_windows",
+    urls = ["${JAVA_TOOLS_PREBUILT_ZIP_FILE_URL}"]
+)
+http_archive(
+    name = "remote_java_tools_darwin",
+    urls = ["${JAVA_TOOLS_PREBUILT_ZIP_FILE_URL}"]
 )
 EOF
     cat $(rlocation io_bazel/src/test/shell/bazel/testdata/jdk_http_archives) >> WORKSPACE
 }
 
+# Java source files version shall match --java_language_version_flag version.
 function test_java15_text_block() {
   mkdir -p java/main
   cat >java/main/BUILD <<EOF
@@ -109,9 +120,50 @@ public class Javac15Example {
   }
 }
 EOF
-  bazel run java/main:Javac15Example --test_output=all --verbose_failures &>"${TEST_log}"
+  bazel run java/main:Javac15Example --java_language_version=11 --java_runtime_version=11 \
+     --test_output=all --verbose_failures &>"${TEST_log}" \
+     && fail "Running with --java_language_version=11 unexpectedly succeeded."
+
+  bazel run java/main:Javac15Example --java_language_version=15 --java_runtime_version=15 \
+     --test_output=all --verbose_failures &>"${TEST_log}" \
+     || fail "Running with --java_language_version=15 failed"
   expect_log "^Hello,\$"
   expect_log "^World\$"
+}
+
+# Java source files version shall match --java_language_version_flag version.
+function test_java14_record_type() {
+  mkdir -p java/main
+  cat >java/main/BUILD <<EOF
+java_binary(
+    name = 'Javac14Example',
+    srcs = ['Javac14Example.java'],
+    main_class = 'Javac14Example',
+    javacopts = ["--enable-preview"],
+    jvm_flags = ["--enable-preview"],
+)
+EOF
+
+  cat >java/main/Javac14Example.java <<EOF
+public class Javac14Example {
+  record Point(int x, int y) {}
+  public static void main(String[] args) {
+    Point point = new Point(0, 1);
+    System.out.println(point.x);
+  }
+}
+EOF
+  bazel run java/main:Javac14Example --java_language_version=15 --java_runtime_version=15 \
+     --test_output=all --verbose_failures &>"${TEST_log}" \
+      || fail "Running with --java_language_version=15 failed"
+
+  expect_log "0"
+
+  bazel run java/main:Javac14Example --java_language_version=11 --java_runtime_version=11 \
+     --test_output=all --verbose_failures &>"${TEST_log}" \
+      && fail "Running with --java_language_version=11 unexpectedly succeeded."
+
+  expect_log "0"
 }
 
 # Regression test for https://github.com/bazelbuild/bazel/issues/12605

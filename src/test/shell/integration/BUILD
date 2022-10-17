@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("//:distdir_deps.bzl", "gen_workspace_stanza")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -33,6 +33,14 @@ filegroup(
         "//src:bazel-bin_nojdk",
         "//src/test/shell:bin/bazel_nojdk",
         "//src/test/shell/bazel:test-deps-wo-bazel",
+    ],
+)
+
+gen_workspace_stanza(
+    name = "rules_proto_stanza",
+    out = "rules_proto_stanza.txt",
+    repos = [
+        "rules_proto",
     ],
 )
 
@@ -355,6 +363,7 @@ sh_test(
     name = "modify_execution_info_test",
     srcs = ["modify_execution_info_test.sh"],
     data = [
+        ":rules_proto_stanza.txt",
         ":test-deps",
         "@bazel_tools//tools/bash/runfiles",
     ],
@@ -383,6 +392,16 @@ sh_test(
     name = "starlark_flag_test",
     size = "medium",
     srcs = ["starlark_flag_test.sh"],
+    data = [
+        ":test-deps",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+)
+
+sh_test(
+    name = "builtins_injection_test",
+    size = "medium",
+    srcs = ["builtins_injection_test.sh"],
     data = [
         ":test-deps",
         "@bazel_tools//tools/bash/runfiles",
@@ -549,8 +568,6 @@ sh_test(
         ":test-deps",
         "//src/test/java/com/google/devtools/build/lib/worker:ExampleWorker_deploy.jar",
     ],
-    # TODO(b/34450149): remove when no longer flaky
-    flaky = 1,
     shard_count = 3,
     tags = [
         "no_windows",
@@ -771,6 +788,16 @@ sh_test(
 )
 
 sh_test(
+    name = "analysis_phase_options_test",
+    size = "medium",
+    srcs = ["analysis_phase_options_test.sh"],
+    data = [
+        ":test-deps",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+)
+
+sh_test(
     name = "exec_group_test",
     srcs = ["exec_group_test.sh"],
     data = [
@@ -779,27 +806,20 @@ sh_test(
     ],
 )
 
+sh_test(
+    name = "watchfs_test",
+    srcs = ["watchfs_test.sh"],
+    data = [
+        ":test-deps",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+    tags = ["no_windows"],
+)
+
 ########################################################################
 # Test suites.
 
 test_suite(
     name = "all_tests",
     visibility = ["//visibility:public"],
-)
-
-test_suite(
-    name = "windows_tests",
-    tags = [
-        "-no_windows",
-        "-slow",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-test_suite(
-    name = "all_windows_tests",
-    tests = [
-        ":windows_tests",
-    ],
-    visibility = ["//src/test/shell:__pkg__"],
 )

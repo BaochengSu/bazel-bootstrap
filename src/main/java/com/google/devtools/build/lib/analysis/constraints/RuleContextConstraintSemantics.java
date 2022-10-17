@@ -72,7 +72,6 @@ import javax.annotation.Nullable;
 
 /** Implementation of {@link ConstraintSemantics} using {@link RuleContext} to check constraints. */
 public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleContext> {
-  public RuleContextConstraintSemantics() {}
 
   /**
    * Logs an error message that the current rule violates constraints.
@@ -435,9 +434,9 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
       EnvironmentCollection staticEnvironments,
       EnvironmentCollection.Builder refinedEnvironments,
       Map<Label, RemovedEnvironmentCulprit> removedEnvironmentCulprits) {
-    Set<EnvironmentWithGroup> refinedEnvironmentsSoFar = new LinkedHashSet<>();
     // Start with the full set of static environments:
-    refinedEnvironmentsSoFar.addAll(staticEnvironments.getGroupedEnvironments());
+    Set<EnvironmentWithGroup> refinedEnvironmentsSoFar =
+        new LinkedHashSet<>(staticEnvironments.getGroupedEnvironments());
     Set<EnvironmentLabels> groupsWithEnvironmentsRemoved = new LinkedHashSet<>();
     // Maps the label results of getUnsupportedEnvironments() to EnvironmentWithGroups. We can't
     // have that method just return EnvironmentWithGroups because it also collects group defaults,
@@ -570,7 +569,10 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
             ? ImmutableSet.of()
             : Sets.difference(groupsWithEnvironmentsRemoved, refinedGroups);
     if (!newlyEmptyGroups.isEmpty()) {
-      ruleError(ruleContext, getOverRefinementError(newlyEmptyGroups, removedEnvironmentCulprits));
+      ruleError(
+          ruleContext,
+          getOverRefinementError(
+              ruleContext.getLabel(), newlyEmptyGroups, removedEnvironmentCulprits));
     }
   }
 
@@ -578,7 +580,8 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
    * Constructs an error message for when all environments have been pruned out of one or more
    * environment groups due to refining.
    */
-  private static String getOverRefinementError(
+  private String getOverRefinementError(
+      Label currentTarget,
       Set<EnvironmentLabels> newlyEmptyGroups,
       Map<Label, RemovedEnvironmentCulprit> removedEnvironmentCulprits) {
     StringJoiner message = new StringJoiner("\n")
@@ -596,21 +599,31 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
         if (culprit != null) {
           message
               .add(" ")
-              .add(getMissingEnvironmentCulpritMessage(prunedEnvironment, culprit));
+              .add(getMissingEnvironmentCulpritMessage(currentTarget, prunedEnvironment, culprit));
         }
       }
     }
     return message.toString();
   }
 
-  static String getMissingEnvironmentCulpritMessage(Label environment,
-      RemovedEnvironmentCulprit reason) {
+  public String getMissingEnvironmentCulpritMessage(
+      Label currentTarget, Label environment, RemovedEnvironmentCulprit reason) {
     LabelAndLocation culprit = reason.culprit();
+    Label targetToExplore =
+        currentTarget.equals(culprit.getLabel())
+            ? reason.selectedDepForCulprit()
+            : culprit.getLabel();
+
     return new StringJoiner("\n")
         .add("  environment: " + environment)
         .add("    removed by: " + culprit.getLabel() + " (" + culprit.getLocation() + ")")
-        .add("    which has a select() that chooses dep: " + reason.selectedDepForCulprit())
+        .add("    because of a select() that chooses dep: " + reason.selectedDepForCulprit())
         .add("    which lacks: " + environment)
+        .add("")
+        .add(
+            String.format(
+                "To see why, run: blaze build --target_environment=%s %s",
+                environment, targetToExplore))
         .toString();
   }
 
@@ -726,8 +739,8 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
   }
 
   /**
-   * Returns all dependencies that should be constraint-checked against the current rule,
-   * including both "uncoditional" deps (outside selects) and deps that only appear in selects.
+   * Returns all dependencies that should be constraint-checked against the current rule, including
+   * both "unconditional" deps (outside selects) and deps that only appear in selects.
    */
   private static DepsToCheck getConstraintCheckedDependencies(RuleContext ruleContext) {
     Set<TransitiveInfoCollection> depsToCheck = new LinkedHashSet<>();
@@ -744,8 +757,8 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
       if (!attrDef.checkConstraintsOverride()) {
         // Use the same implicit deps check that query uses. This facilitates running queries to
         // determine exactly which rules need to be constraint-annotated for depot migrations.
-        if (!DependencyFilter.NO_IMPLICIT_DEPS.apply(ruleContext.getRule(), attrDef)
-            || attrDef.getTransitionFactory().isTool()) {
+        if (!DependencyFilter.NO_IMPLICIT_DEPS.test(ruleContext.getRule(), attrDef)
+            || attrDef.isToolDependency()) {
           continue;
         }
       }
@@ -791,28 +804,29 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
    * Returns the deps for this attribute that only appear in selects.
    *
    * <p>For example:
+   *
    * <pre>
    *     deps = [":a"] + select({"//foo:cond": [":b"]}) + select({"//conditions:default": [":c"]})
    * </pre>
    *
    * returns {@code [":b"]}. Even though {@code [":c"]} also appears in a select, that's a
-   * degenerate case with only one always-chosen condition. So that's considered the same as
-   * an unconditional dep.
+   * degenerate case with only one always-chosen condition. So that's considered the same as an
+   * unconditional dep.
    *
    * <p>Note that just because a dep only appears in selects for this attribute doesn't mean it
    * won't appear unconditionally in another attribute.
    */
-  private static Set<Label> getDepsOnlyInSelects(RuleContext ruleContext, String attr,
-      Type<?> attrType) {
+  private static <T> Set<Label> getDepsOnlyInSelects(
+      RuleContext ruleContext, String attr, Type<T> attrType) {
     Rule rule = ruleContext.getRule();
     if (!rule.isConfigurableAttribute(attr) || !BuildType.isLabelType(attrType)) {
       return ImmutableSet.of();
     }
     Set<Label> unconditionalDeps = new LinkedHashSet<>();
     Set<Label> selectableDeps = new LinkedHashSet<>();
-    BuildType.SelectorList<?> selectList = (BuildType.SelectorList<?>)
-        RawAttributeMapper.of(rule).getRawAttributeValue(rule, attr);
-    for (BuildType.Selector<?> select : selectList.getSelectors()) {
+    BuildType.SelectorList<T> selectList =
+        RawAttributeMapper.of(rule).getSelectorList(attr, attrType);
+    for (BuildType.Selector<T> select : selectList.getSelectors()) {
       addSelectValuesToSet(select, select.isUnconditional() ? unconditionalDeps : selectableDeps);
     }
     return Sets.difference(selectableDeps, unconditionalDeps);
@@ -822,10 +836,10 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
    * Adds all label values from the given select to the given set. Automatically handles different
    * value types (e.g. labels vs. label lists).
    */
-  private static void addSelectValuesToSet(BuildType.Selector<?> select, final Set<Label> set) {
-    Type<?> type = select.getOriginalType();
-    LabelVisitor<?> visitor = (label, dummy) -> set.add(label);
-    for (Object value : select.getEntries().values()) {
+  private static <T> void addSelectValuesToSet(BuildType.Selector<T> select, Set<Label> set) {
+    Type<T> type = select.getOriginalType();
+    LabelVisitor visitor = (label, dummy) -> set.add(label);
+    for (T value : select.getEntries().values()) {
       type.visitLabels(visitor, value, /*context=*/ null);
     }
   }
@@ -893,8 +907,11 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
       RuleContext ruleContext,
       OrderedSetMultimap<DependencyKind, ConfiguredTargetAndData> prerequisiteMap)
       throws ActionConflictException, InterruptedException {
-    // The target (ruleContext) is incompatible if explicitly specified to be.
-    if (ruleContext.getRule().getRuleClassObject().useToolchainResolution()
+    // The target (ruleContext) is incompatible if explicitly specified to be. Any rule that
+    // provides its own meaning for the "target_compatible_with" attribute has to be excluded here.
+    // For example, the "toolchain" rule uses "target_compatible_with" for bazel's toolchain
+    // resolution.
+    if (!ruleContext.getRule().getRuleClass().equals("toolchain")
         && ruleContext.attributes().has("target_compatible_with")) {
       ImmutableList<ConstraintValueInfo> invalidConstraintValues =
           PlatformProviderUtils.constraintValues(
@@ -912,8 +929,8 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
     ImmutableList<ConfiguredTarget> incompatibleDependencies =
         prerequisiteMap.values().stream()
             .map(value -> checkForIncompatibility(value.getConfiguredTarget()))
-            .filter(result -> result.isIncompatible())
-            .map(result -> result.underlyingTarget())
+            .filter(IncompatibleCheckResult::isIncompatible)
+            .map(IncompatibleCheckResult::underlyingTarget)
             .collect(toImmutableList());
     if (!incompatibleDependencies.isEmpty()) {
       return createIncompatibleConfiguredTarget(ruleContext, incompatibleDependencies, null);
@@ -984,10 +1001,11 @@ public class RuleContextConstraintSemantics implements ConstraintSemantics<RuleC
     if (targetsResponsibleForIncompatibility != null) {
       builder.addNativeDeclaredProvider(
           IncompatiblePlatformProvider.incompatibleDueToTargets(
-              targetsResponsibleForIncompatibility));
+              ruleContext.targetPlatform(), targetsResponsibleForIncompatibility));
     } else if (violatedConstraints != null) {
       builder.addNativeDeclaredProvider(
-          IncompatiblePlatformProvider.incompatibleDueToConstraints(violatedConstraints));
+          IncompatiblePlatformProvider.incompatibleDueToConstraints(
+              ruleContext.targetPlatform(), violatedConstraints));
     } else {
       throw new IllegalArgumentException(
           "Both violatedConstraints and targetsResponsibleForIncompatibility are null");

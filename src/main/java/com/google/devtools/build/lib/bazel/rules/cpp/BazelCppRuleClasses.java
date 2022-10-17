@@ -50,6 +50,7 @@ import com.google.devtools.build.lib.packages.AttributeMap;
 import com.google.devtools.build.lib.packages.ImplicitOutputsFunction.SafeImplicitOutputsFunction;
 import com.google.devtools.build.lib.packages.RuleClass;
 import com.google.devtools.build.lib.packages.RuleClass.Builder.RuleClassType;
+import com.google.devtools.build.lib.packages.RuleClass.ToolchainTransitionMode;
 import com.google.devtools.build.lib.packages.StarlarkProviderIdentifier;
 import com.google.devtools.build.lib.packages.TriState;
 import com.google.devtools.build.lib.rules.cpp.CcInfo;
@@ -95,7 +96,6 @@ public class BazelCppRuleClasses {
   /** Common attributes for all rules that need a C++ toolchain. */
   public static final class CcToolchainRequiringRule implements RuleDefinition {
     @Override
-    @SuppressWarnings("unchecked")
     public RuleClass build(RuleClass.Builder builder, RuleDefinitionEnvironment env) {
       return builder
           .add(
@@ -108,7 +108,7 @@ public class BazelCppRuleClasses {
           .setPreferredDependencyPredicate(Predicates.<String>or(CPP_SOURCE, C_SOURCE, CPP_HEADER))
           .requiresConfigurationFragments(PlatformConfiguration.class)
           .addRequiredToolchains(CppRuleClasses.ccToolchainTypeAttribute(env))
-          .useToolchainTransition(true)
+          .useToolchainTransition(ToolchainTransitionMode.ENABLED)
           .build();
     }
 
@@ -210,7 +210,7 @@ public class BazelCppRuleClasses {
       return RuleDefinition.Metadata.builder()
           .name("$cc_decl_rule")
           .type(RuleClassType.ABSTRACT)
-          .ancestors(BaseRuleClasses.RuleBase.class)
+          .ancestors(BaseRuleClasses.NativeActionCreatingRule.class)
           .build();
     }
   }
@@ -527,7 +527,10 @@ public class BazelCppRuleClasses {
                                   BazelCppSemantics.CC_SHARED_INFO_PROVIDER)),
                           ImmutableList.of(
                               StarlarkProviderIdentifier.forKey(
-                                  BazelCppSemantics.CC_SHARED_INFO_PROVIDER_RULES_CC)))))
+                                  BazelCppSemantics.CC_SHARED_INFO_PROVIDER_RULES_CC)),
+                          ImmutableList.of(
+                              StarlarkProviderIdentifier.forKey(
+                                  BazelCppSemantics.CC_SHARED_INFO_PROVIDER_BUILT_INS)))))
           /*<!-- #BLAZE_RULE($cc_binary_base).ATTRIBUTE(malloc) -->
           Override the default dependency on malloc.
           <p>
@@ -546,18 +549,24 @@ public class BazelCppRuleClasses {
                   .aspect(graphNodeAspect, GraphNodeAspect.ASPECT_PARAMETERS))
           .add(attr(":default_malloc", LABEL).value(CppRuleClasses.DEFAULT_MALLOC))
           /*<!-- #BLAZE_RULE($cc_binary_base).ATTRIBUTE(stamp) -->
-          Enable link stamping.
           Whether to encode build information into the binary. Possible values:
           <ul>
-            <li><code>stamp = 1</code>: Stamp the build information into the
-              binary. Stamped binaries are only rebuilt when their dependencies
-              change. Use this if there are tests that depend on the build
-              information.</li>
-            <li><code>stamp = 0</code>: Always replace build information by constant
-              values. This gives good build result caching.</li>
-            <li><code>stamp = -1</code>: Embedding of build information is controlled
-              by the <a href="../user-manual.html#flag--stamp">--[no]stamp</a> flag.</li>
+            <li>
+              <code>stamp = 1</code>: Always stamp the build information into the binary, even in
+              <a href="../user-manual.html#flag--stamp"><code>--nostamp</code></a> builds. <b>This
+              setting should be avoided</b>, since it potentially kills remote caching for the
+              binary and any downstream actions that depend on it.
+            </li>
+            <li>
+              <code>stamp = 0</code>: Always replace build information by constant values. This
+              gives good build result caching.
+            </li>
+            <li>
+              <code>stamp = -1</code>: Embedding of build information is controlled by the
+              <a href="../user-manual.html#flag--stamp"><code>--[no]stamp</code></a> flag.
+            </li>
           </ul>
+          <p>Stamped binaries are <em>not</em> rebuilt unless their dependencies change.</p>
           <!-- #END_BLAZE_RULE.ATTRIBUTE -->*/
           .add(attr("stamp", TRISTATE).value(TriState.AUTO))
           .build();
