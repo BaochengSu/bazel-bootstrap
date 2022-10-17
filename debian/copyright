@@ -51,7 +51,7 @@ Files-Excluded: derived
                 third_party/java/jdk/README.md
                 third_party/java/jdk/langtools/LICENSE
                 third_party/java/jdk/langtools/*.srcjar
-                third_party/java/proguard/proguard5.3.3
+                third_party/java/proguard/proguard6.2.2
                 third_party/java-diff-utils
                 third_party/javascript
                 third_party/javax*
