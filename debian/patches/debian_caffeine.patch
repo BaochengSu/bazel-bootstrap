@@ -1,0 +1,30 @@
+Description: Use native Debian version of lifcaffeine-java
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: https://github.com/bazelbuild/bazel/pull/16493
+Last-Update: 2022-10-17
+
+--- a/third_party/BUILD
++++ b/third_party/BUILD
+@@ -350,8 +350,9 @@
+     jars = ["gson/gson-2.8.0.jar"],
+ )
+ 
+-java_import(
++distrib_java_import(
+     name = "caffeine",
++    enable_distributions = ["debian"],
+     jars = ["caffeine/caffeine-2.9.2.jar"],
+ )
+ 
+--- a/tools/distributions/debian/debian_java.BUILD
++++ b/tools/distributions/debian/debian_java.BUILD
+@@ -472,3 +472,9 @@
+     jars = ["rxjava.jar"],
+     deps = [":reactive_streams"],
+ )
++
++# libcaffeine-java
++java_import(
++    name = "caffeine",
++    jars = ["caffeine.jar"],
++)

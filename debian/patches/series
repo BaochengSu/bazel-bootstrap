@@ -20,3 +20,4 @@ fix_bashisms.patch
 fix_longlines.patch
 debian_rxjava.patch
 remove_skylib.patch
+debian_caffeine.patch
