@@ -22,16 +22,6 @@ Last-Update: 2020-07-22
 +    cmd = "touch $@",
 +    outs = ["LICENSE"],
  )
---- a/third_party/jarjar/BUILD
-+++ b/third_party/jarjar/BUILD
-@@ -13,7 +13,6 @@
-     name = "embedded_build_and_license",
-     srcs = [
-         "BUILD.tools",
--        "LICENSE",
-     ],
- )
- 
 --- a/third_party/zlib/BUILD
 +++ b/third_party/zlib/BUILD
 @@ -10,7 +10,7 @@

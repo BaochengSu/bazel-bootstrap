@@ -9,7 +9,7 @@ Last-Update: 2022-09-21
 
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -6373,7 +6373,19 @@
+@@ -6799,7 +6799,19 @@
      is
      now a symlink to the latest log.
  
@@ -32,7 +32,7 @@ Last-Update: 2022-09-21
  
 --- a/site/docs/build-javascript.md
 +++ b/site/docs/build-javascript.md
-@@ -140,7 +140,12 @@
+@@ -141,7 +141,12 @@
  
  ```json
  "scripts": {
@@ -48,7 +48,7 @@ Last-Update: 2022-09-21
  }
 --- a/site/docs/test-encyclopedia.html
 +++ b/site/docs/test-encyclopedia.html
-@@ -241,7 +241,15 @@
+@@ -246,7 +246,15 @@
      <tr><td><code>PATH</code></td><td><code>/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:.</code></td><td>recommended</td></tr>
      <tr><td><code>PWD</code></td><td><code>$TEST_SRCDIR/<i>workspace-name</i></code></td><td>recommended</td></tr>
      <tr><td><code>SHLVL</code></td><td><code>2</code></td><td>recommended</td></tr>

@@ -18,7 +18,7 @@ Last-Update: 2020-11-05
      EXCLUDE_FILES+=" $f"
 --- a/src/main/java/com/google/devtools/build/lib/bazel/BUILD
 +++ b/src/main/java/com/google/devtools/build/lib/bazel/BUILD
-@@ -30,7 +30,6 @@
+@@ -33,7 +33,6 @@
          "//src/main/java/com/google/devtools/build/lib/bazel/repository/cache",
          "//src/main/java/com/google/devtools/build/lib/bazel/repository/downloader",
          "//src/main/java/com/google/devtools/build/lib/bazel/repository/starlark",
@@ -26,14 +26,14 @@ Last-Update: 2020-11-05
          "//src/main/java/com/google/devtools/build/lib/cmdline",
          "//src/main/java/com/google/devtools/build/lib/events",
          "//src/main/java/com/google/devtools/build/lib/pkgcache",
-@@ -133,7 +132,6 @@
+@@ -148,7 +147,6 @@
          "//src/main/java/com/google/devtools/build/lib/profiler/callcounts:callcounts_module",
          "//src/main/java/com/google/devtools/build/lib/profiler/memory:allocationtracker_module",
          "//src/main/java/com/google/devtools/build/lib/remote",
 -        "//src/main/java/com/google/devtools/build/lib/runtime/mobileinstall",
          "//src/main/java/com/google/devtools/build/lib/sandbox",
-         "//src/main/java/com/google/devtools/build/lib/ssd",
          "//src/main/java/com/google/devtools/build/lib/standalone",
+         "//src/main/java/com/google/devtools/build/lib/starlarkdebug/module",
 --- a/src/main/java/com/google/devtools/build/lib/bazel/Bazel.java
 +++ b/src/main/java/com/google/devtools/build/lib/bazel/Bazel.java
 @@ -45,7 +45,6 @@
@@ -46,7 +46,7 @@ Last-Update: 2020-11-05
            com.google.devtools.build.lib.remote.RemoteModule.class,
 --- a/src/main/java/com/google/devtools/build/lib/bazel/BazelRepositoryModule.java
 +++ b/src/main/java/com/google/devtools/build/lib/bazel/BazelRepositoryModule.java
-@@ -39,10 +39,6 @@
+@@ -47,10 +47,6 @@
  import com.google.devtools.build.lib.bazel.repository.downloader.UrlRewriterParseException;
  import com.google.devtools.build.lib.bazel.repository.starlark.StarlarkRepositoryFunction;
  import com.google.devtools.build.lib.bazel.repository.starlark.StarlarkRepositoryModule;
@@ -57,7 +57,7 @@ Last-Update: 2020-11-05
  import com.google.devtools.build.lib.cmdline.RepositoryName;
  import com.google.devtools.build.lib.events.Event;
  import com.google.devtools.build.lib.pkgcache.PackageOptions;
-@@ -155,8 +151,6 @@
+@@ -172,8 +168,6 @@
      return ImmutableMap.<String, RepositoryFunction>builder()
          .put(LocalRepositoryRule.NAME, new LocalRepositoryFunction())
          .put(NewLocalRepositoryRule.NAME, new NewLocalRepositoryFunction())
@@ -68,25 +68,25 @@ Last-Update: 2020-11-05
    }
 --- a/src/main/java/com/google/devtools/build/lib/bazel/rules/BUILD
 +++ b/src/main/java/com/google/devtools/build/lib/bazel/rules/BUILD
-@@ -39,7 +39,6 @@
-         "//src/main/java/com/google/devtools/build/lib/analysis:config/fragment_provider",
+@@ -46,7 +46,6 @@
          "//src/main/java/com/google/devtools/build/lib/analysis:constraints/environment_rule",
+         "//src/main/java/com/google/devtools/build/lib/analysis:platform_configuration",
          "//src/main/java/com/google/devtools/build/lib/bazel/repository",
 -        "//src/main/java/com/google/devtools/build/lib/bazel/rules/android",
          "//src/main/java/com/google/devtools/build/lib/bazel/rules/common",
          "//src/main/java/com/google/devtools/build/lib/bazel/rules/cpp",
          "//src/main/java/com/google/devtools/build/lib/bazel/rules/cpp:bazel_cpp_semantics",
-@@ -67,7 +66,6 @@
+@@ -76,7 +75,6 @@
          "//src/main/java/com/google/devtools/build/lib/rules:repository/new_local_repository_rule",
          "//src/main/java/com/google/devtools/build/lib/rules:test_rules",
          "//src/main/java/com/google/devtools/build/lib/rules:toolchain_type",
 -        "//src/main/java/com/google/devtools/build/lib/rules/android",
-         "//src/main/java/com/google/devtools/build/lib/rules/config",
-         "//src/main/java/com/google/devtools/build/lib/rules/cpp",
-         "//src/main/java/com/google/devtools/build/lib/rules/cpp/proto:CcProtoLibrary",
+         "//src/main/java/com/google/devtools/build/lib/rules/apple",
+         "//src/main/java/com/google/devtools/build/lib/rules/apple/cpp",
+         "//src/main/java/com/google/devtools/build/lib/rules/apple/swift",
 --- a/src/main/java/com/google/devtools/build/lib/bazel/rules/BazelRuleClassProvider.java
 +++ b/src/main/java/com/google/devtools/build/lib/bazel/rules/BazelRuleClassProvider.java
-@@ -33,20 +33,6 @@
+@@ -33,21 +33,6 @@
  import com.google.devtools.build.lib.analysis.config.FragmentOptions;
  import com.google.devtools.build.lib.analysis.config.RequiresOptions;
  import com.google.devtools.build.lib.bazel.repository.LocalConfigPlatformRule;
@@ -103,11 +103,12 @@ Last-Update: 2020-11-05
 -import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidSdkRule;
 -import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidSemantics;
 -import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidToolsDefaultsJar;
+-import com.google.devtools.build.lib.bazel.rules.android.BazelDexArchiveAspect;
 -import com.google.devtools.build.lib.bazel.rules.android.BazelSdkToolchainRule;
  import com.google.devtools.build.lib.bazel.rules.cpp.BazelCppSemantics;
  import com.google.devtools.build.lib.bazel.rules.cpp.proto.BazelCcProtoAspect;
  import com.google.devtools.build.lib.bazel.rules.java.proto.BazelJavaLiteProtoAspect;
-@@ -60,41 +46,6 @@
+@@ -61,41 +46,6 @@
  import com.google.devtools.build.lib.bazel.rules.python.BazelPythonConfiguration;
  import com.google.devtools.build.lib.cmdline.LabelConstants;
  import com.google.devtools.build.lib.packages.RuleClass.Builder.ThirdPartyLicenseExistencePolicy;
@@ -148,8 +149,8 @@ Last-Update: 2020-11-05
 -import com.google.devtools.build.lib.rules.android.databinding.DataBindingV2Provider;
  import com.google.devtools.build.lib.rules.config.ConfigRules;
  import com.google.devtools.build.lib.rules.core.CoreRules;
- import com.google.devtools.build.lib.rules.cpp.proto.CcProtoAspect;
-@@ -114,7 +65,6 @@
+ import com.google.devtools.build.lib.rules.cpp.CcSharedLibraryPermissionsRule;
+@@ -121,7 +71,6 @@
  import com.google.devtools.build.lib.rules.repository.CoreWorkspaceRules;
  import com.google.devtools.build.lib.rules.repository.NewLocalRepositoryRule;
  import com.google.devtools.build.lib.rules.test.TestingSupportRules;
@@ -157,7 +158,7 @@ Last-Update: 2020-11-05
  import com.google.devtools.build.lib.starlarkbuildapi.proto.ProtoBootstrap;
  import com.google.devtools.build.lib.starlarkbuildapi.python.PyBootstrap;
  import com.google.devtools.build.lib.starlarkbuildapi.stubs.ProviderStub;
-@@ -327,89 +277,6 @@
+@@ -339,89 +288,6 @@
          }
        };
  
@@ -171,7 +172,7 @@ Last-Update: 2020-11-05
 -          builder.addConfigurationFragment(AndroidLocalTestConfiguration.class);
 -
 -          AndroidNeverlinkAspect androidNeverlinkAspect = new AndroidNeverlinkAspect();
--          DexArchiveAspect dexArchiveAspect = new DexArchiveAspect(toolsRepository);
+-          DexArchiveAspect dexArchiveAspect = new BazelDexArchiveAspect(toolsRepository);
 -          builder.addNativeAspectClass(androidNeverlinkAspect);
 -          builder.addNativeAspectClass(dexArchiveAspect);
 -
@@ -247,16 +248,16 @@ Last-Update: 2020-11-05
    public static final RuleSet PYTHON_RULES =
        new RuleSet() {
          @Override
-@@ -451,8 +318,6 @@
+@@ -463,8 +329,6 @@
          public void init(ConfiguredRuleClassProvider.Builder builder) {
            // TODO(ulfjack): Split this up by conceptual units.
            builder.addRuleDefinition(new NewLocalRepositoryRule());
 -          builder.addRuleDefinition(new AndroidSdkRepositoryRule());
 -          builder.addRuleDefinition(new AndroidNdkRepositoryRule());
            builder.addRuleDefinition(new LocalConfigPlatformRule());
- 
-           try {
-@@ -484,7 +349,6 @@
+           builder.addRuleDefinition(new CcSharedLibraryRule());
+           builder.addRuleDefinition(new CcSharedLibraryPermissionsRule());
+@@ -498,7 +362,6 @@
            CPP_PROTO_RULES,
            JavaRules.INSTANCE,
            JAVA_PROTO_RULES,

@@ -1,32 +1,13 @@
 Description: Patch to use debian "reactive_streams" and "rxjava3"
+ Fully implemented upstream in tag 6.0.0-pre.20220324.1
 Author: Jesse Chan <jc@linux.com>
 Forwarded: not-needed
-Last-Update: 2021-05-29
+Last-Update: 2022-10-17
 
---- a/third_party/BUILD
-+++ b/third_party/BUILD
-@@ -525,13 +525,15 @@
-     srcjar = "javax_annotations/javax.annotation-api-1.3.2-sources.jar",
- )
- 
--java_import(
-+distrib_java_import(
-     name = "reactive_streams",
-+    enable_distributions = ["debian"],
-     jars = ["reactive_streams/reactive-streams-1.0.3.jar"],
- )
- 
--java_import(
-+distrib_java_import(
-     name = "rxjava3",
-+    enable_distributions = ["debian"],
-     jars = ["rxjava3/rxjava-3.0.9.jar"],
-     exports = [":reactive_streams"],
-     deps = [":reactive_streams"],
 --- a/tools/distributions/debian/debian_java.BUILD
 +++ b/tools/distributions/debian/debian_java.BUILD
-@@ -458,3 +458,16 @@
-         "junit4.jar",
+@@ -459,3 +459,16 @@
+         "java/junit4.jar",
      ],
  )
 +

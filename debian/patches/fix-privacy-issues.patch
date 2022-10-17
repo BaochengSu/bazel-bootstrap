@@ -44,12 +44,12 @@ Last-Update: 2020-08-10
      <!-- Custom stylesheet -->
 --- a/site/_layouts/documentation.html
 +++ b/site/_layouts/documentation.html
-@@ -417,9 +417,6 @@
+@@ -97,9 +97,6 @@
        </div>
      </div>
  
 -    <!-- Satisfaction Survey -->
--    <script async="" defer="" src="//www.google.com/insights/consumersurveys/async_survey?site=hihwpyy5e5kllsq62elzjrcgn4"></script>
+-    <script async="" defer="" src="//www.google.com/insights/consumersurveys/async_survey?site=WiW2jfuqA0qnVVi98UP0WeVsqBPB"></script>
 -
      {% include footer.html %}
    </body>

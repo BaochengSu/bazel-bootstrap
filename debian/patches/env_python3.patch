@@ -5,46 +5,6 @@ Author: Olek Wojnar <olek@debian.org>
 Forwarded: https://github.com/bazelbuild/bazel/pull/11201
 Last-Update: 2020-07-23
 
---- a/src/main/java/com/google/devtools/build/lib/bazel/rules/python/BazelPythonSemantics.java
-+++ b/src/main/java/com/google/devtools/build/lib/bazel/rules/python/BazelPythonSemantics.java
-@@ -221,7 +221,7 @@
-      * logic will extract the zip's runfiles into a temporary directory.
-      *
-      * The stub script has a shebang pointing to a first-stage Python interpreter (as of this
--     * writing "#!/usr/bin/env python"). When a zip file is built on unix, this shebang is also
-+     * writing "#!/usr/bin/env python3"). When a zip file is built on unix, this shebang is also
-      * prepended to the final zip artifact. On Windows shebangs are ignored, and the launcher
-      * runs the first stage with an interpreter whose path is passed in as LaunchInfo.
-      */
-@@ -253,7 +253,7 @@
-         PathFragment shExecutable = ShToolchain.getPathOrError(ruleContext);
-         // TODO(#8685): Remove this special-case handling as part of making the proper shebang a
-         // property of the Python toolchain configuration.
--        String pythonExecutableName = OS.getCurrent() == OS.OPENBSD ? "python3" : "python";
-+        String pythonExecutableName = "python3";
-         // NOTE: keep the following line intact to support nix builds
-         String pythonShebang = "#!/usr/bin/env " + pythonExecutableName;
-         ruleContext.registerAction(
---- a/src/test/py/bazel/launcher_test.py
-+++ b/src/test/py/bazel/launcher_test.py
-@@ -355,7 +355,7 @@
-         'helloworld(', '  name = "hello",', '  out = "hello.txt",', ')'
-     ])
-     foo_py = self.ScratchFile('foo/foo.py', [
--        '#!/usr/bin/env python',
-+        '#!/usr/bin/env python3',
-         'import sys',
-         'if len(sys.argv) == 2:',
-         '  with open(sys.argv[1], "w") as f:',
-@@ -364,7 +364,7 @@
-         '  print("Hello World!")',
-     ])
-     test_py = self.ScratchFile('foo/test.py', [
--        '#!/usr/bin/env python',
-+        '#!/usr/bin/env python3',
-         'import unittest',
-         'class MyTest(unittest.TestCase):',
-         '  def test_dummy(self):',
 --- a/tools/j2objc/j2objc_header_map.py
 +++ b/tools/j2objc/j2objc_header_map.py
 @@ -1,4 +1,4 @@
@@ -70,16 +30,7 @@ Last-Update: 2020-07-23
  import re
  import shutil
  import subprocess
-@@ -68,7 +68,7 @@
-       os.close(fd)
-   try:
-     j2objc_cmd = [java]
--    j2objc_cmd.extend(filter(None, jvm_flags.split(',')))
-+    j2objc_cmd.extend([_f for _f in jvm_flags.split(',') if _f])
-     j2objc_cmd.extend(['-cp', j2objc, main_class])
-     j2objc_cmd.extend(['@%s' % param_filename])
-     subprocess.check_call(j2objc_cmd, stderr=subprocess.STDOUT)
-@@ -100,13 +100,13 @@
+@@ -108,13 +108,13 @@
      None.
    """
    dep_mapping = dict()
@@ -97,7 +48,7 @@ Last-Update: 2020-07-23
      t = threading.Thread(target=_ReadDepMapping, args=(input_file_queue,
                                                         output_dep_mapping_queue,
                                                         error_message_queue,
-@@ -136,7 +136,7 @@
+@@ -144,7 +144,7 @@
    while True:
      try:
        input_file = input_file_queue.get_nowait()

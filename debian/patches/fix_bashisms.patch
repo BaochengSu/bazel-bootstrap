@@ -1,23 +1,9 @@
 Description: Fix bashisms
- First file fixed from upstream, second and third files fixed in Debian because
- they were eliminated upstream in tags 6.0.0-pre.20220310.1 and 5.0.0.
-Author: Philipp Wollermann <philwo@google.com>
+ File eliminated upstream in tag 6.0.0-pre.20220310.1
 Author: Olek Wojnar <olek@debian.org>
-Origin: upstream, https://github.com/bazelbuild/bazel/commit/1ad391b0f80eaccc77f735fd7ca19608dcbb9644
 Forwarded: not-needed
-Last-Update: 2022-09-21
+Last-Update: 2022-10-17
 
---- a/combine_distfiles_to_tar.sh
-+++ b/combine_distfiles_to_tar.sh
-@@ -41,7 +41,7 @@
- done
- 
- ID_OPTS="--group=0 --owner=0"
--if [ "$(uname -s)" == "Darwin" ]; then
-+if [ "$(uname -s)" = "Darwin" ]; then
-   ID_OPTS="--gid=0 --uid=0"
- fi
- 
 --- a/scripts/docs/jekyll_build.sh.tpl
 +++ b/scripts/docs/jekyll_build.sh.tpl
 @@ -1,4 +1,4 @@
@@ -26,11 +12,3 @@ Last-Update: 2022-09-21
  HOST="${HOST-localhost}"
  PORT="${PORT-12345}"
  RUNFILES=$(cd ${JAVA_RUNFILES-$0.runfiles}/%{workspace_name} && pwd -P)
---- a/src/tools/xcode/stdredirect/run_tests.sh
-+++ b/src/tools/xcode/stdredirect/run_tests.sh
-@@ -1,4 +1,4 @@
--#!/bin/sh
-+#!/bin/bash
- 
- # Copyright 2015 The Bazel Authors. All rights reserved.
- #

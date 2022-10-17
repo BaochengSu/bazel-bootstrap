@@ -1,3 +1,13 @@
+bazel-bootstrap (5.0.0+ds-1) unstable; urgency=medium
+
+  * New upstream release
+  * Update patches for new release and remove patches implemented upstream:
+    - enable-debian-junit4.patch
+    - add_toolchain_support_for_mips64.patch
+    - add_toolchain_support_for_riscv64.patch
+
+ -- Olek Wojnar <olek@debian.org>  Mon, 17 Oct 2022 11:16:38 -0400
+
 bazel-bootstrap (4.2.2+ds-1) unstable; urgency=medium
 
   * New upstream release

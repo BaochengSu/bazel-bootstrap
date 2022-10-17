@@ -11,11 +11,8 @@ build-bash_completion.patch
 rename-daemonize.patch
 change-sysmtem-rc-file-location.patch
 remove-android-rules.patch
-enable-debian-junit4.patch
 support-mips64el-and-riscv64.patch
-add_toolchain_support_for_mips64.patch
 increase_heap_size_for_javac.patch
-add_toolchain_support_for_riscv64.patch
 add_verbose_for_java_compilation.patch
 verbose-bash-completion-generation.patch
 add_include_for_limits.patch

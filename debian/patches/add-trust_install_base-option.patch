@@ -8,7 +8,7 @@ Last-Update: 2020-08-10
 
 --- a/src/main/cpp/blaze.cc
 +++ b/src/main/cpp/blaze.cc
-@@ -1011,6 +1011,10 @@
+@@ -1008,6 +1008,10 @@
            << "install base directory '" << install_base
            << "' could not be created. It exists but is not a directory.";
      }
@@ -19,7 +19,7 @@ Last-Update: 2020-08-10
      blaze_util::Path install_dir(install_base);
      // Check that all files are present and have timestamps from BlessFiles().
      std::unique_ptr<blaze_util::IFileMtime> mtime(
-@@ -1202,7 +1206,10 @@
+@@ -1204,7 +1208,10 @@
      // find install bases that haven't been used for a long time
      std::unique_ptr<blaze_util::IFileMtime> mtime(
          blaze_util::CreateFileMtime());
@@ -31,7 +31,7 @@ Last-Update: 2020-08-10
        string err = GetLastErrorString();
        BAZEL_DIE(blaze_exit_code::LOCAL_ENVIRONMENTAL_ERROR)
            << "failed to set timestamp on '" << startup_options.install_base
-@@ -1490,9 +1497,21 @@
+@@ -1492,9 +1499,21 @@
    return custom_exit_code;
  }
  
@@ -55,7 +55,7 @@ Last-Update: 2020-08-10
    printf("%s %s\n", product_name.c_str(), build_label.c_str());
  }
  
-@@ -1586,11 +1605,6 @@
+@@ -1588,11 +1607,6 @@
  
    const string self_path = GetSelfPath(argv[0]);
  
@@ -67,7 +67,7 @@ Last-Update: 2020-08-10
    string cwd = GetCanonicalCwd();
    LoggingInfo logging_info(CheckAndGetBinaryPath(cwd, argv[0]), start_time);
  
-@@ -1621,11 +1635,23 @@
+@@ -1623,11 +1637,23 @@
    StartupOptions *startup_options = option_processor->GetParsedStartupOptions();
    startup_options->MaybeLogStartupOptionWarnings();
  
@@ -91,7 +91,7 @@ Last-Update: 2020-08-10
    if (startup_options->unlimit_coredumps) {
      UnlimitCoredumps();
    }
-@@ -1641,7 +1667,28 @@
+@@ -1647,7 +1673,28 @@
  
    vector<string> archive_contents;
    string install_md5;
@@ -124,9 +124,9 @@ Last-Update: 2020-08-10
 --- a/src/main/cpp/startup_options.cc
 +++ b/src/main/cpp/startup_options.cc
 @@ -97,7 +97,9 @@
+       macos_qos_class(QOS_CLASS_UNSPECIFIED),
  #endif
        unlimit_coredumps(false),
-       incompatible_enable_execution_transition(false),
 -      windows_enable_symlinks(false) {
 +      windows_enable_symlinks(false),
 +      version(false),
@@ -134,7 +134,7 @@ Last-Update: 2020-08-10
    if (blaze::IsRunningWithinTest()) {
      output_root = blaze_util::MakeAbsolute(blaze::GetPathEnv("TEST_TMPDIR"));
      max_idle_secs = 15;
-@@ -149,6 +151,10 @@
+@@ -148,6 +150,10 @@
    RegisterNullaryStartupFlag("write_command_log", &write_command_log);
    RegisterNullaryStartupFlag("windows_enable_symlinks",
                               &windows_enable_symlinks);
@@ -147,7 +147,7 @@ Last-Update: 2020-08-10
    RegisterUnaryStartupFlag("local_startup_timeout_secs");
 --- a/src/main/cpp/startup_options.h
 +++ b/src/main/cpp/startup_options.h
-@@ -280,6 +280,15 @@
+@@ -279,6 +279,15 @@
    // developer mode to be enabled.
    bool windows_enable_symlinks;
  
