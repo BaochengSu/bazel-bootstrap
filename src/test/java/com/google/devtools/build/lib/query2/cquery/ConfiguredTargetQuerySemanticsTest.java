@@ -32,13 +32,15 @@ import com.google.devtools.build.lib.analysis.config.HostTransition;
 import com.google.devtools.build.lib.analysis.config.TransitionFactories;
 import com.google.devtools.build.lib.analysis.config.transitions.PatchTransition;
 import com.google.devtools.build.lib.analysis.test.TestConfiguration.TestOptions;
+import com.google.devtools.build.lib.analysis.util.DummyTestFragment.DummyTestOptions;
 import com.google.devtools.build.lib.analysis.util.MockRule;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.query2.engine.QueryEnvironment.Setting;
 import com.google.devtools.build.lib.query2.engine.QueryException;
-import com.google.devtools.build.lib.server.FailureDetails.ConfigurableQuery.Code;
+import com.google.devtools.build.lib.server.FailureDetails.ConfigurableQuery;
+import com.google.devtools.build.lib.server.FailureDetails.Query;
 import com.google.devtools.build.lib.util.FileTypeSet;
 import com.google.devtools.build.lib.vfs.Path;
 import java.util.Collection;
@@ -54,8 +56,6 @@ import org.junit.runners.JUnit4;
  *
  * <p>This tests core cquery behavior (behavior that doesn't depend on <code>--output</code>).
  * Output format-specific behavior is covered in dedicated test classes.
- *
- * <p>TODO(juliexxia): separate out tests in this file into one test per tested functionality.
  */
 @RunWith(JUnit4.class)
 public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTest {
@@ -73,16 +73,16 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
                 "rule_with_transitions",
                 attr("patch_dep", LABEL)
                     .allowedFileTypes(FileTypeSet.ANY_FILE)
-                    .cfg(TransitionFactories.of(new TestArgPatchTransition("SET BY PATCH"))),
+                    .cfg(TransitionFactories.of(new FooPatchTransition("SET BY PATCH"))),
                 attr("string_dep", STRING),
                 attr("split_dep", LABEL)
                     .allowedFileTypes(FileTypeSet.ANY_FILE)
                     .cfg(
                         TransitionFactories.of(
-                            new TestArgSplitTransition("SET BY SPLIT 1", "SET BY SPLIT 2"))),
+                            new FooSplitTransition("SET BY SPLIT 1", "SET BY SPLIT 2"))),
                 attr("patch_dep_list", LABEL_LIST)
                     .allowedFileTypes(FileTypeSet.ANY_FILE)
-                    .cfg(TransitionFactories.of(new TestArgPatchTransition("SET BY PATCH 2"))));
+                    .cfg(TransitionFactories.of(new FooPatchTransition("SET BY PATCH 2"))));
     MockRule noAttributeRule = () -> MockRule.define("no_attribute_rule");
 
     helper.useRuleClassProvider(
@@ -161,7 +161,8 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
 
     // Test that the proper error is thrown when requesting an attribute that doesn't exist.
     EvalThrowsResult evalThrowsResult = evalThrows("labels('fake_attr', //test:my_rule)", true);
-    assertConfigurableQueryCode(evalThrowsResult.getFailureDetail(), Code.ATTRIBUTE_MISSING);
+    assertConfigurableQueryCode(
+        evalThrowsResult.getFailureDetail(), ConfigurableQuery.Code.ATTRIBUTE_MISSING);
     assertThat(evalThrowsResult.getMessage())
         .isEqualTo(
             "in 'fake_attr' of rule //test:my_rule: configured target of type"
@@ -239,7 +240,7 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
         () ->
             MockRule.define(
                 "rule_class_transition",
-                (builder, env) -> builder.cfg(new TestArgPatchTransition("SET BY PATCH")).build());
+                (builder, env) -> builder.cfg(new FooPatchTransition("SET BY PATCH")).build());
 
     helper.useRuleClassProvider(setRuleClassProviders(ruleClassTransition).build());
     helper.setUniverseScope("//test:rule_class");
@@ -247,9 +248,11 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
     writeFile("test/BUILD", "rule_class_transition(name='rule_class')");
 
     Set<KeyedConfiguredTarget> ruleClass = eval("//test:rule_class");
-    TestOptions testOptions =
-        getConfiguration(Iterables.getOnlyElement(ruleClass)).getOptions().get(TestOptions.class);
-    assertThat(testOptions.testArguments).containsExactly("SET BY PATCH");
+    DummyTestOptions testOptions =
+        getConfiguration(Iterables.getOnlyElement(ruleClass))
+            .getOptions()
+            .get(DummyTestOptions.class);
+    assertThat(testOptions.foo).isEqualTo("SET BY PATCH");
   }
 
   private void createConfigRulesAndBuild() throws Exception {
@@ -287,7 +290,7 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
   }
 
   private void createConfigTransitioningRuleClass() throws Exception {
-    writeFile(
+    overwriteFile(
         "tools/allowlists/function_transition_allowlist/BUILD",
         "package_group(",
         "    name = 'function_transition_allowlist',",
@@ -337,11 +340,13 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
     EvalThrowsResult hostResult = evalThrows("config(//test:host_dep, target)", true);
     assertThat(hostResult.getMessage())
         .isEqualTo("No target (in) //test:host_dep could be found in the 'target' configuration");
-    assertConfigurableQueryCode(hostResult.getFailureDetail(), Code.TARGET_MISSING);
+    assertConfigurableQueryCode(
+        hostResult.getFailureDetail(), ConfigurableQuery.Code.TARGET_MISSING);
     EvalThrowsResult execResult = evalThrows("config(//test:exec_dep, target)", true);
     assertThat(execResult.getMessage())
         .isEqualTo("No target (in) //test:exec_dep could be found in the 'target' configuration");
-    assertConfigurableQueryCode(execResult.getFailureDetail(), Code.TARGET_MISSING);
+    assertConfigurableQueryCode(
+        execResult.getFailureDetail(), ConfigurableQuery.Code.TARGET_MISSING);
 
     BuildConfiguration configuration =
         getConfiguration(Iterables.getOnlyElement(eval("config(//test:dep, target)")));
@@ -361,12 +366,14 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
     EvalThrowsResult targetResult = evalThrows("config(//test:target_dep, host)", true);
     assertThat(targetResult.getMessage())
         .isEqualTo("No target (in) //test:target_dep could be found in the 'host' configuration");
-    assertConfigurableQueryCode(targetResult.getFailureDetail(), Code.TARGET_MISSING);
+    assertConfigurableQueryCode(
+        targetResult.getFailureDetail(), ConfigurableQuery.Code.TARGET_MISSING);
     assertThat(eval("config(//test:host_dep, host)")).isEqualTo(eval("//test:host_dep"));
     EvalThrowsResult hostResult = evalThrows("config(//test:exec_dep, host)", true);
     assertThat(hostResult.getMessage())
         .isEqualTo("No target (in) //test:exec_dep could be found in the 'host' configuration");
-    assertConfigurableQueryCode(hostResult.getFailureDetail(), Code.TARGET_MISSING);
+    assertConfigurableQueryCode(
+        hostResult.getFailureDetail(), ConfigurableQuery.Code.TARGET_MISSING);
 
     BuildConfiguration configuration =
         getConfiguration(Iterables.getOnlyElement(eval("config(//test:dep, host)")));
@@ -455,7 +462,8 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
     QueryException e =
         assertThrows(
             QueryException.class, () -> eval("config(//mytest:mytarget," + wrongPrefix + ")"));
-    assertConfigurableQueryCode(e.getFailureDetail(), Code.INCORRECT_CONFIG_ARGUMENT_ERROR);
+    assertConfigurableQueryCode(
+        e.getFailureDetail(), ConfigurableQuery.Code.INCORRECT_CONFIG_ARGUMENT_ERROR);
     assertThat(e)
         .hasMessageThat()
         .contains("config()'s second argument must identify a unique configuration");
@@ -490,6 +498,19 @@ public class ConfiguredTargetQuerySemanticsTest extends ConfiguredTargetQueryTes
         .isEqualTo(
             "no such package 'parent/child': Symlink cycle detected while trying to "
                 + "find BUILD file /workspace/parent/child/BUILD");
+  }
+
+  // Regression test for b/175739699
+  @Test
+  public void testRecursiveTargetPatternOutsideOfScopeFailsGracefully() throws Exception {
+    writeFile("testA/BUILD", "sh_library(name = 'testA')");
+    writeFile("testB/BUILD", "sh_library(name = 'testB')");
+    writeFile("testB/testC/BUILD", "sh_library(name = 'testC')");
+    helper.setUniverseScope("//testA");
+    QueryException e = assertThrows(QueryException.class, () -> eval("//testB/..."));
+    assertThat(e.getFailureDetail().getQuery().getCode())
+        .isEqualTo(Query.Code.TARGET_NOT_IN_UNIVERSE_SCOPE);
+    assertThat(e).hasMessageThat().contains("package is not in scope");
   }
 
   @Override

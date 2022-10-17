@@ -15,20 +15,20 @@ package com.google.devtools.build.lib.rules.cpp;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.devtools.build.lib.rules.cpp.CppRuleClasses.DYNAMIC_LINKING_MODE;
+import static com.google.devtools.build.lib.rules.cpp.CppRuleClasses.IS_CC_TEST_FEATURE_NAME;
+import static com.google.devtools.build.lib.rules.cpp.CppRuleClasses.LEGACY_IS_CC_TEST_FEATURE_NAME;
 import static com.google.devtools.build.lib.rules.cpp.CppRuleClasses.STATIC_LINKING_MODE;
 
 import com.google.auto.value.AutoValue;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.devtools.build.docgen.annot.DocCategory;
-import com.google.devtools.build.lib.actions.Action;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ExecutionRequirements;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
@@ -88,9 +88,11 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import net.starlark.java.annot.StarlarkBuiltin;
+import net.starlark.java.annot.StarlarkMethod;
 import net.starlark.java.eval.EvalException;
 import net.starlark.java.eval.Sequence;
 import net.starlark.java.eval.Starlark;
+import net.starlark.java.eval.StarlarkThread;
 import net.starlark.java.eval.Tuple;
 
 /**
@@ -166,8 +168,21 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
       return ccCompilationOutputs;
     }
 
+    @StarlarkMethod(name = "compilation_outputs", documented = false, useStarlarkThread = true)
+    public CcCompilationOutputs getCcCompilationOutputsStarlark(StarlarkThread thread)
+        throws EvalException {
+      CcModule.checkPrivateStarlarkificationAllowlist(thread);
+      return ccCompilationOutputs;
+    }
+
     public CcInfo getCcInfo(RuleContext ruleContext) {
       checkRestrictedUsage(ruleContext);
+      return ccInfo;
+    }
+
+    @StarlarkMethod(name = "cc_info", documented = false, useStarlarkThread = true)
+    public CcInfo getCcInfoForStarlark(StarlarkThread thread) throws EvalException {
+      CcModule.checkPrivateStarlarkificationAllowlist(thread);
       return ccInfo;
     }
 
@@ -298,7 +313,6 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
   public static void init(
       CppSemantics semantics, RuleConfiguredTargetBuilder ruleBuilder, RuleContext ruleContext)
       throws InterruptedException, RuleErrorException {
-    CcCommon.checkRuleLoadedThroughMacro(ruleContext);
     semantics.validateDeps(ruleContext);
     if (ruleContext.attributes().isAttributeValueExplicitlySpecified("dynamic_deps")) {
       if (!ruleContext
@@ -365,13 +379,19 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
     requestedFeaturesBuilder
         .addAll(ruleContext.getFeatures())
         .add(linkingMode == Link.LinkingMode.DYNAMIC ? DYNAMIC_LINKING_MODE : STATIC_LINKING_MODE);
+    ImmutableSet.Builder<String> disabledFeaturesBuilder = new ImmutableSet.Builder<>();
+    disabledFeaturesBuilder.addAll(ruleContext.getDisabledFeatures());
+    if (TargetUtils.isTestRule(ruleContext.getRule()) && cppConfiguration.useCcTestFeature()) {
+      requestedFeaturesBuilder.add(IS_CC_TEST_FEATURE_NAME);
+      disabledFeaturesBuilder.add(LEGACY_IS_CC_TEST_FEATURE_NAME);
+    }
 
     FdoContext fdoContext = common.getFdoContext();
     FeatureConfiguration featureConfiguration =
         CcCommon.configureFeaturesOrReportRuleError(
             ruleContext,
             requestedFeaturesBuilder.build(),
-            /* unsupportedFeatures= */ ruleContext.getDisabledFeatures(),
+            /* unsupportedFeatures= */ disabledFeaturesBuilder.build(),
             ccToolchain,
             semantics);
 
@@ -952,10 +972,6 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
       return;
     }
 
-    // Get the tool inputs necessary to run the dwp command.
-    NestedSet<Artifact> dwpFiles = toolchain.getDwpFiles();
-    Preconditions.checkState(!dwpFiles.isEmpty());
-
     // We apply a hierarchical action structure to limit the maximum number of inputs to any
     // single action.
     //
@@ -972,7 +988,7 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
     // action's input size.
     Packager packager =
         createIntermediateDwpPackagers(
-            context, dwpOutput, toolchain, dwpFiles, dwoFiles.toList(), 1);
+            context, dwpOutput, toolchain, toolchain.getDwpFiles(), dwoFiles.toList(), 1);
     packager.spawnAction.setMnemonic("CcGenerateDwp").addOutput(dwpOutput);
     packager.commandLine.addExecPath("-o", dwpOutput);
     context.registerAction(packager.build(context));
@@ -982,7 +998,7 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
     SpawnAction.Builder spawnAction = new SpawnAction.Builder();
     CustomCommandLine.Builder commandLine = CustomCommandLine.builder();
 
-    Action[] build(RuleContext context) {
+    SpawnAction build(RuleContext context) {
       spawnAction.addCommandLine(
           commandLine.build(), ParamFileInfo.builder(ParameterFileType.UNQUOTED).build());
       return spawnAction.build(context);
@@ -1084,7 +1100,7 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
     Packager packager = new Packager();
     packager
         .spawnAction
-        .addTransitiveInputs(dwpTools)
+        .addTransitiveTools(dwpTools)
         .setExecutable(toolchain.getToolPathFragment(Tool.DWP, ruleContext));
     return packager;
   }
@@ -1151,17 +1167,12 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
               Compression.DISALLOW));
       additionalMetadata = ImmutableList.of(runtimeObjectsList);
     }
-    ruleContext.registerAction();
     InstrumentedFilesInfo instrumentedFilesProvider =
         common.getInstrumentedFilesProvider(
             instrumentedObjectFiles,
             !TargetUtils.isTestRule(ruleContext.getRule()),
             ccCompilationContext.getVirtualToOriginalHeaders(),
             /* additionalMetadata= */ additionalMetadata);
-
-    NestedSet<Artifact> headerTokens =
-        CcCompilationHelper.collectHeaderTokens(
-            ruleContext, cppConfiguration, ccCompilationOutputs, /* addSelfTokens= */ true);
 
     Map<String, NestedSet<Artifact>> outputGroups =
         CcCompilationHelper.buildOutputGroupsForEmittingCompileProviders(
@@ -1171,19 +1182,19 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
             toolchain,
             featureConfiguration,
             ruleContext,
-            /* generateHeaderTokensGroup= */ false,
-            /* addSelfHeaderTokens= */ false,
             /* generateHiddenTopLevelGroup= */ false);
 
     builder
         .setFilesToBuild(filesToBuild)
         .addNativeDeclaredProvider(
-            CcInfo.builder().setCcCompilationContext(ccCompilationContext).build())
-        .addProvider(
-            CcNativeLibraryProvider.class,
-            new CcNativeLibraryProvider(collectTransitiveCcNativeLibraries(ruleContext, libraries)))
+            CcInfo.builder()
+                .setCcCompilationContext(ccCompilationContext)
+                .setCcNativeLibraryInfo(
+                    new CcNativeLibraryInfo(
+                        collectTransitiveCcNativeLibraries(ruleContext, libraries)))
+                .build())
         .addNativeDeclaredProvider(instrumentedFilesProvider)
-        .addOutputGroup(OutputGroupInfo.VALIDATION, headerTokens)
+        .addOutputGroup(OutputGroupInfo.VALIDATION, ccCompilationContext.getHeaderTokens())
         .addOutputGroups(outputGroups);
 
     CppHelper.maybeAddStaticLinkMarkerProvider(builder, ruleContext);
@@ -1193,9 +1204,8 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
       RuleContext ruleContext, List<LibraryToLink> libraries) {
     NestedSetBuilder<LibraryToLink> builder = NestedSetBuilder.linkOrder();
     builder.addAll(libraries);
-    for (CcNativeLibraryProvider dep :
-        ruleContext.getPrerequisites("deps", CcNativeLibraryProvider.class)) {
-      builder.addTransitive(dep.getTransitiveCcNativeLibraries());
+    for (CcInfo dep : ruleContext.getPrerequisites("deps", CcInfo.PROVIDER)) {
+      builder.addTransitive(dep.getCcNativeLibraryInfo().getTransitiveCcNativeLibraries());
     }
     return builder.build();
   }
@@ -1379,13 +1389,19 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
     Queue<GraphNodeInfo> allChildren = new ArrayDeque<>(directChildren);
     ImmutableSet.Builder<String> linkStaticallyLabels = ImmutableSet.builder();
     ImmutableSet.Builder<String> linkDynamicallyLabels = ImmutableSet.builder();
+    Set<String> seenLabels = new HashSet<>();
 
     while (!allChildren.isEmpty()) {
       node = allChildren.poll();
-      if (canBeLinkedDynamically.contains(node.getLabel().toString())) {
-        linkDynamicallyLabels.add(node.getLabel().toString());
+      String labelString = node.getLabel().toString();
+      if (seenLabels.contains(labelString)) {
+        continue;
+      }
+      seenLabels.add(labelString);
+      if (canBeLinkedDynamically.contains(labelString)) {
+        linkDynamicallyLabels.add(labelString);
       } else {
-        linkStaticallyLabels.add(node.getLabel().toString());
+        linkStaticallyLabels.add(labelString);
         allChildren.addAll(node.getChildren());
       }
     }
@@ -1405,7 +1421,10 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
 
     linkerInputs.addAll(ccLinkingContext.getLinkerInputs().toList());
     for (TransitiveInfoCollection dep : ruleContext.getPrerequisites("deps")) {
-      graphStructureAspectNodes.add(dep.getProvider(GraphNodeInfo.class));
+      GraphNodeInfo nodeInfo = dep.getProvider(GraphNodeInfo.class);
+      if (nodeInfo != null) {
+        graphStructureAspectNodes.add(nodeInfo);
+      }
     }
     graphStructureAspectNodes.add(
         CppHelper.mallocForTarget(ruleContext).getProvider(GraphNodeInfo.class));
@@ -1496,14 +1515,16 @@ public abstract class CcBinary implements RuleConfiguredTargetFactory {
       String owner = ccSharedLibraryInfo.getLinkerInput().getOwner().toString();
       for (String linkOnceStaticLib : ccSharedLibraryInfo.getLinkOnceStaticLibs()) {
         if (linkOnceStaticLibsMap.containsKey(linkOnceStaticLib)) {
-          ruleContext.attributeError(
-              "dynamic_deps",
-              "Two shared libraries in dependencies link the same library statically. Both "
-                  + linkOnceStaticLibsMap.get(linkOnceStaticLib)
-                  + " and "
-                  + owner
-                  + " link statically "
-                  + linkOnceStaticLib);
+          if (!linkOnceStaticLibsMap.get(linkOnceStaticLib).equals(owner)) {
+            ruleContext.attributeError(
+                "dynamic_deps",
+                "Two shared libraries in dependencies link the same library statically. Both "
+                    + linkOnceStaticLibsMap.get(linkOnceStaticLib)
+                    + " and "
+                    + owner
+                    + " link statically "
+                    + linkOnceStaticLib);
+          }
         }
         linkOnceStaticLibsMap.put(linkOnceStaticLib, owner);
       }

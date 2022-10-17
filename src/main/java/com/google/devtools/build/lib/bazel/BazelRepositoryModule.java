@@ -25,11 +25,19 @@ import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.ConfiguredRuleClassProvider;
 import com.google.devtools.build.lib.analysis.RuleDefinition;
 import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
+import com.google.devtools.build.lib.bazel.bzlmod.BazelModuleResolutionFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.ModuleExtensionResolutionFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.ModuleFileFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.RegistryFactory;
+import com.google.devtools.build.lib.bazel.bzlmod.RegistryFactoryImpl;
+import com.google.devtools.build.lib.bazel.bzlmod.SingleExtensionEvalFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.SingleExtensionUsagesFunction;
 import com.google.devtools.build.lib.bazel.commands.FetchCommand;
 import com.google.devtools.build.lib.bazel.commands.SyncCommand;
 import com.google.devtools.build.lib.bazel.repository.LocalConfigPlatformFunction;
 import com.google.devtools.build.lib.bazel.repository.LocalConfigPlatformRule;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions;
+import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.CheckDirectDepsMode;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.RepositoryOverride;
 import com.google.devtools.build.lib.bazel.repository.cache.RepositoryCache;
 import com.google.devtools.build.lib.bazel.repository.downloader.DelegatingDownloader;
@@ -55,7 +63,6 @@ import com.google.devtools.build.lib.rules.repository.NewLocalRepositoryRule;
 import com.google.devtools.build.lib.rules.repository.RepositoryDelegatorFunction;
 import com.google.devtools.build.lib.rules.repository.RepositoryDirectoryDirtinessChecker;
 import com.google.devtools.build.lib.rules.repository.RepositoryFunction;
-import com.google.devtools.build.lib.rules.repository.RepositoryLoaderFunction;
 import com.google.devtools.build.lib.runtime.BlazeModule;
 import com.google.devtools.build.lib.runtime.BlazeRuntime;
 import com.google.devtools.build.lib.runtime.Command;
@@ -88,6 +95,7 @@ import com.google.devtools.common.options.OptionsParsingResult;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -98,6 +106,10 @@ import java.util.stream.Collectors;
 public class BazelRepositoryModule extends BlazeModule {
   // Default location (relative to output user root) of the repository cache.
   public static final String DEFAULT_CACHE_LOCATION = "cache/repos/v1";
+
+  // Default list of registries.
+  public static final ImmutableList<String> DEFAULT_REGISTRIES =
+      ImmutableList.of("https://bcr.bazel.build/");
 
   // A map of repository handlers that can be looked up by rule class name.
   private final ImmutableMap<String, RepositoryFunction> repositoryHandlers;
@@ -116,9 +128,14 @@ public class BazelRepositoryModule extends BlazeModule {
   private Optional<RootedPath> resolvedFileReplacingWorkspace = Optional.empty();
   private Set<String> outputVerificationRules = ImmutableSet.of();
   private FileSystem filesystem;
+  private List<String> registries;
   // We hold the precomputed value of the managed directories here, so that the dependency
   // on WorkspaceFileValue is not registered for each FileStateValue.
   private final ManagedDirectoriesKnowledgeImpl managedDirectoriesKnowledge;
+  private final AtomicBoolean enableBzlmod = new AtomicBoolean(false);
+  private final AtomicBoolean ignoreDevDeps = new AtomicBoolean(false);
+  private CheckDirectDepsMode checkDirectDepsMode = CheckDirectDepsMode.WARNING;
+  private SingleExtensionEvalFunction singleExtensionEvalFunction;
 
   public BazelRepositoryModule() {
     this.starlarkRepositoryFunction = new StarlarkRepositoryFunction(downloadManager);
@@ -193,7 +210,6 @@ public class BazelRepositoryModule extends BlazeModule {
             directories.getWorkspace(), managedDirectoriesKnowledge);
     builder.addCustomDirtinessChecker(customDirtinessChecker);
     // Create the repository function everything flows through.
-    builder.addSkyFunction(SkyFunctions.REPOSITORY, new RepositoryLoaderFunction());
     RepositoryDelegatorFunction repositoryDelegatorFunction =
         new RepositoryDelegatorFunction(
             repositoryHandlers,
@@ -203,7 +219,21 @@ public class BazelRepositoryModule extends BlazeModule {
             directories,
             managedDirectoriesKnowledge,
             BazelSkyframeExecutorConstants.EXTERNAL_PACKAGE_HELPER);
-    builder.addSkyFunction(SkyFunctions.REPOSITORY_DIRECTORY, repositoryDelegatorFunction);
+    RegistryFactory registryFactory =
+        new RegistryFactoryImpl(new HttpDownloader(), clientEnvironmentSupplier);
+    singleExtensionEvalFunction =
+        new SingleExtensionEvalFunction(
+            runtime.getPackageFactory(), directories, clientEnvironmentSupplier, downloadManager);
+    builder
+        .addSkyFunction(SkyFunctions.REPOSITORY_DIRECTORY, repositoryDelegatorFunction)
+        .addSkyFunction(
+            SkyFunctions.MODULE_FILE,
+            new ModuleFileFunction(registryFactory, directories.getWorkspace()))
+        .addSkyFunction(SkyFunctions.BAZEL_MODULE_RESOLUTION, new BazelModuleResolutionFunction())
+        .addSkyFunction(SkyFunctions.SINGLE_EXTENSION_EVAL, singleExtensionEvalFunction)
+        .addSkyFunction(SkyFunctions.SINGLE_EXTENSION_USAGES, new SingleExtensionUsagesFunction())
+        .addSkyFunction(
+            SkyFunctions.MODULE_EXTENSION_RESOLUTION, new ModuleExtensionResolutionFunction());
     filesystem = runtime.getFileSystem();
   }
 
@@ -234,15 +264,21 @@ public class BazelRepositoryModule extends BlazeModule {
     resolvedFileReplacingWorkspace = Optional.empty();
     outputVerificationRules = ImmutableSet.of();
 
-    starlarkRepositoryFunction.setProcessWrapper(ProcessWrapper.fromCommandEnvironment(env));
+    ProcessWrapper processWrapper = ProcessWrapper.fromCommandEnvironment(env);
+    starlarkRepositoryFunction.setProcessWrapper(processWrapper);
+    singleExtensionEvalFunction.setProcessWrapper(processWrapper);
 
     RepositoryOptions repoOptions = env.getOptions().getOptions(RepositoryOptions.class);
     if (repoOptions != null) {
       downloadManager.setDisableDownload(repoOptions.disableDownload);
+      if (repoOptions.repositoryDownloaderRetries >= 0) {
+        downloadManager.setRetries(repoOptions.repositoryDownloaderRetries);
+      }
 
       repositoryCache.setHardlink(repoOptions.useHardlinks);
       if (repoOptions.experimentalScaleTimeouts > 0.0) {
         starlarkRepositoryFunction.setTimeoutScaling(repoOptions.experimentalScaleTimeouts);
+        singleExtensionEvalFunction.setTimeoutScaling(repoOptions.experimentalScaleTimeouts);
       } else {
         env.getReporter()
             .handle(
@@ -250,6 +286,7 @@ public class BazelRepositoryModule extends BlazeModule {
                     "Ignoring request to scale timeouts for repositories by a non-positive"
                         + " factor"));
         starlarkRepositoryFunction.setTimeoutScaling(1.0);
+        singleExtensionEvalFunction.setTimeoutScaling(1.0);
       }
       if (repoOptions.experimentalRepositoryCache != null) {
         Path repositoryCachePath;
@@ -337,6 +374,16 @@ public class BazelRepositoryModule extends BlazeModule {
         overrides = ImmutableMap.of();
       }
 
+      enableBzlmod.set(repoOptions.enableBzlmod);
+      ignoreDevDeps.set(repoOptions.ignoreDevDependency);
+      checkDirectDepsMode = repoOptions.checkDirectDependencies;
+
+      if (repoOptions.registries != null && !repoOptions.registries.isEmpty()) {
+        registries = repoOptions.registries;
+      } else {
+        registries = DEFAULT_REGISTRIES;
+      }
+
       if (!Strings.isNullOrEmpty(repoOptions.repositoryHashFile)) {
         Path hashFile;
         if (env.getWorkspace() != null) {
@@ -373,6 +420,7 @@ public class BazelRepositoryModule extends BlazeModule {
         remoteExecutor = remoteExecutorFactory.create();
       }
       starlarkRepositoryFunction.setRepositoryRemoteExecutor(remoteExecutor);
+      singleExtensionEvalFunction.setRepositoryRemoteExecutor(remoteExecutor);
       delegatingDownloader.setDelegate(env.getRuntime().getDownloaderSupplier().get());
     }
   }
@@ -396,7 +444,12 @@ public class BazelRepositoryModule extends BlazeModule {
             RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY),
         PrecomputedValue.injected(
             RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_CONFIGURING,
-            RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY));
+            RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY),
+        PrecomputedValue.injected(RepositoryDelegatorFunction.ENABLE_BZLMOD, enableBzlmod.get()),
+        PrecomputedValue.injected(ModuleFileFunction.REGISTRIES, registries),
+        PrecomputedValue.injected(ModuleFileFunction.IGNORE_DEV_DEPS, ignoreDevDeps.get()),
+        PrecomputedValue.injected(
+            BazelModuleResolutionFunction.CHECK_DIRECT_DEPENDENCIES, checkDirectDepsMode));
   }
 
   @Override

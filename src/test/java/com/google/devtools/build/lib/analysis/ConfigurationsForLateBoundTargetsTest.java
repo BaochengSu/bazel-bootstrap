@@ -32,9 +32,7 @@ import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.skyframe.util.SkyframeExecutorTestUtils;
-import com.google.devtools.build.lib.testutil.Suite;
 import com.google.devtools.build.lib.testutil.TestRuleClassProvider;
-import com.google.devtools.build.lib.testutil.TestSpec;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -48,7 +46,6 @@ import org.junit.runners.JUnit4;
  * (ConfiguredTargetFunction is a Skyframe function). And the Skyframe library doesn't know anything
  * about latebound attributes. So we need to place these properly under the analysis package.
  */
-@TestSpec(size = Suite.SMALL_TESTS)
 @RunWith(JUnit4.class)
 public class ConfigurationsForLateBoundTargetsTest extends AnalysisTestCase {
   private static final PatchTransition CHANGE_FOO_FLAG_TRANSITION =
@@ -72,16 +69,15 @@ public class ConfigurationsForLateBoundTargetsTest extends AnalysisTestCase {
           () ->
               MockRule.define(
                   "rule_with_latebound_attr",
-                  (builder, env) -> {
-                    builder
-                        .add(
-                            attr(":latebound_attr", LABEL)
-                                .value(
-                                    Attribute.LateBoundDefault.fromConstantForTesting(
-                                        Label.parseAbsoluteUnchecked("//foo:latebound_dep")))
-                                .cfg(TransitionFactories.of(CHANGE_FOO_FLAG_TRANSITION)))
-                        .requiresConfigurationFragments(LateBoundSplitUtil.TestFragment.class);
-                  });
+                  (builder, env) ->
+                      builder
+                          .add(
+                              attr(":latebound_attr", LABEL)
+                                  .value(
+                                      Attribute.LateBoundDefault.fromConstantForTesting(
+                                          Label.parseAbsoluteUnchecked("//foo:latebound_dep")))
+                                  .cfg(TransitionFactories.of(CHANGE_FOO_FLAG_TRANSITION)))
+                          .requiresConfigurationFragments(LateBoundSplitUtil.TestFragment.class));
 
   @Before
   public void setupCustomLateBoundRules() throws Exception {
@@ -89,7 +85,6 @@ public class ConfigurationsForLateBoundTargetsTest extends AnalysisTestCase {
     TestRuleClassProvider.addStandardRules(builder);
     builder.addRuleDefinition(LateBoundSplitUtil.RULE_WITH_TEST_FRAGMENT);
     builder.addConfigurationFragment(LateBoundSplitUtil.TestFragment.class);
-    builder.addConfigurationOptions(LateBoundSplitUtil.TestOptions.class);
     builder.addRuleDefinition(LATE_BOUND_DEP_RULE);
     useRuleClassProvider(builder.build());
   }

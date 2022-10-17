@@ -20,6 +20,7 @@ import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
 import com.google.devtools.build.lib.analysis.config.CoreOptionConverters.EmptyToNullLabelConverter;
 import com.google.devtools.build.lib.analysis.config.CoreOptionConverters.LabelConverter;
+import com.google.devtools.build.lib.analysis.config.CoreOptionConverters.LabelListConverter;
 import com.google.devtools.build.lib.analysis.config.Fragment;
 import com.google.devtools.build.lib.analysis.config.FragmentOptions;
 import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
@@ -108,19 +109,29 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
    *   <li>V1 uses the apksigner attribute from the android_sdk and signs the APK as a JAR.
    *   <li>V2 uses the apksigner attribute from the android_sdk and signs the APK according to the
    *       APK Signing Schema V2 that is only supported on Android N and later.
+   *   <li>V4 uses the apksigner attribute from the android_sdk and signs the APK according to the
+   *       APK Signing Schema V4 that is only supported on Android R/build tools 30 and later. It
+   *       generates a V4 signature file alongside the APK file.
    * </ul>
    */
   public enum ApkSigningMethod {
     V1(true, false),
     V2(false, true),
-    V1_V2(true, true);
+    V1_V2(true, true),
+    V4(false, false, true);
 
     private final boolean signV1;
     private final boolean signV2;
+    private final Boolean signV4;
 
     ApkSigningMethod(boolean signV1, boolean signV2) {
+      this(signV1, signV2, null);
+    }
+
+    ApkSigningMethod(boolean signV1, boolean signV2, @Nullable Boolean signV4) {
       this.signV1 = signV1;
       this.signV2 = signV2;
+      this.signV4 = signV4;
     }
 
     /** Whether to JAR sign the APK with the apksigner tool. */
@@ -131,6 +142,16 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
     /** Whether to sign the APK with the apksigner tool with APK Signature Schema V2. */
     public boolean signV2() {
       return signV2;
+    }
+
+    /**
+     * Whether to sign the APK with the apksigner tool with APK Signature Schema V4.
+     *
+     * <p>If null/unset, the V4 signing flag should not be passed to apksigner. This extra level of
+     * control is needed to support environments where older build tools may be used.
+     */
+    public @Nullable Boolean signV4() {
+      return signV4;
     }
   }
 
@@ -183,6 +204,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         metadataTags = {OptionMetadataTag.INTERNAL})
     public ConfigurationDistinguisher configurationDistinguisher;
 
+    // TODO(blaze-configurability): Mark this as deprecated in favor of --android_platforms.
     @Option(
         name = "android_crosstool_top",
         defaultValue = "//external:android/crosstool",
@@ -197,6 +219,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         help = "The location of the C++ compiler used for Android builds.")
     public Label androidCrosstoolTop;
 
+    // TODO(blaze-configurability): Mark this as deprecated in favor of --android_platforms.
     @Option(
         name = "android_cpu",
         defaultValue = "armeabi-v7a",
@@ -209,6 +232,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         help = "The Android target CPU.")
     public String cpu;
 
+    // TODO(blaze-configurability): Mark this as deprecated in favor of --android_platforms.
     @Option(
         name = "android_compiler",
         defaultValue = "null",
@@ -221,6 +245,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         help = "The Android target compiler.")
     public String cppCompiler;
 
+    // TODO(blaze-configurability): Mark this as deprecated in favor of the new min_sdk feature.
     @Option(
         name = "android_grte_top",
         defaultValue = "null",
@@ -253,6 +278,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
 
     // Label of filegroup combining all Android tools used as implicit dependencies of
     // android_* rules
+    // TODO(blaze-configurability): Mark this as deprecated in favor of --android_platforms.
     @Option(
         name = "android_sdk",
         defaultValue = "@bazel_tools//tools/android:sdk",
@@ -267,6 +293,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
     public Label sdk;
 
     // TODO(bazel-team): Maybe merge this with --android_cpu above.
+    // TODO(blaze-configurability): Mark this as deprecated in favor of --android_platforms.
     @Option(
         name = "fat_apk_cpu",
         converter = Converters.CommaSeparatedOptionListConverter.class,
@@ -283,6 +310,22 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
                 + "flag is specified, then --android_cpu is ignored for dependencies of "
                 + "android_binary rules.")
     public List<String> fatApkCpus;
+
+    @Option(
+        name = "android_platforms",
+        converter = LabelListConverter.class,
+        documentationCategory = OptionDocumentationCategory.TOOLCHAIN,
+        defaultValue = "",
+        effectTags = {
+          OptionEffectTag.CHANGES_INPUTS,
+          OptionEffectTag.LOADING_AND_ANALYSIS,
+          OptionEffectTag.LOSES_INCREMENTAL_STATE,
+        },
+        help =
+            "Sets the platforms that android_binary targets use. If multiple platforms are"
+                + " specified, then the binary is a fat APKs, which contains native binaries for"
+                + " each specified target platform.")
+    public List<Label> androidPlatforms;
 
     @Option(
         name = "fat_apk_hwasan",
@@ -625,12 +668,13 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         help = "Implementation to use to sign APKs")
     public ApkSigningMethod apkSigningMethod;
 
+    // TODO(b/36023617): Remove this option.
     @Option(
         name = "use_singlejar_apkbuilder",
         defaultValue = "true",
         documentationCategory = OptionDocumentationCategory.BUILD_TIME_OPTIMIZATION,
         effectTags = OptionEffectTag.LOADING_AND_ANALYSIS,
-        help = "Build Android APKs with SingleJar.")
+        help = "This option is a deprecated. It is now a no-op and will be removed soon.")
     public boolean useSingleJarApkBuilder;
 
     @Option(
@@ -739,10 +783,7 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         effectTags = {
           OptionEffectTag.EAGERNESS_TO_EXIT,
         },
-        metadataTags = {
-          OptionMetadataTag.INCOMPATIBLE_CHANGE,
-          OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
-        },
+        metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
         help =
             "If enabled, direct usage of the native Android rules is disabled. Please use the"
                 + " Starlark Android rules from https://github.com/bazelbuild/rules_android")
@@ -753,14 +794,20 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         defaultValue = "false",
         documentationCategory = OptionDocumentationCategory.TOOLCHAIN,
         effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS},
-        metadataTags = {
-          OptionMetadataTag.INCOMPATIBLE_CHANGE,
-          OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
-        },
+        metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
         help =
             "Use toolchain resolution to select the Android SDK for android rules (Starlark and"
                 + " native)")
     public boolean incompatibleUseToolchainResolution;
+
+    @Option(
+        name = "android hwasan", // Space is so that this cannot be set on the command line
+        defaultValue = "false",
+        documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+        effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS},
+        metadataTags = {OptionMetadataTag.INTERNAL},
+        help = "Whether HWASAN is enabled.")
+    public boolean hwasan;
 
     @Option(
         name = "experimental_filter_r_jars_from_android_test",
@@ -834,22 +881,6 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
         help = "Tracking flag for when busybox workers are enabled.")
     public boolean persistentBusyboxTools;
 
-    // TODO(b/142520065): Remove.
-    @Option(
-        name = "incompatible_prohibit_aapt1",
-        documentationCategory = OptionDocumentationCategory.TOOLCHAIN,
-        effectTags = {OptionEffectTag.LOSES_INCREMENTAL_STATE, OptionEffectTag.AFFECTS_OUTPUTS},
-        metadataTags = {
-          OptionMetadataTag.INCOMPATIBLE_CHANGE,
-          OptionMetadataTag.TRIGGERED_BY_ALL_INCOMPATIBLE_CHANGES
-        },
-        defaultValue = "true",
-        help =
-            "End support for aapt in Android rules. "
-                + "To resolve issues when migrating your app to build with aapt2, see "
-                + "https://developer.android.com/studio/command-line/aapt2#aapt2_changes")
-    public boolean incompatibleProhibitAapt1;
-
     @Option(
         name = "experimental_remove_r_classes_from_instrumentation_test_jar",
         defaultValue = "true",
@@ -915,12 +946,34 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
                 + "for instrumentation testing).")
     public boolean disableInstrumentationManifestMerging;
 
+    @Option(
+        name = "experimental_get_android_java_resources_from_optimized_jar",
+        defaultValue = "false",
+        documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+        effectTags = {OptionEffectTag.CHANGES_INPUTS},
+        help =
+            "Get Java resources from _proguard.jar instead of _deploy.jar in android_binary when "
+                + "bundling the final APK.")
+    public boolean getJavaResourcesFromOptimizedJar;
+
+    @Option(
+        name = "android_include_proguard_location_references",
+        defaultValue = "false",
+        documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+        effectTags = {OptionEffectTag.AFFECTS_OUTPUTS},
+        help =
+            "When using aapt2 to generate proguard configurations, include location references."
+                + " This will make the build nondeterministic.")
+    public boolean includeProguardLocationReferences;
+
     @Override
     public FragmentOptions getHost() {
       Options host = (Options) super.getHost();
+      host.hwasan = false;
       host.androidCrosstoolTop = androidCrosstoolTop;
       host.sdk = sdk;
       host.fatApkCpus = ImmutableList.of(); // Fat APK archs don't apply to the host.
+      host.incompatibleUseToolchainResolution = incompatibleUseToolchainResolution;
 
       host.desugarJava8 = desugarJava8;
       host.desugarJava8Libs = desugarJava8Libs;
@@ -941,8 +994,6 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
       host.oneVersionEnforcementUseTransitiveJarsForBinaryUnderTest =
           oneVersionEnforcementUseTransitiveJarsForBinaryUnderTest;
       host.persistentBusyboxTools = persistentBusyboxTools;
-
-      host.incompatibleProhibitAapt1 = incompatibleProhibitAapt1;
 
       // Unless the build was started from an Android device, host means MAIN.
       host.configurationDistinguisher = ConfigurationDistinguisher.MAIN;
@@ -996,6 +1047,9 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
   private final Label legacyMainDexListGenerator;
   private final boolean disableInstrumentationManifestMerging;
   private final boolean incompatibleUseToolchainResolution;
+  private final boolean hwasan;
+  private final boolean getJavaResourcesFromOptimizedJar;
+  private final boolean includeProguardLocationReferences;
 
   public AndroidConfiguration(BuildOptions buildOptions) throws InvalidConfigurationException {
     Options options = buildOptions.get(Options.class);
@@ -1054,6 +1108,9 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
     this.legacyMainDexListGenerator = options.legacyMainDexListGenerator;
     this.disableInstrumentationManifestMerging = options.disableInstrumentationManifestMerging;
     this.incompatibleUseToolchainResolution = options.incompatibleUseToolchainResolution;
+    this.hwasan = options.hwasan;
+    this.getJavaResourcesFromOptimizedJar = options.getJavaResourcesFromOptimizedJar;
+    this.includeProguardLocationReferences = options.includeProguardLocationReferences;
 
     if (incrementalDexingShardsAfterProguard < 0) {
       throw new InvalidConfigurationException(
@@ -1222,6 +1279,11 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
   }
 
   @Override
+  public @Nullable Boolean apkSigningMethodV4() {
+    return apkSigningMethod.signV4();
+  }
+
+  @Override
   public boolean useSingleJarApkBuilder() {
     return useSingleJarApkBuilder;
   }
@@ -1292,6 +1354,11 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
   }
 
   @Override
+  public boolean isHwasan() {
+    return hwasan;
+  }
+
+  @Override
   public String getOutputDirectoryName() {
     return configurationDistinguisher.suffix;
   }
@@ -1318,6 +1385,14 @@ public class AndroidConfiguration extends Fragment implements AndroidConfigurati
 
   public boolean disableInstrumentationManifestMerging() {
     return disableInstrumentationManifestMerging;
+  }
+
+  public boolean getJavaResourcesFromOptimizedJar() {
+    return getJavaResourcesFromOptimizedJar;
+  }
+
+  public boolean includeProguardLocationReferences() {
+    return includeProguardLocationReferences;
   }
 
   /** Returns the label provided with --legacy_main_dex_list_generator, if any. */

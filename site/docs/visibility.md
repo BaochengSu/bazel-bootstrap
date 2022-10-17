@@ -1,8 +1,12 @@
 ---
 layout: documentation
 title: Visibility
+category: getting-started
 ---
 # Visibility
+
+
+This page covers visibility specifications, best practices, and examples.
 
 Visibility controls whether a target can be used (depended on) by targets in
 other packages. This helps other people distinguish between your library's
@@ -11,6 +15,9 @@ enforce structure as your workspace grows.
 
 If you need to disable the visibility check (for example when experimenting),
 use `--check_visibility=false`.
+
+For more details on package and subpackages, see
+<a href="build-ref.html">Concepts and terminology</a>.
 
 ## Visibility specifications
 
@@ -49,6 +56,8 @@ in `//tests/BUILD`, but not by targets defined in `//tests/integration/BUILD`.
 
 As a special case, `package_group` targets themselves do not have a `visibility`
 attribute; they are always publicly visible.
+
+Visibility cannot be set to specific non-package_group targets. That triggers a "Label does not refer to a package group" or "cycle in dependency graph" error.
 
 ## Visibility of a rule target
 

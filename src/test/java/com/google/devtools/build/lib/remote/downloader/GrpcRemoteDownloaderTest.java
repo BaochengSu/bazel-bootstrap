@@ -245,7 +245,7 @@ public class GrpcRemoteDownloaderTest {
         downloadBlob(
             downloader,
             new URL("http://example.com/content.txt"),
-            Optional.<Checksum>of(Checksum.fromString(KeyType.SHA256, contentDigest.getHash())));
+            Optional.of(Checksum.fromString(KeyType.SHA256, contentDigest.getHash())));
 
     assertThat(downloaded).isEqualTo(content);
   }
@@ -288,8 +288,7 @@ public class GrpcRemoteDownloaderTest {
                 downloadBlob(
                     downloader,
                     new URL("http://example.com/content.txt"),
-                    Optional.<Checksum>of(
-                        Checksum.fromString(KeyType.SHA256, contentDigest.getHash()))));
+                    Optional.of(Checksum.fromString(KeyType.SHA256, contentDigest.getHash()))));
 
     assertThat(e).hasMessageThat().contains(contentDigest.getHash());
     assertThat(e).hasMessageThat().contains(DIGEST_UTIL.computeAsUtf8("wrong content").getHash());

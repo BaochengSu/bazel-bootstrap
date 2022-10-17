@@ -17,7 +17,6 @@ import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
-import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
@@ -56,14 +55,12 @@ import com.google.devtools.build.lib.query2.engine.QueryUtil.UniquifierImpl;
 import com.google.devtools.build.lib.query2.engine.SkyframeRestartQueryException;
 import com.google.devtools.build.lib.query2.engine.ThreadSafeOutputFormatterCallback;
 import com.google.devtools.build.lib.query2.engine.Uniquifier;
-import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -172,17 +169,7 @@ public class BlazeQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
     // becomes quadratic in runtime.
     Set<Target> targets = new LinkedHashSet<>(resolvedTargetPatterns.get(pattern));
 
-    // Sets.filter would be more convenient here, but can't deal with exceptions.
-    if (labelFilter != Predicates.<Label>alwaysTrue()) {
-      // The labelFilter is always true for bazel query; it's only used for genquery rules.
-      Iterator<Target> targetIterator = targets.iterator();
-      while (targetIterator.hasNext()) {
-        Target target = targetIterator.next();
-        if (!validateScope(target.getLabel(), strictScope)) {
-          targetIterator.remove();
-        }
-      }
-    }
+    validateScopeOfTargets(targets);
 
     Set<PackageIdentifier> packages = CompactHashSet.create();
     for (Target target : targets) {
@@ -204,7 +191,7 @@ public class BlazeQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
         }
       } else if (target instanceof Rule) {
         Rule rule = (Rule) target;
-        for (Label label : rule.getLabels(dependencyFilter)) {
+        for (Label label : rule.getSortedLabels(dependencyFilter)) {
           if (!packages.contains(label.getPackageIdentifier())) {
             continue;  // don't cause additional package loading
           }
@@ -379,9 +366,11 @@ public class BlazeQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
 
     @Override
     public void edge(Target from, Attribute attribute, Target to) {
-      Preconditions.checkState(attribute == null ||
-          dependencyFilter.apply(((Rule) from), attribute),
-          "Disallowed edge from LabelVisitor: %s --> %s", from, to);
+      Preconditions.checkState(
+          attribute == null || dependencyFilter.test((Rule) from, attribute),
+          "Disallowed edge from LabelVisitor: %s --> %s",
+          from,
+          to);
       makeEdge(from, to);
       errorObserver.edge(from, attribute, to);
     }
@@ -448,14 +437,14 @@ public class BlazeQueryEnvironment extends AbstractBlazeQueryEnvironment<Target>
 
           // Also add the BUILD file of the extension.
           if (buildFiles) {
-            Path buildFileForLoad =
-                cachingPackageLocator.getBuildFileForPackage(
+            // Can be null in genquery: see http://b/123795023#comment6.
+            String baseName =
+                cachingPackageLocator.getBaseNameForLoadedPackage(
                     loadTarget.getLabel().getLabel().getPackageIdentifier());
-            if (buildFileForLoad != null) {
+            if (baseName != null) {
               Label buildFileLabel =
                   Label.createUnvalidated(
-                      loadTarget.getLabel().getLabel().getPackageIdentifier(),
-                      buildFileForLoad.getBaseName());
+                      loadTarget.getLabel().getLabel().getPackageIdentifier(), baseName);
               addIfUniqueLabel(
                   getNode(new FakeLoadTarget(buildFileLabel, pkg)), seenLabels, dependentFiles);
             }

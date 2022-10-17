@@ -62,17 +62,17 @@ public class RuleClassBuilderTest extends PackageLoadingTestCase {
             .build();
 
     assertThat(ruleClassA.getName()).isEqualTo("ruleA");
-    assertThat(ruleClassA.getAttributeCount()).isEqualTo(3);
-    assertThat(ruleClassA.hasBinaryOutput()).isTrue();
+    assertThat(ruleClassA.getAttributeCount()).isEqualTo(4);
+    assertThat(ruleClassA.outputsToBindir()).isTrue();
 
-    assertThat((int) ruleClassA.getAttributeIndex("srcs")).isEqualTo(0);
-    assertThat(ruleClassA.getAttributeByName("srcs")).isEqualTo(ruleClassA.getAttribute(0));
+    assertThat((int) ruleClassA.getAttributeIndex("srcs")).isEqualTo(1);
+    assertThat(ruleClassA.getAttributeByName("srcs")).isEqualTo(ruleClassA.getAttribute(1));
 
-    assertThat((int) ruleClassA.getAttributeIndex("tags")).isEqualTo(1);
-    assertThat(ruleClassA.getAttributeByName("tags")).isEqualTo(ruleClassA.getAttribute(1));
+    assertThat((int) ruleClassA.getAttributeIndex("tags")).isEqualTo(2);
+    assertThat(ruleClassA.getAttributeByName("tags")).isEqualTo(ruleClassA.getAttribute(2));
 
-    assertThat((int) ruleClassA.getAttributeIndex("X")).isEqualTo(2);
-    assertThat(ruleClassA.getAttributeByName("X")).isEqualTo(ruleClassA.getAttribute(2));
+    assertThat((int) ruleClassA.getAttributeIndex("X")).isEqualTo(3);
+    assertThat(ruleClassA.getAttributeByName("X")).isEqualTo(ruleClassA.getAttribute(3));
   }
 
   @Test
@@ -87,7 +87,7 @@ public class RuleClassBuilderTest extends PackageLoadingTestCase {
             .add(attr("shard_count", INTEGER).value(StarlarkInt.of(-1)))
             .add(attr("local", BOOLEAN))
             .build();
-    assertThat(ruleClassA.hasBinaryOutput()).isTrue();
+    assertThat(ruleClassA.outputsToBindir()).isTrue();
   }
 
   @Test
@@ -98,7 +98,7 @@ public class RuleClassBuilderTest extends PackageLoadingTestCase {
             .setOutputToGenfiles()
             .add(attr("tags", STRING_LIST))
             .build();
-    assertThat(ruleClassA.hasBinaryOutput()).isFalse();
+    assertThat(ruleClassA.outputsToBindir()).isFalse();
   }
 
   @Test

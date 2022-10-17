@@ -14,10 +14,13 @@
 
 package com.google.devtools.build.lib.buildtool.util;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.throwIfUnchecked;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 
 import com.google.common.collect.ImmutableList;
@@ -47,6 +50,11 @@ import com.google.devtools.build.lib.analysis.starlark.StarlarkTransition.Transi
 import com.google.devtools.build.lib.analysis.util.AnalysisMock;
 import com.google.devtools.build.lib.analysis.util.AnalysisTestUtil;
 import com.google.devtools.build.lib.analysis.util.AnalysisTestUtil.DummyWorkspaceStatusActionContext;
+import com.google.devtools.build.lib.bazel.BazelRepositoryModule;
+import com.google.devtools.build.lib.bugreport.BugReport;
+import com.google.devtools.build.lib.bugreport.BugReporter;
+import com.google.devtools.build.lib.bugreport.Crash;
+import com.google.devtools.build.lib.bugreport.CrashContext;
 import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.buildtool.BuildResult;
 import com.google.devtools.build.lib.buildtool.BuildTool;
@@ -73,7 +81,9 @@ import com.google.devtools.build.lib.runtime.BlazeRuntime;
 import com.google.devtools.build.lib.runtime.BlazeServerStartupOptions;
 import com.google.devtools.build.lib.runtime.BlazeWorkspace;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
+import com.google.devtools.build.lib.runtime.NoSpawnCacheModule;
 import com.google.devtools.build.lib.runtime.WorkspaceBuilder;
+import com.google.devtools.build.lib.sandbox.SandboxModule;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.server.FailureDetails.Spawn;
 import com.google.devtools.build.lib.server.FailureDetails.Spawn.Code;
@@ -86,15 +96,14 @@ import com.google.devtools.build.lib.skyframe.PrecomputedValue.Injected;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
 import com.google.devtools.build.lib.skyframe.util.SkyframeExecutorTestUtils;
 import com.google.devtools.build.lib.standalone.StandaloneModule;
-import com.google.devtools.build.lib.testutil.Suite;
 import com.google.devtools.build.lib.testutil.TestConstants;
 import com.google.devtools.build.lib.testutil.TestConstants.InternalTestExecutionMode;
 import com.google.devtools.build.lib.testutil.TestFileOutErr;
-import com.google.devtools.build.lib.testutil.TestSpec;
 import com.google.devtools.build.lib.testutil.TestUtils;
 import com.google.devtools.build.lib.util.CommandBuilder;
 import com.google.devtools.build.lib.util.CommandUtils;
 import com.google.devtools.build.lib.util.LoggingUtil;
+import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.util.io.FileOutErr;
 import com.google.devtools.build.lib.util.io.OutErr;
 import com.google.devtools.build.lib.util.io.RecordingOutErr;
@@ -104,14 +113,18 @@ import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.util.FileSystems;
+import com.google.devtools.build.lib.worker.WorkerModule;
 import com.google.devtools.common.options.OptionsBase;
 import com.google.devtools.common.options.OptionsParser;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import javax.annotation.concurrent.GuardedBy;
 import org.junit.After;
 import org.junit.Before;
 
@@ -121,7 +134,6 @@ import org.junit.Before;
  *
  * <p>All integration tests are at least size medium.
  */
-@TestSpec(size = Suite.MEDIUM_TESTS)
 public abstract class BuildIntegrationTestCase {
 
   /** Thrown when an integration test case fails. */
@@ -144,13 +156,14 @@ public abstract class BuildIntegrationTestCase {
   }
 
   protected FileSystem fileSystem;
-  protected EventCollectionApparatus events = new EventCollectionApparatus();
+  protected EventCollectionApparatus events = createEvents();
   protected OutErr outErr = OutErr.SYSTEM_OUT_ERR;
   protected Path testRoot;
   protected ServerDirectories serverDirectories;
   protected BlazeDirectories directories;
   protected MockToolsConfig mockToolsConfig;
   protected BinTools binTools;
+  private BugReporter bugReporter = BugReporter.defaultInstance();
 
   protected BlazeRuntimeWrapper runtimeWrapper;
   protected Path outputBase;
@@ -159,18 +172,32 @@ public abstract class BuildIntegrationTestCase {
   private Path workspace;
   protected RecordingExceptionHandler subscriberException = new RecordingExceptionHandler();
 
+  private static final ImmutableList<Injected> BAZEL_REPOSITORY_PRECOMPUTED_VALUES =
+      ImmutableList.of(
+          PrecomputedValue.injected(
+              RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()),
+          PrecomputedValue.injected(
+              RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING,
+              RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY));
+
+  protected EventCollectionApparatus createEvents() {
+    return new EventCollectionApparatus();
+  }
+
   @Before
   public final void createFilesAndMocks() throws Exception  {
     runPriorToBeforeMethods();
     events.setFailFast(false);
     // TODO(mschaller): This will ignore any attempt by Blaze modules to provide a filesystem;
     // consider something better.
-    this.fileSystem = createFileSystem();
+    FileSystem nativeFileSystem = createFileSystem();
+    this.fileSystem = createFileSystemForBuildArtifacts(nativeFileSystem);
     this.testRoot = createTestRoot(fileSystem);
 
-    outputBase = testRoot.getRelative(outputBaseName);
+    outputBase = fileSystem.getPath(testRoot.getRelative(outputBaseName).asFragment());
     outputBase.createDirectoryAndParents();
-    workspace = testRoot.getRelative(getDesiredWorkspaceRelative());
+    workspace =
+        nativeFileSystem.getPath(testRoot.getRelative(getDesiredWorkspaceRelative()).asFragment());
     beforeCreatingWorkspace(workspace);
     workspace.createDirectoryAndParents();
     serverDirectories = createServerDirectories();
@@ -213,6 +240,35 @@ public abstract class BuildIntegrationTestCase {
     setupOptions();
   }
 
+  /**
+   * Configures the server to record bug reports using the returned {@link RecordingBugReporter}.
+   *
+   * <p>The server is reinitialized so that this change is picked up.
+   */
+  protected final RecordingBugReporter recordBugReportsAndReinitialize() throws Exception {
+    RecordingBugReporter recordingBugReporter = new RecordingBugReporter();
+    setCustomBugReporterAndReinitialize(recordingBugReporter);
+    return recordingBugReporter;
+  }
+
+  /**
+   * Configures the server to record bug reports using the given {@link BugReporter}.
+   *
+   * <p>The server is reinitialized so that this change is picked up.
+   */
+  protected final void setCustomBugReporterAndReinitialize(BugReporter bugReporter)
+      throws Exception {
+    this.bugReporter = checkNotNull(bugReporter);
+    reinitializeAndPreserveOptions();
+  }
+
+  protected final void reinitializeAndPreserveOptions() throws Exception {
+    List<String> options = runtimeWrapper.getOptions();
+    createFilesAndMocks();
+    runtimeWrapper.resetOptions();
+    runtimeWrapper.addOptions(options);
+  }
+
   protected void runPriorToBeforeMethods() throws Exception {
     // Allows tests such as SkyframeIntegrationInvalidationTest to execute code before all @Before
     // methods are being run.
@@ -225,7 +281,29 @@ public abstract class BuildIntegrationTestCase {
       throw new RuntimeException(subscriberException.getException());
     }
     LoggingUtil.installRemoteLoggerForTesting(null);
-    testRoot.deleteTreesBelow(); // (comment out during debugging)
+    try {
+      testRoot.deleteTreesBelow(); // (comment out during debugging)
+    } catch (IOException e) {
+      // Ignore any IO failures on Windows when deleting the test root during clean up, because
+      // the Bazel runtime still holds the file handle of windows_jni.dll.
+      if (OS.getCurrent() != OS.WINDOWS) {
+        throw e;
+      }
+    }
+    // Make sure that a test which crashes with on a bug report does not taint following ones with
+    // an unprocessed exception stored statically in BugReport.
+    BugReport.maybePropagateUnprocessedThrowableIfInTest();
+    Thread.interrupted(); // If there was a crash in test case, main thread was interrupted.
+  }
+
+  /**
+   * Check and clear crash was reported in {@link BugReport}.
+   *
+   * <p>{@link BugReport} stores information about crashes in a static variable when running tests.
+   * Tests which deliberately cause crashes, need to clear that flag not to taint the environment.
+   */
+  protected static void assertAndClearBugReporterStoredCrash(Class<? extends Throwable> expected) {
+    assertThrows(expected, BugReport::maybePropagateUnprocessedThrowableIfInTest);
   }
 
   /**
@@ -277,6 +355,10 @@ public abstract class BuildIntegrationTestCase {
 
   protected FileSystem createFileSystem() throws Exception {
     return FileSystems.getNativeFileSystem(getDigestHashFunction());
+  }
+
+  protected FileSystem createFileSystemForBuildArtifacts(FileSystem fileSystem) {
+    return fileSystem;
   }
 
   protected DigestHashFunction getDigestHashFunction() {
@@ -335,13 +417,19 @@ public abstract class BuildIntegrationTestCase {
     return TestStrategyModule.getModule();
   }
 
-  private static BlazeModule getNoResolvedFileModule() {
+  private static BlazeModule getMockBazelRepositoryModule() {
     return new BlazeModule() {
       @Override
       public ImmutableList<Injected> getPrecomputedValues() {
-        return ImmutableList.of(
-            PrecomputedValue.injected(
-                RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE, Optional.empty()));
+        ImmutableList.Builder<Injected> builder = ImmutableList.builder();
+        return builder
+            .add(
+                PrecomputedValue.injected(
+                    RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE,
+                    Optional.empty()),
+                PrecomputedValue.injected(RepositoryDelegatorFunction.ENABLE_BZLMOD, false))
+            .addAll(BAZEL_REPOSITORY_PRECOMPUTED_VALUES)
+            .build();
       }
     };
   }
@@ -363,17 +451,32 @@ public abstract class BuildIntegrationTestCase {
     checkState(
         connectivityModule instanceof ConnectivityStatusProvider,
         "Module returned by getConnectivityModule() does not implement ConnectivityStatusProvider");
-    return new BlazeRuntime.Builder()
-        .setFileSystem(fileSystem)
-        .setProductName(TestConstants.PRODUCT_NAME)
-        .setStartupOptionsProvider(startupOptionsParser)
-        .addBlazeModule(connectivityModule)
-        .addBlazeModule(getNoResolvedFileModule())
-        .addBlazeModule(getSpawnModule())
-        .addBlazeModule(new IncludeScanningModule())
-        .addBlazeModule(getBuildInfoModule())
-        .addBlazeModule(getRulesModule())
-        .addBlazeModule(getStrategyModule());
+    BlazeRuntime.Builder builder =
+        new BlazeRuntime.Builder()
+            .setFileSystem(fileSystem)
+            .setProductName(TestConstants.PRODUCT_NAME)
+            .setBugReporter(bugReporter)
+            .setStartupOptionsProvider(startupOptionsParser)
+            .addBlazeModule(connectivityModule)
+            .addBlazeModule(getMockBazelRepositoryModule())
+            .addBlazeModule(getSpawnModule())
+            .addBlazeModule(getBuildInfoModule())
+            .addBlazeModule(getRulesModule())
+            .addBlazeModule(getStrategyModule());
+
+    if ("blaze".equals(TestConstants.PRODUCT_NAME)) {
+      // include scanning isn't supported in bazel
+      builder.addBlazeModule(new IncludeScanningModule());
+
+    } else {
+      // Add in modules implicitly added in internal integration test case.
+      builder
+          .addBlazeModule(new NoSpawnCacheModule())
+          .addBlazeModule(new WorkerModule())
+          .addBlazeModule(new SandboxModule())
+          .addBlazeModule(new BazelRepositoryModule());
+    }
+    return builder;
   }
 
   protected List<String> getStartupOptions() {
@@ -412,6 +515,14 @@ public abstract class BuildIntegrationTestCase {
 
   protected void addOptions(String... args) {
     runtimeWrapper.addOptions(args);
+  }
+
+  protected void addOptions(List<String> args) {
+    runtimeWrapper.addOptions(args);
+  }
+
+  protected void addStarlarkOption(String label, Object value) {
+    runtimeWrapper.addStarlarkOption(label, value);
   }
 
   protected OptionsParser createOptionsParser() {
@@ -513,11 +624,9 @@ public abstract class BuildIntegrationTestCase {
       return baseConfiguration;
     }
     Set<BuildConfiguration> topLevelTargetConfigurations =
-        result
-            .getActualTargets()
-            .stream()
-            .map((ct) -> getConfiguration(ct))
-            .filter((config) -> config != null)
+        result.getActualTargets().stream()
+            .map(this::getConfiguration)
+            .filter(Objects::nonNull)
             .collect(toImmutableSet());
     if (topLevelTargetConfigurations.size() != 1) {
       return baseConfiguration;
@@ -616,7 +725,7 @@ public abstract class BuildIntegrationTestCase {
       String... arguments)
       throws ExecException, InterruptedException {
     if (workingDirectory == null) {
-      workingDirectory = directories.getWorkspace();
+      workingDirectory = fileSystem.getPath(directories.getWorkspace().asFragment());
     }
     List<String> argv = Lists.newArrayList(arguments);
     argv.add(0, executable.toString());
@@ -640,7 +749,7 @@ public abstract class BuildIntegrationTestCase {
    * @throws IOException if the file could not be written.
    */
   public Path write(String relativePath, String... lines) throws IOException {
-    Path path = getWorkspace().getRelative(relativePath);
+    Path path = workspace.getRelative(relativePath);
     return writeAbsolute(path, lines);
   }
 
@@ -656,10 +765,11 @@ public abstract class BuildIntegrationTestCase {
    * Creates folders on the path to {@code relativeLinkPath} and a symlink to {@code target} at
    * {@code relativeLinkPath} (equivalent to {@code ln -s <target> <relativeLinkPath>}).
    */
-  protected void createSymlink(String target, String relativeLinkPath) throws IOException {
-    Path path = getWorkspace().getRelative(relativeLinkPath);
+  protected Path createSymlink(String target, String relativeLinkPath) throws IOException {
+    Path path = workspace.getRelative(relativeLinkPath);
     path.getParentDirectory().createDirectoryAndParents();
     path.createSymbolicLink(PathFragment.create(target));
+    return path;
   }
 
   /**
@@ -812,5 +922,42 @@ public abstract class BuildIntegrationTestCase {
       }
     }
     fail("didn't find expected error: \"" + expectedError + "\"");
+  }
+
+  /** {@link BugReporter} that stores bug reports for later inspection. */
+  protected static class RecordingBugReporter implements BugReporter {
+    @GuardedBy("this")
+    private final List<Throwable> exceptions = new ArrayList<>();
+
+    @Override
+    public synchronized void sendBugReport(
+        Throwable exception, List<String> args, String... values) {
+      exceptions.add(exception);
+    }
+
+    @Override
+    public void handleCrash(Crash crash, CrashContext ctx) {
+      // Unexpected: try to crash JVM.
+      BugReport.handleCrash(crash, ctx);
+    }
+
+    public synchronized ImmutableList<Throwable> getExceptions() {
+      return ImmutableList.copyOf(exceptions);
+    }
+
+    public synchronized Throwable getFirstCause() {
+      assertThat(exceptions).isNotEmpty();
+      Throwable first = exceptions.get(0);
+      assertThat(first).hasCauseThat().isNotNull();
+      return first.getCause();
+    }
+
+    public synchronized void assertNoExceptions() {
+      assertThat(exceptions).isEmpty();
+    }
+
+    public synchronized void clear() {
+      exceptions.clear();
+    }
   }
 }

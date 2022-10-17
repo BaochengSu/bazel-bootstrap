@@ -14,16 +14,13 @@
 package com.google.devtools.build.lib.remote;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
-import com.google.devtools.build.lib.actions.ActionGraph;
 import com.google.devtools.build.lib.actions.ActionInput;
-import com.google.devtools.build.lib.analysis.ArtifactsToOwnerLabels;
 import com.google.devtools.build.lib.exec.ExecutionOptions;
-import com.google.devtools.build.lib.exec.ExecutorLifecycleListener;
 import com.google.devtools.build.lib.exec.ModuleActionContextRegistry;
 import com.google.devtools.build.lib.exec.SpawnCache;
 import com.google.devtools.build.lib.exec.SpawnStrategyRegistry;
@@ -36,14 +33,16 @@ import com.google.devtools.build.lib.remote.options.RemoteOptions;
 import com.google.devtools.build.lib.remote.util.DigestUtil;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
 import com.google.devtools.build.lib.vfs.Path;
+import java.util.concurrent.Executor;
 import javax.annotation.Nullable;
 
-/** Provide a remote execution context. */
-final class RemoteActionContextProvider implements ExecutorLifecycleListener {
+/** Provides a remote execution context. */
+final class RemoteActionContextProvider {
 
+  private final Executor executor;
   private final CommandEnvironment env;
-  @Nullable private final RemoteCache cache;
-  @Nullable private final RemoteExecutionClient executor;
+  @Nullable private final RemoteCache remoteCache;
+  @Nullable private final RemoteExecutionClient remoteExecutor;
   @Nullable private final ListeningScheduledExecutorService retryScheduler;
   private final DigestUtil digestUtil;
   @Nullable private final Path logDir;
@@ -51,15 +50,17 @@ final class RemoteActionContextProvider implements ExecutorLifecycleListener {
   private RemoteExecutionService remoteExecutionService;
 
   private RemoteActionContextProvider(
+      Executor executor,
       CommandEnvironment env,
-      @Nullable RemoteCache cache,
-      @Nullable RemoteExecutionClient executor,
+      @Nullable RemoteCache remoteCache,
+      @Nullable RemoteExecutionClient remoteExecutor,
       @Nullable ListeningScheduledExecutorService retryScheduler,
       DigestUtil digestUtil,
       @Nullable Path logDir) {
-    this.env = Preconditions.checkNotNull(env, "env");
-    this.cache = cache;
     this.executor = executor;
+    this.env = Preconditions.checkNotNull(env, "env");
+    this.remoteCache = remoteCache;
+    this.remoteExecutor = remoteExecutor;
     this.retryScheduler = retryScheduler;
     this.digestUtil = digestUtil;
     this.logDir = logDir;
@@ -70,45 +71,44 @@ final class RemoteActionContextProvider implements ExecutorLifecycleListener {
       ListeningScheduledExecutorService retryScheduler,
       DigestUtil digestUtil) {
     return new RemoteActionContextProvider(
-        env, /*cache=*/ null, /*executor=*/ null, retryScheduler, digestUtil, /*logDir=*/ null);
-  }
-
-  private static void maybeSetCaptureCorruptedOutputsDir(
-      RemoteOptions remoteOptions, RemoteCache remoteCache, Path workingDirectory) {
-    if (remoteOptions.remoteCaptureCorruptedOutputs != null
-        && !remoteOptions.remoteCaptureCorruptedOutputs.isEmpty()) {
-      remoteCache.setCaptureCorruptedOutputsDir(
-          workingDirectory.getRelative(remoteOptions.remoteCaptureCorruptedOutputs));
-    }
+        directExecutor(),
+        env,
+        /*remoteCache=*/ null,
+        /*remoteExecutor=*/ null,
+        retryScheduler,
+        digestUtil,
+        /*logDir=*/ null);
   }
 
   public static RemoteActionContextProvider createForRemoteCaching(
+      Executor executor,
       CommandEnvironment env,
-      RemoteOptions options,
-      RemoteCache cache,
+      RemoteCache remoteCache,
       ListeningScheduledExecutorService retryScheduler,
       DigestUtil digestUtil) {
-    maybeSetCaptureCorruptedOutputsDir(options, cache, env.getWorkingDirectory());
-
     return new RemoteActionContextProvider(
-        env, cache, /*executor=*/ null, retryScheduler, digestUtil, /*logDir=*/ null);
+        executor,
+        env,
+        remoteCache,
+        /*remoteExecutor=*/ null,
+        retryScheduler,
+        digestUtil,
+        /*logDir=*/ null);
   }
 
   public static RemoteActionContextProvider createForRemoteExecution(
+      Executor executor,
       CommandEnvironment env,
-      RemoteOptions options,
-      RemoteExecutionCache cache,
-      RemoteExecutionClient executor,
+      RemoteExecutionCache remoteCache,
+      RemoteExecutionClient remoteExecutor,
       ListeningScheduledExecutorService retryScheduler,
       DigestUtil digestUtil,
       Path logDir) {
-    maybeSetCaptureCorruptedOutputsDir(options, cache, env.getWorkingDirectory());
-
     return new RemoteActionContextProvider(
-        env, cache, executor, retryScheduler, digestUtil, logDir);
+        executor, env, remoteCache, remoteExecutor, retryScheduler, digestUtil, logDir);
   }
 
-  RemotePathResolver createRemotePathResolver() {
+  private RemotePathResolver createRemotePathResolver() {
     Path execRoot = env.getExecRoot();
     BuildLanguageOptions buildLanguageOptions =
         env.getOptions().getOptions(BuildLanguageOptions.class);
@@ -124,19 +124,35 @@ final class RemoteActionContextProvider implements ExecutorLifecycleListener {
     return remotePathResolver;
   }
 
-  RemoteExecutionService getRemoteExecutionService() {
+  private RemoteExecutionService getRemoteExecutionService() {
     if (remoteExecutionService == null) {
+      Path workingDirectory = env.getWorkingDirectory();
+      RemoteOptions remoteOptions = checkNotNull(env.getOptions().getOptions(RemoteOptions.class));
+      Path captureCorruptedOutputsDir = null;
+      if (remoteOptions.remoteCaptureCorruptedOutputs != null
+          && !remoteOptions.remoteCaptureCorruptedOutputs.isEmpty()) {
+        captureCorruptedOutputsDir =
+            workingDirectory.getRelative(remoteOptions.remoteCaptureCorruptedOutputs);
+      }
+
+      boolean verboseFailures =
+          checkNotNull(env.getOptions().getOptions(ExecutionOptions.class)).verboseFailures;
       remoteExecutionService =
           new RemoteExecutionService(
+              executor,
+              env.getReporter(),
+              verboseFailures,
               env.getExecRoot(),
               createRemotePathResolver(),
               env.getBuildRequestId(),
               env.getCommandId().toString(),
               digestUtil,
               checkNotNull(env.getOptions().getOptions(RemoteOptions.class)),
-              cache,
-              executor,
-              filesToDownload);
+              remoteCache,
+              remoteExecutor,
+              filesToDownload,
+              captureCorruptedOutputsDir);
+      env.getEventBus().register(remoteExecutionService);
     }
 
     return remoteExecutionService;
@@ -176,38 +192,33 @@ final class RemoteActionContextProvider implements ExecutorLifecycleListener {
             env.getExecRoot(),
             checkNotNull(env.getOptions().getOptions(RemoteOptions.class)),
             checkNotNull(env.getOptions().getOptions(ExecutionOptions.class)).verboseFailures,
-            env.getReporter(),
             getRemoteExecutionService());
     registryBuilder.register(SpawnCache.class, spawnCache, "remote-cache");
   }
 
   /** Returns the remote cache. */
   RemoteCache getRemoteCache() {
-    return cache;
+    return remoteCache;
   }
 
   RemoteExecutionClient getRemoteExecutionClient() {
-    return executor;
+    return remoteExecutor;
   }
 
   void setFilesToDownload(ImmutableSet<ActionInput> topLevelOutputs) {
     this.filesToDownload = Preconditions.checkNotNull(topLevelOutputs, "filesToDownload");
   }
 
-  @Override
-  public void executorCreated() {}
-
-  @Override
-  public void executionPhaseStarting(
-      ActionGraph actionGraph, Supplier<ArtifactsToOwnerLabels> topLevelArtifactsToOwnerLabels) {}
-
-  @Override
-  public void executionPhaseEnding() {
-    if (cache != null) {
-      cache.close();
-    }
-    if (executor != null) {
-      executor.close();
+  public void afterCommand() {
+    if (remoteExecutionService != null) {
+      remoteExecutionService.shutdown();
+    } else {
+      if (remoteCache != null) {
+        remoteCache.release();
+      }
+      if (remoteExecutor != null) {
+        remoteExecutor.close();
+      }
     }
   }
 }

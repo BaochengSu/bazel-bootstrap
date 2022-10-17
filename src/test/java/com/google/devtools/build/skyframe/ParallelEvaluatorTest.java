@@ -101,7 +101,7 @@ public class ParallelEvaluatorTest {
 
   private ParallelEvaluator makeEvaluator(
       ProcessableGraph graph,
-      ImmutableMap<SkyFunctionName, ? extends SkyFunction> builders,
+      ImmutableMap<SkyFunctionName, SkyFunction> builders,
       boolean keepGoing,
       EventFilter storedEventFilter) {
     Version oldGraphVersion = graphVersion;
@@ -122,8 +122,10 @@ public class ParallelEvaluatorTest {
         EvaluationVersionBehavior.MAX_CHILD_VERSIONS);
   }
 
-  private ParallelEvaluator makeEvaluator(ProcessableGraph graph,
-      ImmutableMap<SkyFunctionName, ? extends SkyFunction> builders, boolean keepGoing) {
+  private ParallelEvaluator makeEvaluator(
+      ProcessableGraph graph,
+      ImmutableMap<SkyFunctionName, SkyFunction> builders,
+      boolean keepGoing) {
     return makeEvaluator(graph, builders, keepGoing,
         InMemoryMemoizingEvaluator.DEFAULT_STORED_EVENT_FILTER);
   }
@@ -505,11 +507,12 @@ public class ParallelEvaluatorTest {
     final Set<SkyKey> receivedValues = Sets.newConcurrentHashSet();
     revalidationReceiver =
         new DirtyTrackingProgressReceiver(
-            new EvaluationProgressReceiver.NullEvaluationProgressReceiver() {
+            new EvaluationProgressReceiver() {
               @Override
               public void evaluated(
                   SkyKey skyKey,
-                  @Nullable SkyValue value,
+                  @Nullable SkyValue newValue,
+                  @Nullable ErrorInfo newError,
                   Supplier<EvaluationSuccessState> evaluationSuccessState,
                   EvaluationState state) {
                 receivedValues.add(skyKey);
@@ -912,6 +915,38 @@ public class ParallelEvaluatorTest {
     if (keepGoing) {
       assertThat(result.getCatastrophe()).isSameInstanceAs(catastrophe);
     }
+  }
+
+  @Test
+  public void topCatastrophe() throws Exception {
+    graph = new InMemoryGraphImpl();
+    SkyKey catastropheKey = GraphTester.toSkyKey("catastrophe");
+    Exception catastrophe = new SomeErrorException("bad");
+    tester
+        .getOrCreate(catastropheKey)
+        .setBuilder(
+            new SkyFunction() {
+              @Nullable
+              @Override
+              public SkyValue compute(SkyKey skyKey, Environment env) throws SkyFunctionException {
+                throw new SkyFunctionException(catastrophe, Transience.PERSISTENT) {
+                  @Override
+                  public boolean isCatastrophic() {
+                    return true;
+                  }
+                };
+              }
+
+              @Nullable
+              @Override
+              public String extractTag(SkyKey skyKey) {
+                return null;
+              }
+            });
+
+    EvaluationResult<StringValue> result =
+        eval(/*keepGoing=*/ true, ImmutableList.of(catastropheKey));
+    assertThat(result.getCatastrophe()).isEqualTo(catastrophe);
   }
 
   @Test
@@ -2161,7 +2196,7 @@ public class ParallelEvaluatorTest {
     int numUniqueCycles = 0;
     CycleDeduper<SkyKey> cycleDeduper = new CycleDeduper<SkyKey>();
     for (ImmutableList<SkyKey> cycle : cycles) {
-      if (cycleDeduper.seen(cycle)) {
+      if (!cycleDeduper.alreadySeen(cycle)) {
         numUniqueCycles++;
       }
     }
@@ -2173,7 +2208,7 @@ public class ParallelEvaluatorTest {
     final Set<SkyKey> enqueuedValues = Sets.newConcurrentHashSet();
     final Set<SkyKey> evaluatedValues = Sets.newConcurrentHashSet();
     EvaluationProgressReceiver progressReceiver =
-        new EvaluationProgressReceiver.NullEvaluationProgressReceiver() {
+        new EvaluationProgressReceiver() {
           @Override
           public void enqueueing(SkyKey skyKey) {
             enqueuedValues.add(skyKey);
@@ -2182,7 +2217,8 @@ public class ParallelEvaluatorTest {
           @Override
           public void evaluated(
               SkyKey skyKey,
-              @Nullable SkyValue value,
+              @Nullable SkyValue newValue,
+              @Nullable ErrorInfo newError,
               Supplier<EvaluationSuccessState> evaluationSuccessState,
               EvaluationState state) {
             evaluatedValues.add(skyKey);

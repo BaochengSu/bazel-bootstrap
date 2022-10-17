@@ -92,8 +92,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
   private final BazelEvaluationTestCase ev = new BazelEvaluationTestCase();
 
   private StarlarkRuleContext createRuleContext(String label) throws Exception {
-    return new StarlarkRuleContext(
-        getRuleContextForStarlark(getConfiguredTarget(label)), null, getStarlarkSemantics());
+    return new StarlarkRuleContext(getRuleContextForStarlark(getConfiguredTarget(label)), null);
   }
 
   @Rule public ExpectedException thrown = ExpectedException.none();
@@ -312,6 +311,26 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
   }
 
   @Test
+  public void createSpawnAction_progressMessageWithSubstitutions() throws Exception {
+    StarlarkRuleContext ruleContext = createRuleContext("//foo:foo");
+    setRuleContext(ruleContext);
+    ev.exec(
+        "ruleContext.actions.run(",
+        "  inputs = ruleContext.files.srcs,",
+        "  outputs = ruleContext.files.srcs[1:],",
+        "  executable = ruleContext.files.tools[0],",
+        "  mnemonic = 'DummyMnemonic',",
+        "  progress_message = 'message %{label} %{input} %{output}')");
+
+    SpawnAction action =
+        (SpawnAction)
+            Iterables.getOnlyElement(
+                ruleContext.getRuleContext().getAnalysisEnvironment().getRegisteredActions());
+
+    assertThat(action.getProgressMessage()).isEqualTo("message //foo:foo foo/a.txt foo/b.img");
+  }
+
+  @Test
   public void testCreateActionWithDepsetInput() throws Exception {
     // Same test as above, with depset as inputs.
     StarlarkRuleContext ruleContext = createRuleContext("//foo:foo");
@@ -345,7 +364,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
 
   @Test
   public void testCreateSpawnActionShellCommandList() throws Exception {
-    ev.setSemantics("--incompatible_run_shell_command_string=false");
+    setBuildLanguageOptions("--incompatible_run_shell_command_string=false");
     StarlarkRuleContext ruleContext = createRuleContext("//foo:foo");
     setRuleContext(ruleContext);
     ev.exec(
@@ -445,7 +464,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
 
   @Test
   public void testRunShellArgumentsWithCommandSequence() throws Exception {
-    ev.setSemantics("--incompatible_run_shell_command_string=false");
+    setBuildLanguageOptions("--incompatible_run_shell_command_string=false");
     setRuleContext(createRuleContext("//foo:foo"));
     ev.checkEvalErrorContains(
         "'arguments' must be empty if 'command' is a sequence of strings",
@@ -1778,12 +1797,12 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
         ")");
     scratch.file("test/BUILD", "load(':my_rule.bzl', 'my_rule')", "my_rule(name = 'my_rule')");
 
-    AssertionError expected =
+    AssertionError ex =
         assertThrows(AssertionError.class, () -> getConfiguredTarget("//test:my_rule"));
-    assertThat(expected)
-        .hasMessageThat()
-        .contains(
-            "cannot return a non-exported provider instance from a rule implementation function.");
+    String msg = ex.getMessage();
+    assertThat(msg)
+        .contains("rule implementation function returned an instance of an unnamed provider");
+    assertThat(msg).contains("Provider defined at /workspace/test/my_rule.bzl:2:28");
   }
 
   @Test
@@ -2480,7 +2499,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
 
   @Test
   public void testConfigurationField_starlarkSplitTransitionProhibited() throws Exception {
-    scratch.file(
+    scratch.overwriteFile(
         "tools/allowlists/function_transition_allowlist/BUILD",
         "package_group(",
         "    name = 'function_transition_allowlist',",
@@ -2508,8 +2527,6 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
         "        default = configuration_field(fragment='cpp', name = 'cc_toolchain'))})");
 
     scratch.file("test/BUILD", "load('//test:rule.bzl', 'foo')", "foo(name='foo')");
-
-    setBuildLanguageOptions("--experimental_starlark_config_transitions=true");
 
     reporter.removeHandler(failFastHandler);
     getConfiguredTarget("//test:foo");
@@ -3069,7 +3086,7 @@ public class StarlarkRuleImplementationFunctionsTest extends BuildViewTestCase {
           artifact.getRootRelativePath().equals(PathFragment.create(dirRelativePath)));
       for (String file : files) {
         output.add(
-            new DerivedArtifact(
+            DerivedArtifact.create(
                 artifact.getRoot(),
                 artifact.getExecPath().getRelative(file),
                 (ActionLookupKey) artifact.getArtifactOwner()));

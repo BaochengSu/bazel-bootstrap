@@ -36,6 +36,7 @@ import org.junit.runners.JUnit4;
 public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
 
   private static final MockRule OVERRIDABLE_RULE = () -> MockRule.define("overridable_rule");
+  private static final MockRule JUST_A_RULE = () -> MockRule.define("just_a_rule");
 
   @Override
   protected ConfiguredRuleClassProvider createRuleClassProvider() {
@@ -43,6 +44,7 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
     ConfiguredRuleClassProvider.Builder builder =
         new ConfiguredRuleClassProvider.Builder()
             .addRuleDefinition(OVERRIDABLE_RULE)
+            .addRuleDefinition(JUST_A_RULE)
             .addStarlarkAccessibleTopLevels("overridable_symbol", "original_value")
             .addStarlarkAccessibleTopLevels("just_a_symbol", "another_value");
     TestRuleClassProvider.addStandardRules(builder);
@@ -99,9 +101,16 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
     // Overridden symbol.
     assertThat(value.predeclaredForBuildBzl).containsEntry("overridable_symbol", "new_value");
     // Overridden native field.
-    Object nativeField =
-        ((Structure) value.predeclaredForBuildBzl.get("native")).getValue("overridable_rule");
-    assertThat(nativeField).isEqualTo("new_rule");
+    Structure nativeObject = (Structure) value.predeclaredForBuildBzl.get("native");
+    assertThat(nativeObject.getValue("overridable_rule")).isEqualTo("new_rule");
+    assertThat(nativeObject.getFieldNames()).contains("just_a_rule");
+
+    // Analogous assertions for build files.
+    assertThat(value.predeclaredForBuild).doesNotContainKey("print");
+    assertThat(value.predeclaredForBuild).containsKey("glob");
+    assertThat(value.predeclaredForBuild).containsEntry("overridable_rule", "new_rule");
+    assertThat(value.predeclaredForBuild).containsKey("just_a_rule");
+
     // Stuff for native rules.
     assertThat(value.exportedToJava).containsExactly("for_native_code", "secret_sauce").inOrder();
 
@@ -152,8 +161,7 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
   @Test
   public void cannotOverrideGeneralSymbol() throws Exception {
     assertBuiltinsFailure(
-        "Failed to apply declared builtins: Cannot override native module field 'glob' with an"
-            + " injected value",
+        "Failed to apply declared builtins: Cannot override 'glob' with an injected rule",
         //
         "exported_toplevels = {}", //
         "exported_rules = {'glob': 'new_builtin'}",
@@ -163,7 +171,7 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
   @Test
   public void parseErrorInExportsHandledGracefully() throws Exception {
     assertBuiltinsFailure(
-        "Failed to load builtins sources: Extension 'exports.bzl' (internal) has errors",
+        "Failed to load builtins sources: compilation of module 'exports.bzl' (internal) failed",
         //
         "exported_toplevels = {}",
         "exported_rules = {}",
@@ -174,7 +182,7 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
   @Test
   public void evalErrorInExportsHandledGracefully() throws Exception {
     assertBuiltinsFailure(
-        "Failed to load builtins sources: Extension file 'exports.bzl' (internal) has errors",
+        "Failed to load builtins sources: initialization of module 'exports.bzl' (internal) failed",
         //
         "exported_toplevels = {}",
         "exported_rules = {}",
@@ -185,7 +193,7 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
   @Test
   public void builtinsBzlCannotAccessNative() throws Exception {
     assertBuiltinsFailure(
-        "Extension 'exports.bzl' (internal) has errors",
+        "compilation of module 'exports.bzl' (internal) failed",
         //
         "native.overridable_rule",
         "exported_toplevels = {}",
@@ -197,7 +205,7 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
   @Test
   public void builtinsBzlCannotAccessRuleSpecificSymbol() throws Exception {
     assertBuiltinsFailure(
-        "Extension 'exports.bzl' (internal) has errors",
+        "compilation of module 'exports.bzl' (internal) failed",
         //
         "overridable_symbol",
         "exported_toplevels = {}",
@@ -207,30 +215,30 @@ public class StarlarkBuiltinsFunctionTest extends BuildViewTestCase {
   }
 
   @Test
-  public void builtinsBzlCanAccessInternal() throws Exception {
+  public void builtinsBzlCanAccessBuiltinsInternalModule() throws Exception {
     EvaluationResult<StarlarkBuiltinsValue> result =
         evalBuiltins(
-            "print(_internal)",
+            "print(_builtins)",
             "",
             "exported_toplevels = {}",
             "exported_rules = {}",
             "exported_to_java = {}");
     assertThatEvaluationResult(result).hasNoError();
-    assertContainsEvent("<_internal module>");
+    assertContainsEvent("<_builtins module>");
   }
 
   @Test
-  public void regularBzlCannotAccessInternal() throws Exception {
+  public void regularBzlCannotAccessBuiltinsInternalModule() throws Exception {
     scratch.file(
         "pkg/BUILD", //
         "load(':dummy.bzl', 'dummy_symbol')");
     scratch.file(
         "pkg/dummy.bzl", //
-        "_internal",
+        "_builtins",
         "dummy_symbol = None");
 
     reporter.removeHandler(failFastHandler);
     getConfiguredTarget("//pkg:BUILD");
-    assertContainsEvent("name '_internal' is not defined");
+    assertContainsEvent("name '_builtins' is not defined");
   }
 }

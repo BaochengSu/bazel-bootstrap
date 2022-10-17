@@ -19,6 +19,7 @@ import static org.junit.Assert.assertThrows;
 import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.analysis.ViewCreationFailedException;
+import com.google.devtools.build.lib.analysis.util.AnalysisMock;
 import com.google.devtools.build.lib.buildtool.util.BuildIntegrationTestCase;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,6 +35,11 @@ public class EnvironmentRestrictedBuildTest extends BuildIntegrationTestCase {
   @Before
   public final void addNoBuildOption() throws Exception  {
     addOptions("--nobuild"); // Target enforcement happens before the execution phase.
+  }
+
+  @Before
+  public void stageEmbeddedTools() throws Exception {
+    AnalysisMock.get().setupMockToolsRepository(mockToolsConfig);
   }
 
   private void writeEnvironmentRules(String... defaults) throws Exception {
@@ -60,9 +66,12 @@ public class EnvironmentRestrictedBuildTest extends BuildIntegrationTestCase {
     addOptions("--target_environment=//buildenv:one");
     assertThat(assertThrows(ViewCreationFailedException.class, () -> buildTarget("//foo:bar")))
         .hasMessageThat()
-        .contains(""
-            + "//foo:bar does not support:\n"
-            + "  //buildenv:one");
+        .contains(
+            ""
+                + "//foo:bar declares compatibility with:\n"
+                + "  []\n"
+                + "but does not support:\n"
+                + "  //buildenv:one");
   }
 
   @Test
@@ -85,9 +94,12 @@ public class EnvironmentRestrictedBuildTest extends BuildIntegrationTestCase {
     addOptions("--target_environment=//buildenv:one", "--target_environment=//buildenv:two");
     assertThat(assertThrows(ViewCreationFailedException.class, () -> buildTarget("//foo:bar")))
         .hasMessageThat()
-        .contains(""
-            + "//foo:bar does not support:\n"
-            + "  //buildenv:two");
+        .contains(
+            ""
+                + "//foo:bar declares compatibility with:\n"
+                + "  [//buildenv:one]\n"
+                + "but does not support:\n"
+                + "  //buildenv:two");
   }
 
   @Test
@@ -120,9 +132,12 @@ public class EnvironmentRestrictedBuildTest extends BuildIntegrationTestCase {
     addOptions("--target_environment=//buildenv:one");
     assertThat(assertThrows(ViewCreationFailedException.class, () -> buildTarget("//foo:all")))
         .hasMessageThat()
-        .contains(""
-            + "//foo:bad_bar does not support:\n"
-            + "  //buildenv:one");
+        .contains(
+            ""
+                + "//foo:bad_bar declares compatibility with:\n"
+                + "  [//buildenv:two]\n"
+                + "but does not support:\n"
+                + "  //buildenv:one");
   }
 
   @Test
@@ -199,17 +214,34 @@ public class EnvironmentRestrictedBuildTest extends BuildIntegrationTestCase {
     addOptions("--target_environment=//buildenv:one", "--define", "mode=two");
     assertThat(assertThrows(ViewCreationFailedException.class, () -> buildTarget("//foo:toplevel")))
         .hasMessageThat()
-        .contains(""
-            + "//foo:toplevel does not support:\n"
-            + "  environment: //buildenv:one\n"
-            + "    removed by: //foo:toplevel");
+        .contains(
+            ""
+                + "//foo:toplevel declares compatibility with:\n"
+                + "  [//buildenv:one, //buildenv:two]\n"
+                + "but does not support:\n"
+                + "  environment: //buildenv:one\n"
+                + "    removed by: //foo:toplevel");
   }
 
   @Test
   public void topLevelOutputFile() throws Exception {
     writeEnvironmentRules();
-    write("foo/BUILD",
-        "cc_library(name = 'bar', srcs = ['bar.cc'], compatible_with = ['//buildenv:one'])");
+    write(
+        "foo/rule.bzl",
+        "def _impl(ctx):",
+        "  file = ctx.actions.declare_file('libbar.a')",
+        "  ctx.actions.write(file, 'hello')",
+        "  return [DefaultInfo(files = depset([file]))]",
+        "crule = rule(",
+        "  _impl,",
+        "  outputs = {",
+        "    'archive': 'lib%{name}.a'",
+        "  },",
+        ");");
+    write(
+        "foo/BUILD",
+        "load(':rule.bzl', 'crule')",
+        "crule(name = 'bar', compatible_with = ['//buildenv:one'])");
     addOptions("--target_environment=//buildenv:one");
     buildTarget("//foo:libbar.a");
     assertThat(getResult().getSuccess()).isTrue();
@@ -250,7 +282,12 @@ public class EnvironmentRestrictedBuildTest extends BuildIntegrationTestCase {
     addOptions("--target_environment=//buildenv:one");
     assertThat(assertThrows(ViewCreationFailedException.class, () -> buildTarget("//foo:badalias")))
         .hasMessageThat()
-        .contains("" + "//foo:badgen.out does not support:\n" + "  //buildenv:one");
+        .contains(
+            ""
+                + "//foo:badgen.out declares compatibility with:\n"
+                + "  []\n"
+                + "but does not support:\n"
+                + "  //buildenv:one");
   }
 
   @Test
@@ -473,9 +510,12 @@ public class EnvironmentRestrictedBuildTest extends BuildIntegrationTestCase {
         "--target_environment=//buildenv/b:b1");
     assertThat(assertThrows(ViewCreationFailedException.class, () -> buildTarget("//foo:bar")))
         .hasMessageThat()
-        .contains(""
-            + "//foo:bar does not support:\n"
-            + "  //buildenv/b:b1");
+        .contains(
+            ""
+                + "//foo:bar declares compatibility with:\n"
+                + "  [//buildenv/b:b2]\n"
+                + "but does not support:\n"
+                + "  //buildenv/b:b1");
   }
 
   @Test

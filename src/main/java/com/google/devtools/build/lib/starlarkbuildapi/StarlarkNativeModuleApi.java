@@ -19,7 +19,6 @@ import net.starlark.java.annot.Param;
 import net.starlark.java.annot.ParamType;
 import net.starlark.java.annot.StarlarkBuiltin;
 import net.starlark.java.annot.StarlarkMethod;
-import net.starlark.java.eval.Dict;
 import net.starlark.java.eval.EvalException;
 import net.starlark.java.eval.NoneType;
 import net.starlark.java.eval.Sequence;
@@ -44,7 +43,8 @@ public interface StarlarkNativeModuleApi extends StarlarkValue {
   @StarlarkMethod(
       name = "glob",
       doc =
-          "Glob returns a list of every file in the current package that:<ul>\n"
+          "Glob returns a new, mutable, sorted list of every file in the current package "
+              + "that:<ul>\n"
               + "<li>Matches at least one pattern in <code>include</code>.</li>\n"
               + "<li>Does not match any of the patterns in <code>exclude</code> "
               + "(default <code>[]</code>).</li></ul>\n"
@@ -92,20 +92,28 @@ public interface StarlarkNativeModuleApi extends StarlarkValue {
   @StarlarkMethod(
       name = "existing_rule",
       doc =
-          "Returns a new mutable dict that describes the attributes of a rule instantiated in this "
-              + "thread's package, or <code>None</code> if no rule instance of that name exists." //
-              + "<p>The dict contains an entry for each attribute, except private ones, whose"
-              + " names do not start with a letter. In addition, the dict contains entries for the"
-              + " rule instance's <code>name</code> and <code>kind</code> (for example,"
+          "Returns a new mutable dict that describes the attributes of a rule instantiated in this"
+              + " thread's package, or <code>None</code> if no rule instance of that name"
+              + " exists." //
+              + "<p>If the <code>--incompatible_existing_rules_immutable_view</code> flag is set,"
+              + " instead returns an immutable dict-like object (i.e. supporting dict-like"
+              + " iteration, <code>len(x)</code>, <code>name in x</code>, <code>x[name]</code>,"
+              + " <code>x.get(name)</code>, <code>x.items()</code>, <code>x.keys()</code>, and"
+              + " <code>x.values()</code>) with the same content." //
+              + "<p>The result contains an entry for each attribute, with the exception of private"
+              + " ones (whose names do not start with a letter) and a few unrepresentable legacy"
+              + " attribute types. In addition, the dict contains entries for the rule instance's"
+              + " <code>name</code> and <code>kind</code> (for example,"
               + " <code>'cc_binary'</code>)." //
-              + "<p>The values of the dict represent attribute values as follows:" //
+              + "<p>The values of the result represent attribute values as follows:" //
               + "<ul><li>Attributes of type str, int, and bool are represented as is.</li>" //
               + "<li>Labels are converted to strings of the form <code>':foo'</code> for targets"
               + " in the same package or <code>'//pkg:name'</code> for targets in a different"
               + " package.</li>" //
               + "<li>Lists are represented as tuples, and dicts are converted to new, mutable"
               + " dicts. Their elements are recursively converted in the same fashion.</li>" //
-              + "<li><code>select</code> values are returned as is." //
+              + "<li><code>select</code> values are returned with their contents transformed as " //
+              + "described above.</li>" //
               + "<li>Attributes for which no value was specified during rule instantiation and"
               + " whose default value is computed are excluded from the result. (Computed defaults"
               + " cannot be computed until the analysis phase.).</li>" //
@@ -116,20 +124,25 @@ public interface StarlarkNativeModuleApi extends StarlarkValue {
               + " used by computed defaults, the other used by <code>ctx.attr.foo</code>.",
       parameters = {@Param(name = "name", doc = "The name of the target.")},
       useStarlarkThread = true)
-  Object existingRule(String name, StarlarkThread thread)
-      throws EvalException, InterruptedException;
+  Object existingRule(String name, StarlarkThread thread) throws EvalException;
 
   @StarlarkMethod(
       name = "existing_rules",
       doc =
           "Returns a new mutable dict describing the rules so far instantiated in this thread's"
               + " package. Each dict entry maps the name of the rule instance to the result that"
-              + " would be returned by <code>existing_rule(name)</code>.<p><i>Note: If possible,"
-              + " avoid using this function. It makes BUILD files brittle and order-dependent, and"
-              + " it may be expensive especially if called within a loop.</i>",
+              + " would be returned by <code>existing_rule(name)</code>." //
+              + "<p>If the <code>--incompatible_existing_rules_immutable_view</code> flag is set,"
+              + " instead returns an immutable dict-like object (i.e. supporting dict-like"
+              + " iteration, <code>len(x)</code>, <code>name in x</code>, <code>x[name]</code>,"
+              + " <code>x.get(name)</code>, <code>x.items()</code>, <code>x.keys()</code>, and"
+              + " <code>x.values()</code>) with the same content." //
+              + "<p><i>Note: If possible, avoid using this function. It makes BUILD files brittle"
+              + " and order-dependent. Furthermore, unless the"
+              + " <code>--incompatible_existing_rules_immutable_view</code> flag is set, this"
+              + " function may be very expensive, especially if called within a loop.</i>",
       useStarlarkThread = true)
-  Dict<String, Dict<String, Object>> existingRules(StarlarkThread thread)
-      throws EvalException, InterruptedException;
+  Object existingRules(StarlarkThread thread) throws EvalException;
 
   @StarlarkMethod(
       name = "package_group",

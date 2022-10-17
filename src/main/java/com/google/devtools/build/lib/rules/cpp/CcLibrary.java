@@ -22,7 +22,6 @@ import com.google.common.collect.Streams;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.FailAction;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
-import com.google.devtools.build.lib.analysis.Allowlist;
 import com.google.devtools.build.lib.analysis.AnalysisUtils;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.analysis.FileProvider;
@@ -43,7 +42,6 @@ import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.packages.AttributeMap;
 import com.google.devtools.build.lib.packages.BuildType;
-import com.google.devtools.build.lib.packages.ImplicitOutputsFunction;
 import com.google.devtools.build.lib.packages.RawAttributeMapper;
 import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.packages.Type;
@@ -76,8 +74,6 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
 
   /** A string constant for the name of Windows def file output group. */
   public static final String DEF_FILE_OUTPUT_GROUP_NAME = "def_file";
-
-  public static final String IMPLICIT_OUTPUTS_ALLOWLIST = "allowed_cc_lib_implicit_outputs";
 
   private final CppSemantics semantics;
 
@@ -120,18 +116,23 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
       boolean linkStatic,
       boolean addDynamicRuntimeInputArtifactsToRunfiles)
       throws RuleErrorException, InterruptedException {
-    CcCommon.checkRuleLoadedThroughMacro(ruleContext);
     semantics.validateDeps(ruleContext);
     if (ruleContext.hasErrors()) {
       addEmptyRequiredProviders(targetBuilder);
       return;
     }
 
+    CppConfiguration cppConfiguration = ruleContext.getFragment(CppConfiguration.class);
+    if (!cppConfiguration.experimentalCcImplementationDeps()
+        && ruleContext.attributes().isAttributeValueExplicitlySpecified("implementation_deps")) {
+      ruleContext.attributeError(
+          "implementation_deps", "requires --experimental_cc_implementation_deps");
+    }
+
     final CcCommon common = new CcCommon(ruleContext);
     common.reportInvalidOptions(ruleContext);
 
     CcToolchainProvider ccToolchain = common.getToolchain();
-    CppConfiguration cppConfiguration = ruleContext.getFragment(CppConfiguration.class);
 
     ImmutableMap.Builder<String, String> toolchainMakeVariables = ImmutableMap.builder();
     ccToolchain.addGlobalMakeVariables(toolchainMakeVariables);
@@ -181,6 +182,9 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
                     .collect(ImmutableList.toImmutableList()))
             .addCcCompilationContexts(
                 ImmutableList.of(CcCompilationHelper.getStlCcCompilationContext(ruleContext)))
+            .addImplementationDepsCcCompilationContexts(
+                CppHelper.getCompilationContextsFromDeps(
+                    ImmutableList.copyOf(ruleContext.getPrerequisites("implementation_deps"))))
             .setHeadersCheckingMode(semantics.determineHeadersCheckingMode(ruleContext));
 
     CcLinkingHelper linkingHelper =
@@ -199,6 +203,9 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
                 TargetUtils.getExecutionInfo(
                     ruleContext.getRule(), ruleContext.isAllowTagsPropagation()))
             .fromCommon(ruleContext, common)
+            .addCcLinkingContexts(
+                CppHelper.getLinkingContextsFromDeps(
+                    ImmutableList.copyOf(ruleContext.getPrerequisites("implementation_deps"))))
             .setGrepIncludes(CppHelper.getGrepIncludes(ruleContext))
             .setTestOrTestOnlyTarget(ruleContext.isTestOnlyTarget())
             .addLinkopts(common.getLinkopts())
@@ -324,8 +331,7 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
     // contract wrt. implicit output files, if the contract says so. Behavior here differs
     // between Bazel and Blaze.
     CcLinkingOutputs ccLinkingOutputs = CcLinkingOutputs.EMPTY;
-    if (ruleContext.getRule().getImplicitOutputsFunction() != ImplicitOutputsFunction.NONE
-        || !ccCompilationOutputs.isEmpty()) {
+    if (semantics.createEmptyArchive() || !ccCompilationOutputs.isEmpty()) {
       if (featureConfiguration.isEnabled(CppRuleClasses.TARGETS_WINDOWS)) {
         String dllNameSuffix = CppHelper.getDLLHashSuffix(ruleContext, featureConfiguration);
         linkingHelper.setLinkedDLLNameSuffix(dllNameSuffix);
@@ -390,7 +396,7 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
         linkingHelper.buildCcLinkingContextFromLibrariesToLink(
             neverLink ? ImmutableList.of() : libraryToLinks,
             compilationInfo.getCcCompilationContext());
-    CcNativeLibraryProvider ccNativeLibraryProvider =
+    CcNativeLibraryInfo ccNativeLibraryInfo =
         CppHelper.collectNativeCcLibraries(ruleContext.getPrerequisites("deps"), libraryToLinks);
 
     /*
@@ -473,13 +479,10 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
             ccToolchain,
             featureConfiguration,
             ruleContext,
-            /* generateHeaderTokensGroup= */ true,
-            /* addSelfHeaderTokens= */ true,
             /* generateHiddenTopLevelGroup= */ true);
     CcStarlarkApiProvider.maybeAdd(ruleContext, targetBuilder);
     targetBuilder
         .setFilesToBuild(filesToBuild)
-        .addProvider(ccNativeLibraryProvider)
         .addNativeDeclaredProvider(
             CcInfo.builder()
                 .setCcCompilationContext(compilationInfo.getCcCompilationContext())
@@ -487,21 +490,12 @@ public abstract class CcLibrary implements RuleConfiguredTargetFactory {
                 .setCcDebugInfoContext(
                     CppHelper.mergeCcDebugInfoContexts(
                         compilationInfo.getCcCompilationOutputs(), ccInfosFromDeps))
+                .setCcNativeLibraryInfo(ccNativeLibraryInfo)
                 .build())
         .addOutputGroups(
             CcCommon.mergeOutputGroups(ImmutableList.of(currentOutputGroups, outputGroups.build())))
         .addNativeDeclaredProvider(instrumentedFilesProvider)
         .addProvider(RunfilesProvider.withData(defaultRunfiles.build(), dataRunfiles.build()));
-
-    maybeAddDeniedImplicitOutputsProvider(targetBuilder, ruleContext);
-  }
-
-  private static void maybeAddDeniedImplicitOutputsProvider(
-      RuleConfiguredTargetBuilder targetBuilder, RuleContext ruleContext) {
-    if (ruleContext.getRule().getImplicitOutputsFunction() != ImplicitOutputsFunction.NONE
-        && !Allowlist.isAvailable(ruleContext, IMPLICIT_OUTPUTS_ALLOWLIST)) {
-      targetBuilder.addNativeDeclaredProvider(new DeniedImplicitOutputMarkerProvider());
-    }
   }
 
   private static void warnAboutEmptyLibraries(RuleContext ruleContext,

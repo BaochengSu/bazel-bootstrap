@@ -22,7 +22,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.analysis.OutputGroupInfo;
-import com.google.devtools.build.lib.analysis.RuleConfiguredTargetBuilder;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.RuleDefinitionEnvironment;
 import com.google.devtools.build.lib.analysis.Runfiles;
@@ -30,6 +29,7 @@ import com.google.devtools.build.lib.analysis.Runfiles.Builder;
 import com.google.devtools.build.lib.analysis.RunfilesProvider;
 import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
 import com.google.devtools.build.lib.analysis.actions.CustomCommandLine;
+import com.google.devtools.build.lib.analysis.actions.SpawnAction;
 import com.google.devtools.build.lib.analysis.actions.Substitution.ComputedSubstitution;
 import com.google.devtools.build.lib.analysis.test.TestConfiguration;
 import com.google.devtools.build.lib.cmdline.Label;
@@ -106,8 +106,12 @@ public interface JavaSemantics {
     return environment.getToolsLabel("//tools/jdk:current_java_toolchain");
   }
 
-  /** Name of the output group used for source jars. */
+  /** Name of the output group used for transitive source jars. */
   String SOURCE_JARS_OUTPUT_GROUP = OutputGroupInfo.HIDDEN_OUTPUT_GROUP_PREFIX + "source_jars";
+
+  /** Name of the output group used for direct source jars. */
+  String DIRECT_SOURCE_JARS_OUTPUT_GROUP =
+      OutputGroupInfo.HIDDEN_OUTPUT_GROUP_PREFIX + "direct_source_jars";
 
   /** Implementation for the :jvm attribute. */
   static Label jvmAttribute(RuleDefinitionEnvironment env) {
@@ -420,21 +424,8 @@ public interface JavaSemantics {
   Iterable<String> getJvmFlags(
       RuleContext ruleContext, ImmutableList<Artifact> srcsArtifacts, List<String> userJvmFlags);
 
-  /**
-   * Adds extra providers to a Java target.
-   *
-   * @throws InterruptedException
-   */
-  void addProviders(
-      RuleContext ruleContext,
-      JavaCommon javaCommon,
-      Artifact gensrcJar,
-      RuleConfiguredTargetBuilder ruleBuilder)
-      throws InterruptedException;
-
   /** Translates XMB messages to translations artifact suitable for Java targets. */
-  ImmutableList<Artifact> translate(
-      RuleContext ruleContext, JavaConfiguration javaConfig, List<Artifact> messages);
+  ImmutableList<Artifact> translate(RuleContext ruleContext, List<Artifact> messages);
 
   /**
    * Get the launcher artifact for a java binary, creating the necessary actions for it.
@@ -516,4 +507,7 @@ public interface JavaSemantics {
   Artifact getObfuscatedConstantStringMap(RuleContext ruleContext) throws InterruptedException;
 
   void checkDependencyRuleKinds(RuleContext ruleContext);
+
+  /** Sets the progress message on the lint build action. */
+  void setLintProgressMessage(SpawnAction.Builder spawnAction);
 }

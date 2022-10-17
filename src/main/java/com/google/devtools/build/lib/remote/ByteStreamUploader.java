@@ -15,6 +15,7 @@ package com.google.devtools.build.lib.remote;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.Futures.immediateVoidFuture;
 import static java.lang.String.format;
 import static java.util.Collections.singletonMap;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -23,6 +24,7 @@ import build.bazel.remote.execution.v2.Digest;
 import com.google.bytestream.ByteStreamGrpc;
 import com.google.bytestream.ByteStreamGrpc.ByteStreamFutureStub;
 import com.google.bytestream.ByteStreamProto.QueryWriteStatusRequest;
+import com.google.bytestream.ByteStreamProto.QueryWriteStatusResponse;
 import com.google.bytestream.ByteStreamProto.WriteRequest;
 import com.google.bytestream.ByteStreamProto.WriteResponse;
 import com.google.common.annotations.VisibleForTesting;
@@ -116,6 +118,16 @@ class ByteStreamUploader extends AbstractReferenceCounted {
     this.callCredentialsProvider = callCredentialsProvider;
     this.callTimeoutSecs = callTimeoutSecs;
     this.retrier = retrier;
+  }
+
+  @VisibleForTesting
+  ReferenceCountedChannel getChannel() {
+    return channel;
+  }
+
+  @VisibleForTesting
+  RemoteRetrier getRetrier() {
+    return retrier;
   }
 
   /**
@@ -236,7 +248,7 @@ class ByteStreamUploader extends AbstractReferenceCounted {
       checkState(!isShutdown, "Must not call uploadBlobs after shutdown.");
 
       if (!forceUpload && uploadedBlobs.contains(HashCode.fromString(digest.getHash()))) {
-        return Futures.immediateFuture(null);
+        return immediateVoidFuture();
       }
 
       ListenableFuture<Void> inProgress = uploadsInProgress.get(digest);
@@ -288,9 +300,11 @@ class ByteStreamUploader extends AbstractReferenceCounted {
     }
   }
 
-  private static String buildUploadResourceName(String instanceName, UUID uuid, Digest digest) {
-    String resourceName =
-        format("uploads/%s/blobs/%s/%d", uuid, digest.getHash(), digest.getSizeBytes());
+  private static String buildUploadResourceName(
+      String instanceName, UUID uuid, Digest digest, boolean compressed) {
+    String template =
+        compressed ? "uploads/%s/compressed-blobs/zstd/%s/%d" : "uploads/%s/blobs/%s/%d";
+    String resourceName = format(template, uuid, digest.getHash(), digest.getSizeBytes());
     if (!Strings.isNullOrEmpty(instanceName)) {
       resourceName = instanceName + "/" + resourceName;
     }
@@ -315,7 +329,8 @@ class ByteStreamUploader extends AbstractReferenceCounted {
     }
 
     UUID uploadId = UUID.randomUUID();
-    String resourceName = buildUploadResourceName(instanceName, uploadId, digest);
+    String resourceName =
+        buildUploadResourceName(instanceName, uploadId, digest, chunker.isCompressed());
     AsyncUpload newUpload =
         new AsyncUpload(
             context,
@@ -360,7 +375,7 @@ class ByteStreamUploader extends AbstractReferenceCounted {
   private static class AsyncUpload {
 
     private final RemoteActionExecutionContext context;
-    private final Channel channel;
+    private final ReferenceCountedChannel channel;
     private final CallCredentialsProvider callCredentialsProvider;
     private final long callTimeoutSecs;
     private final Retrier retrier;
@@ -371,7 +386,7 @@ class ByteStreamUploader extends AbstractReferenceCounted {
 
     AsyncUpload(
         RemoteActionExecutionContext context,
-        Channel channel,
+        ReferenceCountedChannel channel,
         CallCredentialsProvider callCredentialsProvider,
         long callTimeoutSecs,
         Retrier retrier,
@@ -395,10 +410,23 @@ class ByteStreamUploader extends AbstractReferenceCounted {
               () ->
                   retrier.executeAsync(
                       () -> {
-                        if (committedOffset.get() < chunker.getSize()) {
+                        if (chunker.getSize() == committedOffset.get()) {
+                          return immediateVoidFuture();
+                        }
+                        try {
+                          chunker.seek(committedOffset.get());
+                        } catch (IOException e) {
+                          try {
+                            chunker.reset();
+                          } catch (IOException resetException) {
+                            e.addSuppressed(resetException);
+                          }
+                          return Futures.immediateFailedFuture(e);
+                        }
+                        if (chunker.hasNext()) {
                           return callAndQueryOnFailure(committedOffset, progressiveBackoff);
                         }
-                        return Futures.immediateFuture(null);
+                        return immediateVoidFuture();
                       },
                       progressiveBackoff),
               callCredentialsProvider);
@@ -406,20 +434,26 @@ class ByteStreamUploader extends AbstractReferenceCounted {
       return Futures.transformAsync(
           callFuture,
           (result) -> {
-            long committedSize = committedOffset.get();
-            long expected = chunker.getSize();
-            if (committedSize != expected) {
-              String message =
-                  format(
-                      "write incomplete: committed_size %d for %d total", committedSize, expected);
-              return Futures.immediateFailedFuture(new IOException(message));
+            if (!chunker.hasNext()) {
+              // Only check for matching committed size if we have completed the upload.
+              // If another client did, they might have used a different compression
+              // level/algorithm, so we cannot know the expected committed offset
+              long committedSize = committedOffset.get();
+              long expected = chunker.getOffset();
+              if (!chunker.hasNext() && committedSize != expected) {
+                String message =
+                    format(
+                        "write incomplete: committed_size %d for %d total",
+                        committedSize, expected);
+                return Futures.immediateFailedFuture(new IOException(message));
+              }
             }
-            return Futures.immediateFuture(null);
+            return immediateVoidFuture();
           },
           MoreExecutors.directExecutor());
     }
 
-    private ByteStreamFutureStub bsFutureStub() {
+    private ByteStreamFutureStub bsFutureStub(Channel channel) {
       return ByteStreamGrpc.newFutureStub(channel)
           .withInterceptors(
               TracingMetadataUtils.attachMetadataInterceptor(context.getRequestMetadata()))
@@ -430,7 +464,10 @@ class ByteStreamUploader extends AbstractReferenceCounted {
     private ListenableFuture<Void> callAndQueryOnFailure(
         AtomicLong committedOffset, ProgressiveBackoff progressiveBackoff) {
       return Futures.catchingAsync(
-          call(committedOffset),
+          Futures.transform(
+              channel.withChannelFuture(channel -> call(committedOffset, channel)),
+              written -> null,
+              MoreExecutors.directExecutor()),
           Exception.class,
           (e) -> guardQueryWithSuppression(e, committedOffset, progressiveBackoff),
           MoreExecutors.directExecutor());
@@ -467,10 +504,14 @@ class ByteStreamUploader extends AbstractReferenceCounted {
         AtomicLong committedOffset, ProgressiveBackoff progressiveBackoff) {
       ListenableFuture<Long> committedSizeFuture =
           Futures.transform(
-              bsFutureStub()
-                  .queryWriteStatus(
-                      QueryWriteStatusRequest.newBuilder().setResourceName(resourceName).build()),
-              (response) -> response.getCommittedSize(),
+              channel.withChannelFuture(
+                  channel ->
+                      bsFutureStub(channel)
+                          .queryWriteStatus(
+                              QueryWriteStatusRequest.newBuilder()
+                                  .setResourceName(resourceName)
+                                  .build())),
+              QueryWriteStatusResponse::getCommittedSize,
               MoreExecutors.directExecutor());
       ListenableFuture<Long> guardedCommittedSizeFuture =
           Futures.catchingAsync(
@@ -495,30 +536,19 @@ class ByteStreamUploader extends AbstractReferenceCounted {
               progressiveBackoff.reset();
             }
             committedOffset.set(committedSize);
-            return Futures.immediateFuture(null);
+            return immediateVoidFuture();
           },
           MoreExecutors.directExecutor());
     }
 
-    private ListenableFuture<Void> call(AtomicLong committedOffset) {
+    private ListenableFuture<Long> call(AtomicLong committedOffset, Channel channel) {
       CallOptions callOptions =
           CallOptions.DEFAULT
               .withCallCredentials(callCredentialsProvider.getCallCredentials())
               .withDeadlineAfter(callTimeoutSecs, SECONDS);
       call = channel.newCall(ByteStreamGrpc.getWriteMethod(), callOptions);
 
-      try {
-        chunker.seek(committedOffset.get());
-      } catch (IOException e) {
-        try {
-          chunker.reset();
-        } catch (IOException resetException) {
-          e.addSuppressed(resetException);
-        }
-        return Futures.immediateFailedFuture(e);
-      }
-
-      SettableFuture<Void> uploadResult = SettableFuture.create();
+      SettableFuture<Long> uploadResult = SettableFuture.create();
       ClientCall.Listener<WriteResponse> callListener =
           new ClientCall.Listener<WriteResponse>() {
 
@@ -546,7 +576,7 @@ class ByteStreamUploader extends AbstractReferenceCounted {
             @Override
             public void onClose(Status status, Metadata trailers) {
               if (status.isOk()) {
-                uploadResult.set(null);
+                uploadResult.set(committedOffset.get());
               } else {
                 uploadResult.setException(status.asRuntimeException());
               }

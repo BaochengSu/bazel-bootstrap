@@ -175,26 +175,16 @@ public class RunCommand implements BlazeCommand  {
    * Compute the arguments the binary should be run with by concatenating the arguments in its
    * {@code args} attribute and the arguments on the Blaze command line.
    */
-  // TODO(bazel-team): audit the use of null values by caller. It looks unsafe.
   @Nullable
-  private List<String> computeArgs(
-      CommandEnvironment env, ConfiguredTarget targetToRun, List<String> commandLineArgs) {
+  private List<String> computeArgs(ConfiguredTarget targetToRun, List<String> commandLineArgs)
+      throws InterruptedException, CommandLineExpansionException {
     List<String> args = Lists.newArrayList();
 
     FilesToRunProvider provider = targetToRun.getProvider(FilesToRunProvider.class);
     RunfilesSupport runfilesSupport = provider == null ? null : provider.getRunfilesSupport();
     if (runfilesSupport != null && runfilesSupport.getArgs() != null) {
       CommandLine targetArgs = runfilesSupport.getArgs();
-      try {
-        Iterables.addAll(args, targetArgs.arguments());
-      } catch (InterruptedException ex) {
-        // TODO(b/173521404): report a specific FailureDetail for "interrupted".
-        env.getReporter().handle(Event.error("Interrupted while expanding target command line"));
-        return null;
-      } catch (CommandLineExpansionException e) {
-        env.getReporter().handle(Event.error("Could not expand target command line: " + e));
-        return null;
-      }
+      Iterables.addAll(args, targetArgs.arguments());
     }
     args.addAll(commandLineArgs);
     return args;
@@ -224,9 +214,9 @@ public class RunCommand implements BlazeCommand  {
             env.getWorkspace(),
             requestOptions.printWorkspaceInOutputPathsIfNeeded
                 ? env.getWorkingDirectory()
-                : env.getWorkspace(),
-            requestOptions.experimentalNoProductNameOutSymlink);
-    PathFragment prettyExecutablePath = prettyPrinter.getPrettyPath(executable.getPath());
+                : env.getWorkspace());
+    PathFragment prettyExecutablePath =
+        prettyPrinter.getPrettyPath(executable.getPath().asFragment());
 
     RunUnder runUnder = env.getOptions().getOptions(CoreOptions.class).runUnder;
     // Insert the command prefix specified by the "--run_under=<command-prefix>" option
@@ -287,10 +277,17 @@ public class RunCommand implements BlazeCommand  {
     List<String> targets = (runUnder != null) && (runUnder.getLabel() != null)
         ? ImmutableList.of(targetString, runUnder.getLabel().toString())
         : ImmutableList.of(targetString);
-    BuildRequest request = BuildRequest.create(
-        this.getClass().getAnnotation(Command.class).name(), options,
-        env.getRuntime().getStartupOptionsProvider(), targets, outErr,
-        env.getCommandId(), env.getCommandStartTime());
+
+    BuildRequest request =
+        BuildRequest.builder()
+            .setCommandName(this.getClass().getAnnotation(Command.class).name())
+            .setId(env.getCommandId())
+            .setOptions(options)
+            .setStartupOptions(env.getRuntime().getStartupOptionsProvider())
+            .setOutErr(outErr)
+            .setTargets(targets)
+            .setStartTimeMillis(env.getCommandStartTime())
+            .build();
 
     currentRunUnder = runUnder;
     BuildResult result;
@@ -443,7 +440,11 @@ public class RunCommand implements BlazeCommand  {
       workingDir = env.getExecRoot();
 
       try {
-        testAction.prepare(env.getExecRoot(), ArtifactPathResolver.IDENTITY, /*bulkDeleter=*/ null);
+        testAction.prepare(
+            env.getExecRoot(),
+            ArtifactPathResolver.IDENTITY,
+            /*bulkDeleter=*/ null,
+            /*cleanupArchivedArtifacts=*/ false);
       } catch (IOException e) {
         return reportAndCreateFailureResult(
             env,
@@ -464,7 +465,7 @@ public class RunCommand implements BlazeCommand  {
         return reportAndCreateFailureResult(
             env, Strings.nullToEmpty(e.getMessage()), Code.COMMAND_LINE_EXPANSION_FAILURE);
       } catch (InterruptedException e) {
-        String message = "run: argument expansion interrupted";
+        String message = "run: command line expansion interrupted";
         env.getReporter().handle(Event.error(message));
         return BlazeCommandResult.detailedExitCode(
             InterruptedFailureDetails.detailedExitCode(message));
@@ -474,8 +475,8 @@ public class RunCommand implements BlazeCommand  {
       if (runfilesSupport != null) {
         runfilesSupport.getActionEnvironment().resolve(runEnvironment, env.getClientEnv());
       }
-      List<String> args = computeArgs(env, targetToRun, commandLineArgs);
       try {
+        List<String> args = computeArgs(targetToRun, commandLineArgs);
         constructCommandLine(
             cmdLine, prettyCmdLine, env, configuration, targetToRun, runUnderTarget, args);
       } catch (NoShellFoundException e) {
@@ -485,16 +486,27 @@ public class RunCommand implements BlazeCommand  {
                 + " --shell_executable=<path> flag to specify its path, e.g."
                 + " --shell_executable=/bin/bash",
             Code.NO_SHELL_SPECIFIED);
+      } catch (InterruptedException e) {
+        String message = "run: command line expansion interrupted";
+        env.getReporter().handle(Event.error(message));
+        return BlazeCommandResult.detailedExitCode(
+            InterruptedFailureDetails.detailedExitCode(message));
+      } catch (CommandLineExpansionException e) {
+        return reportAndCreateFailureResult(
+            env, Strings.nullToEmpty(e.getMessage()), Code.COMMAND_LINE_EXPANSION_FAILURE);
       }
     }
 
     if (runOptions.scriptPath != null) {
-      String unisolatedCommand = CommandFailureUtils.describeCommand(
-          CommandDescriptionForm.COMPLETE_UNISOLATED,
-          /* prettyPrintArgs= */ false,
-          cmdLine,
-          runEnvironment,
-          workingDir.getPathString());
+      String unisolatedCommand =
+          CommandFailureUtils.describeCommand(
+              CommandDescriptionForm.COMPLETE_UNISOLATED,
+              /* prettyPrintArgs= */ false,
+              cmdLine,
+              runEnvironment,
+              workingDir.getPathString(),
+              configuration.checksum(),
+              /* executionPlatform= */ null);
 
       PathFragment shExecutable = ShToolchain.getPath(configuration);
       if (shExecutable.isEmpty()) {

@@ -16,7 +16,6 @@ package com.google.devtools.build.lib.analysis;
 
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableMap;
-import com.google.devtools.build.lib.actions.Artifact.SourceArtifact;
 import com.google.devtools.build.lib.analysis.config.ConfigMatchingProvider;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.skyframe.BuildConfigurationValue;
@@ -41,10 +40,9 @@ public interface ConfiguredTarget extends TransitiveInfoCollection, Structure {
   /** All <code>ConfiguredTarget</code>s have a "files" field. */
   String FILES_FIELD = "files";
 
+  @Nullable
   default String getConfigurationChecksum() {
-    return getConfigurationKey() == null
-        ? null
-        : getConfigurationKey().getOptionsDiff().getChecksum();
+    return getConfigurationKey() == null ? null : getConfigurationKey().getOptions().checksum();
   }
 
   /**
@@ -70,12 +68,6 @@ public interface ConfiguredTarget extends TransitiveInfoCollection, Structure {
   @Nullable
   @Override
   Object getValue(String name);
-
-  /** Returns a source artifact if this is an input file. */
-  @Nullable
-  default SourceArtifact getSourceArtifact() {
-    return null;
-  }
 
   /**
    * If the configured target is an alias, return the actual target, otherwise return the current

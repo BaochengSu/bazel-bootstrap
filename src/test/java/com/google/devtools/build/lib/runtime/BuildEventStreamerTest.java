@@ -20,6 +20,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -41,6 +42,7 @@ import com.google.devtools.build.lib.analysis.ServerDirectories;
 import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
 import com.google.devtools.build.lib.analysis.config.CoreOptions;
+import com.google.devtools.build.lib.analysis.config.FragmentClassSet;
 import com.google.devtools.build.lib.bugreport.BugReport;
 import com.google.devtools.build.lib.buildeventstream.AnnounceBuildEventTransportsEvent;
 import com.google.devtools.build.lib.buildeventstream.ArtifactGroupNamer;
@@ -66,8 +68,10 @@ import com.google.devtools.build.lib.buildeventstream.transports.BuildEventStrea
 import com.google.devtools.build.lib.buildtool.BuildResult;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildCompleteEvent;
 import com.google.devtools.build.lib.buildtool.buildevent.NoAnalyzeEvent;
+import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
+import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.server.FailureDetails.Spawn;
 import com.google.devtools.build.lib.server.FailureDetails.Spawn.Code;
@@ -85,13 +89,13 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import javax.annotation.Nullable;
-import org.apache.commons.lang.time.StopWatch;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -168,7 +172,12 @@ public final class BuildEventStreamerTest extends FoundationTestCase {
     @Override
     public synchronized void sendBuildEvent(BuildEvent event) {
       events.add(event);
-      eventsAsProtos.add(event.asStreamProto(getTestBuildEventContext(this.artifactGroupNamer)));
+      try {
+        eventsAsProtos.add(event.asStreamProto(getTestBuildEventContext(this.artifactGroupNamer)));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupts not supported in test instance");
+      }
     }
 
     @Override
@@ -560,8 +569,7 @@ public final class BuildEventStreamerTest extends FoundationTestCase {
   public void concurrencyBenchmark() throws Exception {
     long time = 0;
     for (int iteration = 0; iteration < 3; iteration++) {
-      StopWatch watch = new StopWatch();
-      watch.start();
+      Stopwatch watch = Stopwatch.createStarted();
 
       BuildEvent startEvent =
           new GenericBuildEvent(
@@ -595,7 +603,7 @@ public final class BuildEventStreamerTest extends FoundationTestCase {
       pool.awaitTermination(1, TimeUnit.DAYS);
       watch.stop();
 
-      time += watch.getTime();
+      time += watch.elapsed().toMillis();
 
       BuildEventId lateId = testId("late event");
       streamer.buildEvent(new BuildCompleteEvent(new BuildResult(0), ImmutableList.of(lateId)));
@@ -705,6 +713,110 @@ public final class BuildEventStreamerTest extends FoundationTestCase {
         eventProtos.get(6).getNamedSetOfFiles().getFileSetsList();
     assertThat(reportedArtifactSets).hasSize(1);
     assertThat(reportedArtifactSets.get(0)).isEqualTo(eventProtos.get(4).getId().getNamedSet());
+  }
+
+  @Test
+  public void testArtifactSetsPrecedeReportingEvent() throws InterruptedException {
+    // Verify that reported artifacts appear as named_set_of_files before their ID is referenced by
+    // a reporting event.
+    BuildEvent startEvent =
+        new GenericBuildEvent(
+            testId("Initial"), ImmutableSet.of(ProgressEvent.INITIAL_PROGRESS_UPDATE));
+
+    // Prepare a dense NestedSet DAG with lots of shared references.
+    List<NestedSet<Artifact>> baseSets = new ArrayList<>();
+    baseSets.add(NestedSetBuilder.create(Order.STABLE_ORDER, makeArtifact("path/a")));
+    baseSets.add(NestedSetBuilder.create(Order.STABLE_ORDER, makeArtifact("path/b")));
+    baseSets.add(NestedSetBuilder.create(Order.STABLE_ORDER, makeArtifact("path/c")));
+    baseSets.add(NestedSetBuilder.create(Order.STABLE_ORDER, makeArtifact("path/d")));
+    List<NestedSet<Artifact>> depth2Sets = new ArrayList<>();
+    for (int i = 0; i < baseSets.size(); i++) {
+      depth2Sets.add(
+          NestedSetBuilder.<Artifact>stableOrder()
+              .addTransitive(baseSets.get(i))
+              .addTransitive(baseSets.get((i + 1) % baseSets.size()))
+              .build());
+    }
+    List<NestedSet<Artifact>> depth3Sets = new ArrayList<>();
+    for (int i = 0; i < depth2Sets.size(); i++) {
+      depth3Sets.add(
+          NestedSetBuilder.<Artifact>stableOrder()
+              .addTransitive(depth2Sets.get(i))
+              .addTransitive(depth2Sets.get((i + 1) % depth2Sets.size()))
+              .build());
+    }
+    List<NestedSet<Artifact>> depth4Sets = new ArrayList<>();
+    for (int i = 0; i < depth3Sets.size(); i++) {
+      depth4Sets.add(
+          NestedSetBuilder.<Artifact>stableOrder()
+              .addTransitive(depth3Sets.get(i))
+              .addTransitive(depth3Sets.get((i + 1) % depth3Sets.size()))
+              .build());
+    }
+    int numEvents = 20;
+    List<BuildEvent> eventsToPost = new ArrayList<>();
+    for (int i = 0; i < numEvents; i++) {
+      eventsToPost.add(
+          new GenericArtifactReportingEvent(
+              testId("reporting" + i), ImmutableSet.of(depth4Sets.get(i % depth4Sets.size()))));
+    }
+
+    streamer.buildEvent(startEvent);
+    // Publish `numEvents` different events that all report the same NamedSet of artifacts on
+    // `numEvents` different threads. Use latches to ensure:
+    //
+    // 1. all threads have started, before:
+    // 2. all threads send their event, before:
+    // 3. verifying the recorded events.
+    CountDownLatch readyToPublishLatch = new CountDownLatch(numEvents);
+    CountDownLatch startPublishingLatch = new CountDownLatch(1);
+    CountDownLatch donePublishingLatch = new CountDownLatch(numEvents);
+    for (int i = 0; i < numEvents; i++) {
+      int num = i;
+      new Thread(
+              () -> {
+                try {
+                  BuildEvent reportingArtifacts = eventsToPost.get(num);
+                  readyToPublishLatch.countDown();
+                  startPublishingLatch.await();
+                  streamer.buildEvent(reportingArtifacts);
+                } catch (InterruptedException e) {
+                  throw new RuntimeException(e);
+                }
+                donePublishingLatch.countDown();
+              })
+          .start();
+    }
+    readyToPublishLatch.await();
+    startPublishingLatch.countDown();
+    donePublishingLatch.await();
+
+    assertThat(streamer.isClosed()).isFalse();
+    List<BuildEvent> allEventsSeen = transport.getEvents();
+    List<BuildEventStreamProtos.BuildEvent> eventProtos = transport.getEventProtos();
+    // Each GenericArtifactReportingEvent and NamedArtifactGroup event has a corresponding Progress
+    // event posted immediately before.
+    assertThat(allEventsSeen)
+        .hasSize(1 + ((numEvents + baseSets.size() + depth2Sets.size() + depth3Sets.size()) * 2));
+    assertThat(allEventsSeen.get(0).getEventId()).isEqualTo(startEvent.getEventId());
+    // Verify that each named_set_of_files event is sent before all of the events that report that
+    // named_set.
+    Set<String> seenFileSets = new HashSet<>();
+    for (int i = 1; i < eventProtos.size(); i++) {
+      BuildEventStreamProtos.BuildEvent buildEvent = eventProtos.get(i);
+      if (buildEvent.getId().hasNamedSet()) {
+        // These are the separately-posted contents of reported artifacts.
+        seenFileSets.add(buildEvent.getId().getNamedSet().getId());
+        for (NamedSetOfFilesId nestedSetId : buildEvent.getNamedSetOfFiles().getFileSetsList()) {
+          assertThat(seenFileSets).contains(nestedSetId.getId());
+        }
+      } else if (buildEvent.getId().hasUnknown()) {
+        // These are the GenericArtifactReportingEvent that report artifacts.
+        for (NamedSetOfFilesId nestedSetId : buildEvent.getNamedSetOfFiles().getFileSetsList()) {
+          assertThat(seenFileSets).contains(nestedSetId.getId());
+        }
+      }
+    }
   }
 
   @Test
@@ -834,15 +946,15 @@ public final class BuildEventStreamerTest extends FoundationTestCase {
             new BlazeDirectories(
                 new ServerDirectories(outputBase, outputBase, outputBase),
                 rootDirectory,
-                /* defaultSystemJavabase= */ null,
+                /*defaultSystemJavabase=*/ null,
                 "productName"),
-            /* fragmentsMap= */ ImmutableMap.of(),
+            /*fragments=*/ ImmutableMap.of(),
+            /*fragmentClassSet=*/ FragmentClassSet.of(ImmutableSet.of()),
             defaultBuildOptions,
-            BuildOptions.diffForReconstruction(defaultBuildOptions, defaultBuildOptions),
-            /* reservedActionMnemonics= */ ImmutableSet.of(),
+            /*reservedActionMnemonics=*/ ImmutableSet.of(),
             ActionEnvironment.EMPTY,
-            "workspace",
-            /* siblingRepositoryLayout= */ false);
+            RepositoryName.createFromValidStrippedName("workspace"),
+            /*siblingRepositoryLayout=*/ false);
     BuildEvent firstWithConfiguration =
         new GenericConfigurationEvent(testId("first"), configuration.toBuildEvent());
     BuildEvent secondWithConfiguration =
@@ -1404,7 +1516,7 @@ public final class BuildEventStreamerTest extends FoundationTestCase {
   }
 
   @Test
-  public void testActionExcutedEventProtoLogs() {
+  public void testActionExcutedEventProtoLogs() throws Exception {
     String metadataLogName = "action_metadata";
     Path testPath1 = FileSystems.getJavaIoFileSystem().getPath("/path/to/logs-1");
     Path testPath2 = FileSystems.getJavaIoFileSystem().getPath("/path/to/logs-2");

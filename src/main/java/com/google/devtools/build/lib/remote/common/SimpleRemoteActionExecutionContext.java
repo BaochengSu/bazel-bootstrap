@@ -14,17 +14,34 @@
 package com.google.devtools.build.lib.remote.common;
 
 import build.bazel.remote.execution.v2.RequestMetadata;
+import com.google.devtools.build.lib.actions.Spawn;
+import javax.annotation.Nullable;
 
 /** A {@link RemoteActionExecutionContext} implementation */
 public class SimpleRemoteActionExecutionContext implements RemoteActionExecutionContext {
 
+  private final Type type;
+  private final Spawn spawn;
   private final RequestMetadata requestMetadata;
   private final NetworkTime networkTime;
 
   public SimpleRemoteActionExecutionContext(
-      RequestMetadata requestMetadata, NetworkTime networkTime) {
+      Type type, Spawn spawn, RequestMetadata requestMetadata, NetworkTime networkTime) {
+    this.type = type;
+    this.spawn = spawn;
     this.requestMetadata = requestMetadata;
     this.networkTime = networkTime;
+  }
+
+  @Override
+  public Type getType() {
+    return type;
+  }
+
+  @Nullable
+  @Override
+  public Spawn getSpawn() {
+    return spawn;
   }
 
   @Override

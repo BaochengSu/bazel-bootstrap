@@ -14,8 +14,9 @@
 
 package com.google.devtools.build.lib.rules.cpp;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.devtools.build.lib.actions.AbstractAction;
 import com.google.devtools.build.lib.actions.ActionExecutionContext;
@@ -55,23 +56,27 @@ public final class CreateIncSymlinkAction extends AbstractAction {
    * {@code includePath}.
    */
   public CreateIncSymlinkAction(
-      ActionOwner owner, Map<Artifact, Artifact> symlinks, Path includePath) {
-    super(
-        owner,
-        NestedSetBuilder.wrap(Order.STABLE_ORDER, symlinks.values()),
-        ImmutableSet.copyOf(symlinks.keySet()));
-    this.symlinks = ImmutableSortedMap.copyOf(symlinks, Artifact.EXEC_PATH_COMPARATOR);
+      ActionOwner owner, ImmutableSortedMap<Artifact, Artifact> symlinks, Path includePath) {
+    super(owner, NestedSetBuilder.wrap(Order.STABLE_ORDER, symlinks.values()), symlinks.keySet());
+    checkArgument(
+        symlinks.comparator().equals(Artifact.EXEC_PATH_COMPARATOR),
+        "Symlinks uses an incorrect comparator: %s",
+        symlinks.comparator());
+    this.symlinks = symlinks;
     this.includePath = includePath;
   }
 
   @Override
   public void prepare(
-      Path execRoot, ArtifactPathResolver pathResolver, @Nullable BulkDeleter bulkDeleter)
+      Path execRoot,
+      ArtifactPathResolver pathResolver,
+      @Nullable BulkDeleter bulkDeleter,
+      boolean cleanupArchivedArtifacts)
       throws IOException, InterruptedException {
     if (includePath.isDirectory(Symlinks.NOFOLLOW)) {
       includePath.deleteTree();
     }
-    super.prepare(execRoot, pathResolver, bulkDeleter);
+    super.prepare(execRoot, pathResolver, bulkDeleter, cleanupArchivedArtifacts);
   }
 
   @Override

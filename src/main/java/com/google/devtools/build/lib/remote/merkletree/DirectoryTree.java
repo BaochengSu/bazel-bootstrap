@@ -102,7 +102,6 @@ final class DirectoryTree {
       super(pathSegment);
       this.path = null;
       this.data = Preconditions.checkNotNull(data, "data");
-      ;
       this.digest = Preconditions.checkNotNull(digest, "digest");
       this.isExecutable = isExecutable;
     }
@@ -149,8 +148,8 @@ final class DirectoryTree {
       super(pathSegment);
     }
 
-    void addChild(Node child) {
-      children.add(Preconditions.checkNotNull(child, "child"));
+    boolean addChild(Node child) {
+      return children.add(Preconditions.checkNotNull(child, "child"));
     }
 
     @Override

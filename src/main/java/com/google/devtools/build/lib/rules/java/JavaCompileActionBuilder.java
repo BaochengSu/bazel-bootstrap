@@ -26,12 +26,11 @@ import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.ActionEnvironment;
 import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.actions.CommandLine;
 import com.google.devtools.build.lib.actions.EmptyRunfilesSupplier;
 import com.google.devtools.build.lib.actions.ExecutionRequirements;
-import com.google.devtools.build.lib.actions.RunfilesSupplier;
 import com.google.devtools.build.lib.actions.extra.ExtraActionInfo;
 import com.google.devtools.build.lib.actions.extra.JavaCompileInfo;
-import com.google.devtools.build.lib.analysis.FilesToRunProvider;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.actions.CustomCommandLine;
 import com.google.devtools.build.lib.analysis.config.CoreOptionConverters.StrictDepsMode;
@@ -43,11 +42,12 @@ import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadCompatible;
 import com.google.devtools.build.lib.rules.java.JavaCompileAction.ProgressMessage;
 import com.google.devtools.build.lib.rules.java.JavaConfiguration.JavaClasspathMode;
-import com.google.devtools.build.lib.rules.java.JavaPluginInfoProvider.JavaPluginInfo;
+import com.google.devtools.build.lib.rules.java.JavaPluginInfo.JavaPluginData;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.util.StringCanonicalizer;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.util.Collections;
+import java.util.Optional;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
@@ -81,6 +81,9 @@ public final class JavaCompileActionBuilder {
     /** The list of bootclasspath entries to specify to javac. */
     private final NestedSet<Artifact> bootclasspathEntries;
 
+    /** An argument to the javac >= 9 {@code --system} flag. */
+    @Nullable private final Optional<PathFragment> system;
+
     /** The list of classpath entries to search for annotation processors. */
     private final NestedSet<Artifact> processorPath;
 
@@ -100,6 +103,7 @@ public final class JavaCompileActionBuilder {
         Artifact outputJar,
         NestedSet<Artifact> classpathEntries,
         NestedSet<Artifact> bootclasspathEntries,
+        Optional<PathFragment> system,
         NestedSet<Artifact> processorPath,
         NestedSet<String> processorNames,
         ImmutableList<Artifact> sourceJars,
@@ -108,6 +112,7 @@ public final class JavaCompileActionBuilder {
       this.outputJar = outputJar;
       this.classpathEntries = classpathEntries;
       this.bootclasspathEntries = bootclasspathEntries;
+      this.system = system;
       this.processorPath = processorPath;
       this.processorNames = processorNames;
       this.sourceJars = sourceJars;
@@ -127,6 +132,9 @@ public final class JavaCompileActionBuilder {
               .addAllProcessor(processorNames.toList())
               .addAllProcessorpath(Artifact.toExecPaths(processorPath.toList()))
               .setOutputjar(outputJar.getExecPathString());
+      if (system.isPresent()) {
+        info.setSystem(system.get().toString());
+      }
       info.addAllArgument(arguments);
       builder.setExtension(JavaCompileInfo.javaCompileInfo, info.build());
     }
@@ -134,8 +142,6 @@ public final class JavaCompileActionBuilder {
 
   private final RuleContext ruleContext;
   private final JavaToolchainProvider toolchain;
-  private PathFragment javaExecutable;
-  private NestedSet<Artifact> javabaseInputs = NestedSetBuilder.emptySet(Order.NAIVE_LINK_ORDER);
   private ImmutableSet<Artifact> additionalOutputs = ImmutableSet.of();
   private Artifact coverageArtifact;
   private ImmutableSet<Artifact> sourceFiles = ImmutableSet.of();
@@ -146,19 +152,19 @@ public final class JavaCompileActionBuilder {
   private NestedSet<Artifact> compileTimeDependencyArtifacts =
       NestedSetBuilder.emptySet(Order.STABLE_ORDER);
   private ImmutableList<String> javacOpts = ImmutableList.of();
-  private ImmutableList<String> javacJvmOpts = ImmutableList.of();
   private ImmutableMap<String, String> executionInfo = ImmutableMap.of();
   private boolean compressJar;
   private NestedSet<Artifact> classpathEntries = NestedSetBuilder.emptySet(Order.NAIVE_LINK_ORDER);
   private BootClassPathInfo bootClassPath = BootClassPathInfo.empty();
   private ImmutableList<Artifact> sourcePathEntries = ImmutableList.of();
-  private FilesToRunProvider javaBuilder;
+  private JavaToolchainTool javaBuilder;
   private NestedSet<Artifact> toolsJars = NestedSetBuilder.emptySet(Order.NAIVE_LINK_ORDER);
-  private JavaPluginInfo plugins = JavaPluginInfo.empty();
+  private JavaPluginData plugins = JavaPluginData.empty();
   private ImmutableSet<String> builtinProcessorNames = ImmutableSet.of();
   private NestedSet<Artifact> extraData = NestedSetBuilder.emptySet(Order.NAIVE_LINK_ORDER);
   private Label targetLabel;
   @Nullable private String injectingRuleKind;
+  private ImmutableList<Artifact> additionalInputs = ImmutableList.of();
   private Artifact genSourceOutput;
   private JavaCompileOutputs<Artifact> outputs;
   private JavaClasspathMode classpathMode;
@@ -192,28 +198,10 @@ public final class JavaCompileActionBuilder {
       compileTimeDependencyArtifacts = NestedSetBuilder.emptySet(Order.STABLE_ORDER);
     }
 
-    Preconditions.checkState(javaExecutable != null, ruleContext.getActionOwner());
-
-    CustomCommandLine.Builder executableLine = CustomCommandLine.builder();
     NestedSetBuilder<Artifact> toolsBuilder = NestedSetBuilder.compileOrder();
 
-    RunfilesSupplier runfilesSupplier = EmptyRunfilesSupplier.INSTANCE;
+    CommandLine executableLine = javaBuilder.buildCommandLine(toolchain, toolsBuilder);
 
-    // The actual params-file-based command line executed for a compile action.
-    Artifact javaBuilderJar = checkNotNull(javaBuilder.getExecutable());
-    if (!javaBuilderJar.getExtension().equals("jar")) {
-      // JavaBuilder is a non-deploy.jar executable.
-      executableLine.addPath(javaBuilder.getExecutable().getExecPath());
-      runfilesSupplier = javaBuilder.getRunfilesSupplier();
-      toolsBuilder.addTransitive(javaBuilder.getFilesToRun());
-    } else {
-      toolsBuilder.add(javaBuilderJar);
-      executableLine
-          .addPath(javaExecutable)
-          .addAll(javacJvmOpts)
-          .add("-jar")
-          .addPath(javaBuilderJar.getExecPath());
-    }
     toolsBuilder.addTransitive(toolsJars);
 
     ActionEnvironment actionEnvironment =
@@ -221,24 +209,26 @@ public final class JavaCompileActionBuilder {
 
     NestedSetBuilder<Artifact> mandatoryInputs = NestedSetBuilder.stableOrder();
     mandatoryInputs
-        .addTransitive(compileTimeDependencyArtifacts)
         .addTransitive(plugins.processorClasspath())
         .addTransitive(plugins.data())
         .addTransitive(extraData)
         .addAll(sourceJars)
         .addAll(sourceFiles)
-        .addTransitive(javabaseInputs)
+        .addTransitive(toolchain.getJavaRuntime().javaBaseInputs())
         .addTransitive(bootClassPath.bootclasspath())
-        .addAll(sourcePathEntries);
-    Stream.of(coverageArtifact, bootClassPath.system())
-        .filter(x -> x != null)
-        .forEachOrdered(mandatoryInputs::add);
+        .addAll(sourcePathEntries)
+        .addAll(additionalInputs)
+        .addTransitive(bootClassPath.systemInputs());
+    if (coverageArtifact != null) {
+      mandatoryInputs.add(coverageArtifact);
+    }
 
     JavaCompileExtraActionInfoSupplier extraActionInfoSupplier =
         new JavaCompileExtraActionInfoSupplier(
             outputs.output(),
             classpathEntries,
             bootClassPath.bootclasspath(),
+            bootClassPath.systemPath(),
             plugins.processorClasspath(),
             plugins.processorClasses(),
             sourceJars,
@@ -271,7 +261,7 @@ public final class JavaCompileActionBuilder {
         /* owner= */ ruleContext.getActionOwner(),
         /* env= */ actionEnvironment,
         /* tools= */ tools,
-        /* runfilesSupplier= */ runfilesSupplier,
+        /* runfilesSupplier= */ EmptyRunfilesSupplier.INSTANCE,
         /* progressMessage= */ new ProgressMessage(
             /* prefix= */ "Building",
             /* output= */ outputs.output(),
@@ -284,7 +274,7 @@ public final class JavaCompileActionBuilder {
         /* outputs= */ allOutputs(),
         /* executionInfo= */ executionInfo,
         /* extraActionInfoSupplier= */ extraActionInfoSupplier,
-        /* executableLine= */ executableLine.build(),
+        /* executableLine= */ executableLine,
         /* flagLine= */ buildParamFileContents(internedJcopts),
         /* configuration= */ ruleContext.getConfiguration(),
         /* dependencyArtifacts= */ compileTimeDependencyArtifacts,
@@ -316,7 +306,9 @@ public final class JavaCompileActionBuilder {
     }
     result.addExecPath("--output_deps_proto", outputs.depsProto());
     result.addExecPaths("--bootclasspath", bootClassPath.bootclasspath());
-    result.addExecPath("--system", bootClassPath.system());
+    if (bootClassPath.systemPath().isPresent()) {
+      result.addPath("--system", bootClassPath.systemPath().get());
+    }
     result.addExecPaths("--sourcepath", sourcePathEntries);
     result.addExecPaths("--processorpath", plugins.processorClasspath());
     result.addAll("--processors", plugins.processorClasses());
@@ -358,16 +350,6 @@ public final class JavaCompileActionBuilder {
       result.add("-*TestCase");
     }
     return result.build();
-  }
-
-  public JavaCompileActionBuilder setJavaExecutable(PathFragment javaExecutable) {
-    this.javaExecutable = javaExecutable;
-    return this;
-  }
-
-  public JavaCompileActionBuilder setJavaBaseInputs(NestedSet<Artifact> javabaseInputs) {
-    this.javabaseInputs = javabaseInputs;
-    return this;
   }
 
   public JavaCompileActionBuilder setAdditionalOutputs(ImmutableSet<Artifact> outputs) {
@@ -416,11 +398,6 @@ public final class JavaCompileActionBuilder {
     return this;
   }
 
-  public JavaCompileActionBuilder setJavacJvmOpts(ImmutableList<String> opts) {
-    this.javacJvmOpts = opts;
-    return this;
-  }
-
   public JavaCompileActionBuilder setJavacExecutionInfo(
       ImmutableMap<String, String> executionInfo) {
     this.executionInfo = executionInfo;
@@ -447,7 +424,7 @@ public final class JavaCompileActionBuilder {
     return this;
   }
 
-  public JavaCompileActionBuilder setPlugins(JavaPluginInfo plugins) {
+  public JavaCompileActionBuilder setPlugins(JavaPluginData plugins) {
     checkNotNull(plugins, "plugins must not be null");
     checkState(this.plugins.isEmpty());
     this.plugins = plugins;
@@ -474,7 +451,7 @@ public final class JavaCompileActionBuilder {
     return this;
   }
 
-  public JavaCompileActionBuilder setJavaBuilder(FilesToRunProvider javaBuilder) {
+  public JavaCompileActionBuilder setJavaBuilder(JavaToolchainTool javaBuilder) {
     this.javaBuilder = javaBuilder;
     return this;
   }
@@ -491,6 +468,12 @@ public final class JavaCompileActionBuilder {
 
   public JavaCompileActionBuilder setInjectingRuleKind(@Nullable String injectingRuleKind) {
     this.injectingRuleKind = injectingRuleKind;
+    return this;
+  }
+
+  public JavaCompileActionBuilder setAdditionalInputs(ImmutableList<Artifact> additionalInputs) {
+    checkNotNull(additionalInputs, "additionalInputs must not be null");
+    this.additionalInputs = additionalInputs;
     return this;
   }
 

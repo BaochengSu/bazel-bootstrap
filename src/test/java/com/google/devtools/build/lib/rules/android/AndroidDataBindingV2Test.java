@@ -29,6 +29,8 @@ import com.google.devtools.build.lib.actions.util.ActionsTestUtil;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
+import com.google.devtools.build.lib.rules.android.AndroidDataBindingV2Test.WithPlatforms;
+import com.google.devtools.build.lib.rules.android.AndroidDataBindingV2Test.WithoutPlatforms;
 import com.google.devtools.build.lib.rules.android.databinding.DataBinding;
 import com.google.devtools.build.lib.rules.android.databinding.DataBindingV2Provider;
 import com.google.devtools.build.lib.rules.java.JavaCompileAction;
@@ -39,10 +41,25 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.junit.runners.Suite;
+import org.junit.runners.Suite.SuiteClasses;
 
 /** Tests for Bazel's Android data binding v2 support. */
-@RunWith(JUnit4.class)
-public class AndroidDataBindingV2Test extends AndroidBuildViewTestCase {
+@RunWith(Suite.class)
+@SuiteClasses({WithoutPlatforms.class, WithPlatforms.class})
+public abstract class AndroidDataBindingV2Test extends AndroidBuildViewTestCase {
+  /** Use legacy toolchain resolution. */
+  @RunWith(JUnit4.class)
+  public static class WithoutPlatforms extends AndroidDataBindingV2Test {}
+
+  /** Use platform-based toolchain resolution. */
+  @RunWith(JUnit4.class)
+  public static class WithPlatforms extends AndroidDataBindingV2Test {
+    @Override
+    protected boolean platformBasedToolchains() {
+      return true;
+    }
+  }
 
   @Before
   public void setDataBindingV2Flag() throws Exception {
@@ -516,13 +533,13 @@ public class AndroidDataBindingV2Test extends AndroidBuildViewTestCase {
     assertWithMessage(DataBindingV2Provider.NAME).that(dataBindingV2Provider).isNotNull();
 
     assertThat(
-            dataBindingV2Provider.getSetterStores().stream()
+            dataBindingV2Provider.getSetterStores().toList().stream()
                 .map(Artifact::getRootRelativePathString)
                 .collect(Collectors.toList()))
         .containsExactly("java/a/databinding/a/bin-files/a-a-setter_store.bin");
 
     assertThat(
-            dataBindingV2Provider.getClassInfos().stream()
+            dataBindingV2Provider.getClassInfos().toList().stream()
                 .map(Artifact::getRootRelativePathString)
                 .collect(Collectors.toList()))
         .containsExactly("java/a/databinding/a/class-info.zip");
@@ -635,14 +652,14 @@ public class AndroidDataBindingV2Test extends AndroidBuildViewTestCase {
     DataBindingV2Provider provider = c.get(DataBindingV2Provider.PROVIDER);
 
     assertThat(
-            provider.getClassInfos().stream()
+            provider.getClassInfos().toList().stream()
                 .map(Artifact::getRootRelativePathString)
                 .collect(Collectors.toList()))
         .containsExactly(
             "java/a/databinding/a/class-info.zip", "java/b/databinding/b/class-info.zip");
 
     assertThat(
-            provider.getSetterStores().stream()
+            provider.getSetterStores().toList().stream()
                 .map(Artifact::getRootRelativePathString)
                 .collect(Collectors.toList()))
         .containsExactly(
@@ -1236,6 +1253,12 @@ public class AndroidDataBindingV2Test extends AndroidBuildViewTestCase {
     writeDataBindingFiles();
     writeNonDataBindingLocalTestFiles();
 
+    if (platformBasedToolchains()) {
+      // TODO(b/161709111): With platforms, the below fails with
+      // "no attribute `$android_sdk_toolchain_type`" on AspectAwareAttributeMapper.
+      return;
+    }
+
     ConfiguredTarget testTarget =
         getConfiguredTarget("//javatests/android/test:databinding_enabled_test");
     Set<Artifact> allArtifacts = actionsTestUtil().artifactClosureOf(getFilesToBuild(testTarget));
@@ -1268,6 +1291,12 @@ public class AndroidDataBindingV2Test extends AndroidBuildViewTestCase {
         "--experimental_android_databinding_v2", "--android_databinding_use_v3_4_args");
     writeDataBindingFiles();
     writeDataBindingLocalTestFiles();
+
+    if (platformBasedToolchains()) {
+      // TODO(b/161709111): With platforms, the below fails with
+      // "no attribute `$android_sdk_toolchain_type`" on AspectAwareAttributeMapper.
+      return;
+    }
 
     ConfiguredTarget testTarget =
         getConfiguredTarget("//javatests/android/test:databinding_enabled_test");

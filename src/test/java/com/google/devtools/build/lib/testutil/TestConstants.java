@@ -67,6 +67,9 @@ public class TestConstants {
   /** Location of the bazel repo relative to the workspace root */
   public static final String BAZEL_REPO_PATH = "";
 
+  /** The file path in which to create files so that they end up under Bazel main repository. */
+  public static final String BAZEL_REPO_SCRATCH = "../io_bazel/";
+
   /** Relative path to the {@code process-wrapper} tool. */
   public static final String PROCESS_WRAPPER_PATH =
       "io_bazel/src/main/tools/process-wrapper";
@@ -97,7 +100,7 @@ public class TestConstants {
   /** The workspace repository label under which built-in tools reside. */
   public static final String TOOLS_REPOSITORY = "@bazel_tools";
   /** The file path in which to create files so that they end up under {@link #TOOLS_REPOSITORY}. */
-  public static final String TOOLS_REPOSITORY_SCRATCH = "bazel_tools_workspace/";
+  public static final String TOOLS_REPOSITORY_SCRATCH = "embedded_tools/";
 
   /** The output file path prefix for tool file dependencies. */
   public static final String TOOLS_REPOSITORY_PATH_PREFIX = "external/bazel_tools/";
@@ -126,7 +129,8 @@ public class TestConstants {
           "--incompatible_py3_is_default=false",
           "--incompatible_py2_outputs_are_suffixed=false",
           // TODO(#7849): Remove after flag flip.
-          "--incompatible_use_toolchain_resolution_for_java_rules");
+          "--incompatible_use_toolchain_resolution_for_java_rules",
+          "--incompatible_disable_native_apple_binary_rule=false");
 
   /** Partial query to filter out implicit dependencies of C/C++ rules. */
   public static final String CC_DEPENDENCY_CORRECTION =
@@ -135,7 +139,7 @@ public class TestConstants {
   public static final String PLATFORM_PACKAGE_ROOT = "@bazel_tools//platforms";
   public static final String CONSTRAINTS_PACKAGE_ROOT = "@platforms//";
 
-  public static final String PLATFORMS_PATH = "bazel_tools_workspace/platforms";
+  public static final String PLATFORMS_PATH = "embedded_tools/platforms";
   public static final String CONSTRAINTS_PATH = "platforms_workspace";
   public static final String LOCAL_CONFIG_PLATFORM_PATH = "local_config_platform_workspace";
 
@@ -145,6 +149,9 @@ public class TestConstants {
   /** What toolchain type do Android rules use for platform-based toolchain resolution? */
   public static final String ANDROID_TOOLCHAIN_TYPE_LABEL =
       TOOLS_REPOSITORY + "//tools/android:sdk_toolchain_type";
+
+  /** The launcher used by Bazel. */
+  public static final String LAUNCHER_PATH = "@bazel_tools//tools/launcher:launcher";
 
   /** A choice of test execution mode, only varies internally. */
   public enum InternalTestExecutionMode {

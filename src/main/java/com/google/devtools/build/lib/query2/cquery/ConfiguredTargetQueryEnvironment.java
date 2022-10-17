@@ -24,6 +24,7 @@ import com.google.common.util.concurrent.AsyncFunction;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
+import com.google.devtools.build.lib.analysis.ConfiguredTargetValue;
 import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
 import com.google.devtools.build.lib.analysis.config.transitions.TransitionFactory;
 import com.google.devtools.build.lib.analysis.configuredtargets.RuleConfiguredTarget;
@@ -31,7 +32,7 @@ import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.TargetParsingException;
 import com.google.devtools.build.lib.cmdline.TargetPattern;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
-import com.google.devtools.build.lib.packages.Rule;
+import com.google.devtools.build.lib.packages.RuleTransitionData;
 import com.google.devtools.build.lib.packages.Target;
 import com.google.devtools.build.lib.pkgcache.PackageManager;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
@@ -50,7 +51,6 @@ import com.google.devtools.build.lib.rules.AliasConfiguredTarget;
 import com.google.devtools.build.lib.server.FailureDetails.ConfigurableQuery;
 import com.google.devtools.build.lib.skyframe.BuildConfigurationValue;
 import com.google.devtools.build.lib.skyframe.ConfiguredTargetKey;
-import com.google.devtools.build.lib.skyframe.ConfiguredTargetValue;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.skyframe.SkyKey;
@@ -174,6 +174,17 @@ public class ConfiguredTargetQueryEnvironment
     return ImmutableList.of(new ConfigFunction());
   }
 
+  /**
+   * Return supplied BuildConfiguration if both are equal else throw exception.
+   *
+   * <p>Noting the background of {@link BuildConfigurationValue.Key::toComparableString}, multiple
+   * BuildConfigurationValue.Key can correspond to the same BuildConfiguration, especially when
+   * trimming is involved.
+   *
+   * <p>Note that, in {@link getTransitiveConfigurations}, only interested in the values and
+   * throwing away the Keys. Thus, intricacies around Key fragments and options diverging not as
+   * relevant anyway.
+   */
   private static BuildConfiguration mergeEqualBuildConfiguration(
       BuildConfiguration left, BuildConfiguration right) {
     if (!left.equals(right)) {
@@ -186,6 +197,8 @@ public class ConfiguredTargetQueryEnvironment
   private static ImmutableMap<String, BuildConfiguration> getTransitiveConfigurations(
       Collection<SkyKey> transitiveConfigurationKeys, WalkableGraph graph)
       throws InterruptedException {
+    // mergeEqualBuildConfiguration can only fail if two BuildConfiguration have the same
+    // checksum but are not equal. This would be a black swan event.
     return graph.getSuccessfulValues(transitiveConfigurationKeys).values().stream()
         .map(value -> (BuildConfigurationValue) value)
         .map(BuildConfigurationValue::getConfiguration)
@@ -205,7 +218,7 @@ public class ConfiguredTargetQueryEnvironment
           OutputStream out,
           SkyframeExecutor skyframeExecutor,
           BuildConfiguration hostConfiguration,
-          @Nullable TransitionFactory<Rule> trimmingTransitionFactory,
+          @Nullable TransitionFactory<RuleTransitionData> trimmingTransitionFactory,
           PackageManager packageManager)
           throws QueryException, InterruptedException {
     AspectResolver aspectResolver =
@@ -290,29 +303,25 @@ public class ConfiguredTargetQueryEnvironment
           return Futures.immediateFuture(null);
         };
 
-    try {
-      return QueryTaskFutureImpl.ofDelegate(
-          Futures.catchingAsync(
-              patternToEval.evalAdaptedForAsync(
-                  resolver,
-                  getIgnoredPackagePrefixesPathFragments(),
-                  /* excludedSubdirectories= */ ImmutableSet.of(),
-                  (Callback<Target>)
-                      partialResult -> {
-                        List<KeyedConfiguredTarget> transformedResult = new ArrayList<>();
-                        for (Target target : partialResult) {
-                          transformedResult.addAll(
-                              getConfiguredTargetsForConfigFunction(target.getLabel()));
-                        }
-                        callback.process(transformedResult);
-                      },
-                  QueryException.class),
-              TargetParsingException.class,
-              reportBuildFileErrorAsyncFunction,
-              MoreExecutors.directExecutor()));
-    } catch (InterruptedException e) {
-      return immediateCancelledFuture();
-    }
+    return QueryTaskFutureImpl.ofDelegate(
+        Futures.catchingAsync(
+            patternToEval.evalAdaptedForAsync(
+                resolver,
+                getIgnoredPackagePrefixesPathFragments(),
+                /* excludedSubdirectories= */ ImmutableSet.of(),
+                (Callback<Target>)
+                    partialResult -> {
+                      List<KeyedConfiguredTarget> transformedResult = new ArrayList<>();
+                      for (Target target : partialResult) {
+                        transformedResult.addAll(
+                            getConfiguredTargetsForConfigFunction(target.getLabel()));
+                      }
+                      callback.process(transformedResult);
+                    },
+                QueryException.class),
+            TargetParsingException.class,
+            reportBuildFileErrorAsyncFunction,
+            MoreExecutors.directExecutor()));
   }
 
   /**

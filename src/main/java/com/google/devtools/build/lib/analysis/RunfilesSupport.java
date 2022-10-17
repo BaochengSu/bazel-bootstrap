@@ -30,8 +30,6 @@ import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
 import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.packages.Type;
-import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
-import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec.VisibleForSerialization;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
@@ -74,7 +72,6 @@ import javax.annotation.Nullable;
  * which will run an executable should depend on this Middleman Artifact.
  */
 @Immutable
-@AutoCodec
 public final class RunfilesSupport {
   private static final String RUNFILES_DIR_EXT = ".runfiles";
   private static final String INPUT_MANIFEST_EXT = ".runfiles_manifest";
@@ -152,9 +149,7 @@ public final class RunfilesSupport {
         actionEnvironment);
   }
 
-  @AutoCodec.Instantiator
-  @VisibleForSerialization
-  RunfilesSupport(
+  private RunfilesSupport(
       Runfiles runfiles,
       Artifact runfilesInputManifest,
       Artifact runfilesManifest,
@@ -456,7 +451,7 @@ public final class RunfilesSupport {
   /**
    * Creates and returns a {@link RunfilesSupport} object for the given rule and executable. This
    * version discards all arguments. Only use this for <a
-   * href="https://docs.bazel.build/versions/master/platforms.html#skipping-incompatible-targets">Incompatible
+   * href="https://docs.bazel.build/versions/main/platforms.html#skipping-incompatible-targets">Incompatible
    * Target Skipping</a>.
    */
   public static RunfilesSupport withExecutableButNoArgs(

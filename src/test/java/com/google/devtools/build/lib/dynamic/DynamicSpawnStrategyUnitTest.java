@@ -24,7 +24,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
@@ -32,6 +32,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.devtools.build.lib.actions.ActionExecutionContext;
 import com.google.devtools.build.lib.actions.Artifact.SourceArtifact;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
+import com.google.devtools.build.lib.actions.ArtifactRoot.RootType;
 import com.google.devtools.build.lib.actions.DynamicStrategyRegistry;
 import com.google.devtools.build.lib.actions.SandboxedSpawnStrategy;
 import com.google.devtools.build.lib.actions.SandboxedSpawnStrategy.StopConcurrentSpawns;
@@ -74,21 +75,6 @@ public class DynamicSpawnStrategyUnitTest {
 
   private ExecutorService executorServiceForCleanup;
 
-  /**
-   * {@see org.mockito.Mockito#verifyZeroInteractions}
-   *
-   * <p>TODO(b/188373809): {@link org.mockito.Mockito#verifyZeroInteractions
-   * Mockito.verifyZeroInteractions} is deprecated in Mockito 3.0.1, replaced with {@code
-   * verifyNoInteractions}. However, some of the builders on Google Bazel Presubmits on BuildKite
-   * have an older version of that, so we can't replace these calls yet. This function will serve to
-   * mute the depcrecation warnings until they are. At which point this method should be removed and
-   * {@code verifyNoInteractions} just be called instead.
-   */
-  @SuppressWarnings("deprecation")
-  private static void verifyNoInteractions(Object... objs) {
-    verifyZeroInteractions(objs);
-  }
-
   @Mock private Function<Spawn, Optional<Spawn>> mockGetPostProcessingSpawn;
 
   private Scratch scratch;
@@ -99,7 +85,7 @@ public class DynamicSpawnStrategyUnitTest {
   public void initMocks() throws IOException {
     scratch = new Scratch();
     execDir = scratch.dir("/base/exec");
-    rootDir = ArtifactRoot.asDerivedRoot(execDir, "root");
+    rootDir = ArtifactRoot.asDerivedRoot(execDir, RootType.Output, "root");
     MockitoAnnotations.initMocks(this);
     // Mockito can't see that we want the function to return Optional.empty() instead
     // of null on apply by default (thanks generic type erasure). Set that up ourselves.
@@ -108,11 +94,13 @@ public class DynamicSpawnStrategyUnitTest {
 
   @After
   public void stopExecutorService() throws InterruptedException {
-    executorServiceForCleanup.shutdown();
-    assertThat(
-            executorServiceForCleanup.awaitTermination(
-                TestUtils.WAIT_TIMEOUT_MILLISECONDS, MILLISECONDS))
-        .isTrue();
+    if (executorServiceForCleanup != null) {
+      executorServiceForCleanup.shutdown();
+      assertThat(
+              executorServiceForCleanup.awaitTermination(
+                  TestUtils.WAIT_TIMEOUT_MILLISECONDS, MILLISECONDS))
+          .isTrue();
+    }
   }
 
   @Test
@@ -281,6 +269,28 @@ public class DynamicSpawnStrategyUnitTest {
     ImmutableList<SpawnResult> results = dynamicSpawnStrategy.exec(spawn, actionExecutionContext);
 
     assertThat(results).containsExactly(SUCCESSFUL_SPAWN_RESULT, SUCCESSFUL_SPAWN_RESULT);
+  }
+
+  @Test
+  public void waitBranches_givesDebugOutputOnWeirdCases() throws Exception {
+    Spawn spawn =
+        new SpawnBuilder()
+            .withOwnerPrimaryOutput(new SourceArtifact(rootDir, PathFragment.create("/foo"), null))
+            .build();
+    SandboxedSpawnStrategy local = createMockSpawnStrategy();
+    SandboxedSpawnStrategy remote = createMockSpawnStrategy();
+    ActionExecutionContext actionExecutionContext = createMockActionExecutionContext(local, remote);
+    AssertionError error =
+        assertThrows(
+            AssertionError.class,
+            () ->
+                DynamicSpawnStrategy.waitBranches(
+                    Futures.immediateFuture(null),
+                    Futures.immediateFuture(null),
+                    spawn,
+                    new DynamicExecutionOptions(),
+                    actionExecutionContext));
+    assertThat(error).hasMessageThat().contains("Neither branch of /foo completed.");
   }
 
   @Test

@@ -120,7 +120,7 @@ public class MemoizingEvaluatorTest {
   }
 
   protected MemoizingEvaluator getMemoizingEvaluator(
-      Map<SkyFunctionName, ? extends SkyFunction> functions,
+      Map<SkyFunctionName, SkyFunction> functions,
       Differencer differencer,
       EvaluationProgressReceiver progressReceiver,
       GraphInconsistencyReceiver graphInconsistencyReceiver,
@@ -2607,7 +2607,7 @@ public class MemoizingEvaluatorTest {
     assertThat(numInconsistencyCalls.get()).isEqualTo(1);
   }
 
-  protected void deleteKeyFromGraph(SkyKey key) {
+  protected void deleteKeyFromGraph(SkyKey key) throws Exception {
     ((InMemoryMemoizingEvaluator) tester.evaluator).getGraphForTesting().remove(key);
   }
 

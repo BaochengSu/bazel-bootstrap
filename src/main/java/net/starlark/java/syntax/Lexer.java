@@ -15,8 +15,10 @@
 package net.starlark.java.syntax;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.util.ArrayList;
+import com.google.common.collect.Interner;
+import com.google.common.collect.Interners;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,12 @@ import java.util.Stack;
 
 /** A scanner for Starlark. */
 final class Lexer {
+
+  // We intern identifiers and keywords to avoid retaining redundant String objects via the AST.
+  //
+  // The parser handles interning of string literal values. Benchmarking did not show significant
+  // benefit to any further internment. See discussion on Google-internal cl/385193833 for details.
+  private static final Interner<String> identInterner = Interners.newWeakInterner();
 
   // --- These fields are accessed directly by the parser: ---
 
@@ -36,7 +44,6 @@ final class Lexer {
   TokenKind kind;
   int start; // start offset
   int end; // end offset
-  String raw; // source text of token
   Object value; // String, Integer/Long/BigInteger, or Double value of token
 
   // --- end of parser-visible fields ---
@@ -47,13 +54,11 @@ final class Lexer {
   private final char[] buffer;
   private int pos;
 
-  private final FileOptions options;
-
   // The stack of enclosing indentation levels in spaces.
   // The first (outermost) element is always zero.
   private final Stack<Integer> indentStack = new Stack<>();
 
-  private final List<Comment> comments;
+  private final ImmutableList.Builder<Comment> comments = ImmutableList.builder();
 
   // The number of unclosed open-parens ("(", '{', '[') at the current point in
   // the stream. Whitespace is handled differently when this is nonzero.
@@ -86,21 +91,19 @@ final class Lexer {
 
   // Constructs a lexer which tokenizes the parser input.
   // Errors are appended to errors.
-  Lexer(ParserInput input, FileOptions options, List<SyntaxError> errors) {
+  Lexer(ParserInput input, List<SyntaxError> errors) {
     this.locs = FileLocations.create(input.getContent(), input.getFile());
-    this.options = options;
     this.buffer = input.getContent();
     this.pos = 0;
     this.errors = errors;
     this.checkIndentation = true;
-    this.comments = new ArrayList<>();
     this.dents = 0;
 
     indentStack.push(0);
   }
 
-  List<Comment> getComments() {
-    return comments;
+  ImmutableList<Comment> getComments() {
+    return comments.build();
   }
 
   /**
@@ -136,14 +139,17 @@ final class Lexer {
     this.start = start;
     this.end = end;
     this.value = null;
-    this.raw = null;
   }
 
   // setValue sets the value associated with a STRING, FLOAT, INT,
   // IDENTIFIER, or COMMENT token, and records the raw text of the token.
   private void setValue(Object value) {
     this.value = value;
-    this.raw = bufferSlice(start, end);
+  }
+
+  /** Returns the raw input text associated with the current token. */
+  String getRaw() {
+    return bufferSlice(start, end);
   }
 
   /**
@@ -353,20 +359,9 @@ final class Lexer {
             case 'u':
             case 'U':
             case 'v':
-            case 'x':
-              // exists in Python but not implemented in Blaze => error
-              error("invalid escape sequence: \\" + c, pos - 1);
-              break;
             default:
               // unknown char escape => "\literal"
-              if (options.restrictStringEscapes()) {
-                error(
-                    "invalid escape sequence: \\"
-                        + c
-                        + ". You can enable unknown escape sequences by passing the flag"
-                        + " --incompatible_restrict_string_escapes=false",
-                    pos - 1);
-              }
+              error("invalid escape sequence: \\" + c + ". Use '\\\\' to insert '\\'.", pos - 1);
               literal.append('\\');
               literal.append(c);
               break;
@@ -509,10 +504,12 @@ final class Lexer {
    */
   private void identifierOrKeyword() {
     int oldPos = pos - 1;
-    String id = scanIdentifier();
+    String id = identInterner.intern(scanIdentifier());
     TokenKind kind = keywordMap.get(id);
     if (kind == null) {
       setToken(TokenKind.IDENTIFIER, oldPos, pos);
+      // setValue allocates a new String for the raw text, but it's not retained so we don't bother
+      // interning it.
       setValue(id);
     } else {
       setToken(kind, oldPos, pos);
@@ -923,12 +920,10 @@ final class Lexer {
     return c == '0' || c == '1';
   }
 
-  /**
-   * Returns parts of the source buffer based on offsets
-   *
-   * @param start the beginning offset for the slice
-   * @param end the offset immediately following the slice
-   * @return the text at offset start with length end - start
+  /*
+   * Returns a string containing the part of the source buffer beginning at offset {@code start} and
+   * ending immediately before offset {@code end} (so the length of the resulting string is {@code
+   * end - start}).
    */
   String bufferSlice(int start, int end) {
     return new String(this.buffer, start, end - start);

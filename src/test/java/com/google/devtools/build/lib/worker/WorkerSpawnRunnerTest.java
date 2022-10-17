@@ -17,7 +17,9 @@ package com.google.devtools.build.lib.worker;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.devtools.build.lib.worker.TestUtils.createWorkerKey;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,6 +27,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.eventbus.EventBus;
 import com.google.devtools.build.lib.actions.ExecException;
 import com.google.devtools.build.lib.actions.ExecutionRequirements;
 import com.google.devtools.build.lib.actions.ExecutionRequirements.WorkerProtocolFormat;
@@ -77,17 +80,19 @@ public class WorkerSpawnRunnerTest {
   @Mock MetadataProvider inputFileCache;
   @Mock Worker worker;
   @Mock WorkerOptions options;
+  @Mock EventBus eventBus;
 
   @Before
   public void setUp() {
     when(spawn.getInputFiles()).thenReturn(NestedSetBuilder.emptySet(Order.COMPILE_ORDER));
     when(context.getArtifactExpander()).thenReturn((artifact, output) -> {});
+    doNothing().when(eventBus).register(any());
   }
 
   private WorkerPool createWorkerPool() {
     return new WorkerPool(
         new WorkerPoolConfig(
-            new WorkerFactory(fs.getPath("/workerBase"), options.workerSandboxing) {
+            new WorkerFactory(fs.getPath("/workerBase")) {
               @Override
               public Worker create(WorkerKey key) {
                 return worker;
@@ -110,13 +115,13 @@ public class WorkerSpawnRunnerTest {
             new SandboxHelpers(false),
             fs.getPath("/execRoot"),
             createWorkerPool(),
-            /* multiplex */ false,
             reporter,
             localEnvProvider,
             /* binTools */ null,
             resourceManager,
             /* runfilestTreeUpdater */ null,
-            new WorkerOptions());
+            new WorkerOptions(),
+            eventBus);
     WorkerKey key = createWorkerKey(fs, "mnem", false);
     Path logFile = fs.getPath("/worker.log");
     when(worker.getResponse(0))
@@ -147,13 +152,13 @@ public class WorkerSpawnRunnerTest {
             new SandboxHelpers(false),
             fs.getPath("/execRoot"),
             createWorkerPool(),
-            /* multiplex */ false,
             reporter,
             localEnvProvider,
             /* binTools */ null,
             resourceManager,
             /* runfilesTreeUpdater=*/ null,
-            new WorkerOptions());
+            new WorkerOptions(),
+            eventBus);
     WorkerKey key = createWorkerKey(fs, "mnem", false);
     Path logFile = fs.getPath("/worker.log");
     when(worker.getResponse(anyInt()))
@@ -190,13 +195,13 @@ public class WorkerSpawnRunnerTest {
             new SandboxHelpers(false),
             fs.getPath("/execRoot"),
             createWorkerPool(),
-            /* multiplex */ false,
             reporter,
             localEnvProvider,
             /* binTools */ null,
             resourceManager,
             /* runfilesTreeUpdater=*/ null,
-            workerOptions);
+            workerOptions,
+            eventBus);
     WorkerKey key = createWorkerKey(fs, "mnem", false);
     Path logFile = fs.getPath("/worker.log");
     Semaphore secondResponseRequested = new Semaphore(0);
@@ -247,13 +252,13 @@ public class WorkerSpawnRunnerTest {
             new SandboxHelpers(false),
             fs.getPath("/execRoot"),
             createWorkerPool(),
-            /* multiplex */ false,
             reporter,
             localEnvProvider,
             /* binTools */ null,
             resourceManager,
             /* runfilesTreeUpdater=*/ null,
-            workerOptions);
+            workerOptions,
+            eventBus);
     WorkerKey key = createWorkerKey(fs, "mnem", false);
     Path logFile = fs.getPath("/worker.log");
     when(worker.getResponse(anyInt())).thenThrow(new InterruptedException());
@@ -291,15 +296,15 @@ public class WorkerSpawnRunnerTest {
             new SandboxHelpers(false),
             fs.getPath("/execRoot"),
             createWorkerPool(),
-            /* multiplex */ true,
             reporter,
             localEnvProvider,
             /* binTools */ null,
             resourceManager,
             /* runfilestTreeUpdater */ null,
-            workerOptions);
+            workerOptions,
+            eventBus);
     // This worker key just so happens to be multiplex and require sandboxing.
-    WorkerKey key = createWorkerKey(WorkerProtocolFormat.JSON, fs);
+    WorkerKey key = createWorkerKey(WorkerProtocolFormat.JSON, fs, true);
     Path logFile = fs.getPath("/worker.log");
     when(worker.getResponse(0))
         .thenReturn(
@@ -330,13 +335,13 @@ public class WorkerSpawnRunnerTest {
             new SandboxHelpers(false),
             fs.getPath("/execRoot"),
             createWorkerPool(),
-            /* multiplex */ false,
             reporter,
             localEnvProvider,
             /* binTools */ null,
             resourceManager,
             /* runfilestTreeUpdater */ null,
-            new WorkerOptions());
+            new WorkerOptions(),
+            eventBus);
     WorkerKey key = createWorkerKey(fs, "mnem", false);
     Path logFile = fs.getPath("/worker.log");
     when(worker.getLogFile()).thenReturn(logFile);

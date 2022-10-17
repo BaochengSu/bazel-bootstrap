@@ -20,6 +20,7 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Files;
+import com.google.errorprone.annotations.FormatMethod;
 import java.io.File;
 import java.util.HashMap;
 import java.util.List;
@@ -73,7 +74,7 @@ public final class ScriptTest {
   public Object assertStarlark(Object cond, String msg, StarlarkThread thread)
       throws EvalException {
     if (!Starlark.truth(cond)) {
-      thread.getThreadLocal(Reporter.class).reportError(thread, "assert_: " + msg);
+      reportErrorf(thread, "assert_: %s", msg);
     }
     return Starlark.NONE;
   }
@@ -88,10 +89,46 @@ public final class ScriptTest {
       useStarlarkThread = true)
   public Object assertEq(Object x, Object y, StarlarkThread thread) throws EvalException {
     if (!x.equals(y)) {
-      String msg = String.format("assert_eq: %s != %s", Starlark.repr(x), Starlark.repr(y));
-      thread.getThreadLocal(Reporter.class).reportError(thread, msg);
+      reportErrorf(thread, "assert_eq: %s != %s", Starlark.repr(x), Starlark.repr(y));
     }
     return Starlark.NONE;
+  }
+
+  @StarlarkMethod(
+      name = "assert_fails",
+      doc = "assert_fails asserts that evaluation of f() fails with the specified error",
+      parameters = {
+        @Param(name = "f", doc = "the Starlark function to call"),
+        @Param(
+            name = "wantError",
+            doc = "a regular expression matching the expected error message"),
+      },
+      useStarlarkThread = true)
+  public Object assertFails(StarlarkCallable f, String wantError, StarlarkThread thread)
+      throws EvalException, InterruptedException {
+    Pattern pattern;
+    try {
+      pattern = Pattern.compile(wantError);
+    } catch (PatternSyntaxException unused) {
+      throw Starlark.errorf("invalid regexp: %s", wantError);
+    }
+
+    try {
+      Starlark.call(thread, f, ImmutableList.of(), ImmutableMap.of());
+      reportErrorf(thread, "evaluation succeeded unexpectedly (want error matching %s)", wantError);
+    } catch (EvalException ex) {
+      // Verify error matches expectation.
+      String msg = ex.getMessage();
+      if (!pattern.matcher(msg).find()) {
+        reportErrorf(thread, "regular expression (%s) did not match error (%s)", pattern, msg);
+      }
+    }
+    return Starlark.NONE;
+  }
+
+  @FormatMethod
+  private static void reportErrorf(StarlarkThread thread, String format, Object... args) {
+    thread.getThreadLocal(Reporter.class).reportError(thread, String.format(format, args));
   }
 
   // Constructor for simple structs, for testing.
@@ -106,6 +143,32 @@ public final class ScriptTest {
       extraKeywords = @Param(name = "kwargs"))
   public Struct mutablestruct(Dict<String, Object> kwargs) throws EvalException {
     return new MutableStruct(kwargs);
+  }
+
+  @StarlarkMethod(
+      name = "freeze",
+      doc = "Shallow-freezes the operand. With no argument, freezes the thread.",
+      parameters = {@Param(name = "x", defaultValue = "unbound")},
+      useStarlarkThread = true)
+  public void freeze(Object x, StarlarkThread thread) throws EvalException {
+    if (x == Starlark.UNBOUND) {
+      thread.mutability().close();
+      return;
+    }
+
+    if (x instanceof Mutability.Freezable) {
+      ((Mutability.Freezable) x).unsafeShallowFreeze();
+    } else {
+      throw Starlark.errorf("%s value is not freezable", Starlark.type(x));
+    }
+  }
+
+  @StarlarkMethod(
+      name = "int_mul_slow",
+      doc = "Slow but reliable integer multiplication with round-trip to BigInteger",
+      parameters = {@Param(name = "x"), @Param(name = "y")})
+  public StarlarkInt intMulSlow(StarlarkInt x, StarlarkInt y) {
+    return StarlarkInt.of(x.toBigInteger().multiply(y.toBigInteger()));
   }
 
   private static boolean ok = true;
@@ -167,7 +230,7 @@ public final class ScriptTest {
 
         StarlarkSemantics semantics = StarlarkSemantics.DEFAULT;
         Module module = Module.withPredeclared(semantics, predeclared.build());
-        try (Mutability mu = Mutability.create("test")) {
+        try (Mutability mu = Mutability.createAllowingShallowFreeze("test")) {
           StarlarkThread thread = new StarlarkThread(mu, semantics);
           thread.setThreadLocal(Reporter.class, ScriptTest::reportError);
           Starlark.execFile(input, FileOptions.DEFAULT, module, thread);

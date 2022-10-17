@@ -14,21 +14,61 @@
 package com.google.devtools.build.lib.remote.common;
 
 import build.bazel.remote.execution.v2.RequestMetadata;
+import com.google.devtools.build.lib.actions.ActionExecutionMetadata;
+import com.google.devtools.build.lib.actions.Spawn;
+import javax.annotation.Nullable;
 
 /** A context that provide remote execution related information for executing an action remotely. */
 public interface RemoteActionExecutionContext {
+  /** The type of the context. */
+  enum Type {
+    REMOTE_EXECUTION,
+    BUILD_EVENT_SERVICE,
+  }
 
-  /** Get the {@link RequestMetadata} for the action being executed. */
+  /** Returns the {@link Type} of the context. */
+  Type getType();
+
+  /** Returns the {@link Spawn} of the action being executed or {@code null}. */
+  @Nullable
+  Spawn getSpawn();
+
+  /** Returns the {@link RequestMetadata} for the action being executed. */
   RequestMetadata getRequestMetadata();
 
   /**
-   * Get the {@link NetworkTime} instance used to measure the network time during the action
+   * Returns the {@link NetworkTime} instance used to measure the network time during the action
    * execution.
    */
   NetworkTime getNetworkTime();
 
+  @Nullable
+  default ActionExecutionMetadata getSpawnOwner() {
+    Spawn spawn = getSpawn();
+    if (spawn == null) {
+      return null;
+    }
+
+    return spawn.getResourceOwner();
+  }
+
   /** Creates a {@link SimpleRemoteActionExecutionContext} with given {@link RequestMetadata}. */
   static RemoteActionExecutionContext create(RequestMetadata metadata) {
-    return new SimpleRemoteActionExecutionContext(metadata, new NetworkTime());
+    return new SimpleRemoteActionExecutionContext(
+        /*type=*/ Type.REMOTE_EXECUTION, /*spawn=*/ null, metadata, new NetworkTime());
+  }
+
+  /**
+   * Creates a {@link SimpleRemoteActionExecutionContext} with given {@link Spawn} and {@link
+   * RequestMetadata}.
+   */
+  static RemoteActionExecutionContext create(@Nullable Spawn spawn, RequestMetadata metadata) {
+    return new SimpleRemoteActionExecutionContext(
+        /*type=*/ Type.REMOTE_EXECUTION, spawn, metadata, new NetworkTime());
+  }
+
+  static RemoteActionExecutionContext createForBES(RequestMetadata metadata) {
+    return new SimpleRemoteActionExecutionContext(
+        /*type=*/ Type.BUILD_EVENT_SERVICE, /*spawn=*/ null, metadata, new NetworkTime());
   }
 }

@@ -37,11 +37,13 @@ import com.google.devtools.build.lib.packages.AspectParameters;
 import com.google.devtools.build.lib.packages.Attribute.LabelLateBoundDefault;
 import com.google.devtools.build.lib.packages.NativeAspectClass;
 import com.google.devtools.build.lib.packages.StarlarkProviderIdentifier;
+import com.google.devtools.build.lib.rules.java.JavaCcInfoProvider;
 import com.google.devtools.build.lib.rules.java.JavaCompilationArgsProvider;
 import com.google.devtools.build.lib.rules.java.JavaConfiguration;
 import com.google.devtools.build.lib.rules.java.JavaInfo;
 import com.google.devtools.build.lib.rules.java.JavaRuleClasses;
 import com.google.devtools.build.lib.rules.java.JavaRuleOutputJarsProvider;
+import com.google.devtools.build.lib.rules.java.JavaRuleOutputJarsProvider.JavaOutput;
 import com.google.devtools.build.lib.rules.java.JavaSemantics;
 import com.google.devtools.build.lib.rules.java.JavaSourceJarsProvider;
 import com.google.devtools.build.lib.rules.proto.ProtoCompileActionBuilder;
@@ -50,7 +52,6 @@ import com.google.devtools.build.lib.rules.proto.ProtoCompileActionBuilder.Servi
 import com.google.devtools.build.lib.rules.proto.ProtoCompileActionBuilder.ToolchainInvocation;
 import com.google.devtools.build.lib.rules.proto.ProtoConfiguration;
 import com.google.devtools.build.lib.rules.proto.ProtoInfo;
-import com.google.devtools.build.lib.rules.proto.ProtoSourceFileBlacklist;
 import com.google.devtools.build.lib.skyframe.ConfiguredTargetAndData;
 
 /** An Aspect which JavaProtoLibrary injects to build Java SPEED protos. */
@@ -201,7 +202,7 @@ public class JavaProtoAspect extends NativeAspectClass implements ConfiguredAspe
         transitiveOutputJars.addTransitive(provider.getJars());
       }
 
-      if (shouldGenerateCode()) {
+      if (aspectCommon.shouldGenerateCode(protoInfo, "java_proto_library")) {
         Artifact sourceJar = aspectCommon.getSourceJarArtifact();
         createProtoCompileAction(sourceJar);
         Artifact outputJar = aspectCommon.getOutputJarArtifact();
@@ -217,11 +218,16 @@ public class JavaProtoAspect extends NativeAspectClass implements ConfiguredAspe
         // TODO(carmi): Expose to native rules
         JavaRuleOutputJarsProvider ruleOutputJarsProvider =
             JavaRuleOutputJarsProvider.builder()
-                .addOutputJar(
-                    outputJar,
-                    compileTimeJar,
-                    null /* manifestProto */,
-                    ImmutableList.of(sourceJar))
+                .addJavaOutput(
+                    JavaOutput.builder()
+                        .setClassJar(outputJar)
+                        .setCompileJar(compileTimeJar)
+                        .addSourceJar(sourceJar)
+                        .setCompileJdeps(
+                            generatedCompilationArgsProvider
+                                .getCompileTimeJavaDependencyArtifacts()
+                                .getSingleton())
+                        .build())
                 .build();
         JavaSourceJarsProvider sourceJarsProvider =
             JavaSourceJarsProvider.create(
@@ -245,8 +251,11 @@ public class JavaProtoAspect extends NativeAspectClass implements ConfiguredAspe
 
       aspect.addProvider(generatedCompilationArgsProvider);
       javaInfo.addProvider(JavaCompilationArgsProvider.class, generatedCompilationArgsProvider);
-      aspect.addNativeDeclaredProvider(
+
+      javaInfo.addProvider(
+          JavaCcInfoProvider.class,
           createCcLinkingInfo(ruleContext, aspectCommon.getProtoRuntimeDeps()));
+
       aspect
           .addNativeDeclaredProvider(javaInfo.build())
           .addProvider(
@@ -256,26 +265,6 @@ public class JavaProtoAspect extends NativeAspectClass implements ConfiguredAspe
                       javaProtoLibraryAspectProviders,
                       generatedCompilationArgsProvider,
                       aspectCommon.getProtoRuntimeDeps())));
-    }
-
-    /**
-     * Decides whether code should be generated for the .proto files in the currently-processed
-     * proto_library.
-     */
-    private boolean shouldGenerateCode() {
-      if (protoInfo.getOriginalDirectProtoSources().isEmpty()) {
-        return false;
-      }
-
-      final ProtoSourceFileBlacklist protoBlackList;
-      NestedSetBuilder<Artifact> blacklistedProtos = NestedSetBuilder.stableOrder();
-      blacklistedProtos.addTransitive(aspectCommon.getProtoToolchainProvider().blacklistedProtos());
-      blacklistedProtos.addTransitive(rpcSupport.getBlacklist(ruleContext));
-
-      protoBlackList = new ProtoSourceFileBlacklist(ruleContext, blacklistedProtos.build());
-
-      return protoBlackList.checkSrcs(
-          protoInfo.getOriginalDirectProtoSources(), "java_proto_library");
     }
 
     private void createProtoCompileAction(Artifact sourceJar) {

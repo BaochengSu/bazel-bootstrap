@@ -155,8 +155,8 @@ public interface CommandLineArgsApi extends StarlarkValue {
   @StarlarkMethod(
       name = "add_all",
       doc =
-          "Appends multiple arguments to this command line. For depsets, the items are "
-              + "evaluated lazily during the execution phase."
+          "Appends multiple arguments to this command line. The items are processed lazily during "
+              + "the execution phase."
               + ""
               + "<p>Most of the processing occurs over a list of arguments to be appended, as per "
               + "the following steps:"
@@ -241,6 +241,11 @@ public interface CommandLineArgsApi extends StarlarkValue {
                     + "this situation, the <code>DirectoryExpander</code> argument can be applied "
                     + "to manually obtain the files of a given directory."
                     + ""
+                    + "<p>To avoid unintended retention of large analysis-phase data structures "
+                    + "into the execution phase, the <code>map_each</code> function must be "
+                    + "declared by a top-level <code>def</code> statement; it may not be a "
+                    + "nested function closure by default."
+                    + ""
                     + "<p><i>Warning:</i> <a href='globals.html#print'><code>print()</code></a> "
                     + "statements that are executed during the call to <code>map_each</code> will "
                     + "not produce any visible output."),
@@ -313,6 +318,15 @@ public interface CommandLineArgsApi extends StarlarkValue {
                     + "added if <code>omit_if_empty</code> is true (the default) and no other "
                     + "items are appended (as happens if <code>values</code> is empty or all of "
                     + "its items are filtered)."),
+        @Param(
+            name = "allow_closure",
+            named = true,
+            positional = false,
+            defaultValue = "False",
+            doc =
+                "If true, allows the use of closures in function parameters like "
+                    + "<code>map_each</code>. Usually this isn't necessary and it risks retaining "
+                    + "large analysis-phase data structures into the execution phase."),
       },
       useStarlarkThread = true)
   CommandLineArgsApi addAll(
@@ -325,6 +339,7 @@ public interface CommandLineArgsApi extends StarlarkValue {
       Boolean uniquify,
       Boolean expandDirectories,
       Object terminateWith,
+      Boolean allowClosure,
       StarlarkThread thread)
       throws EvalException;
 
@@ -332,8 +347,7 @@ public interface CommandLineArgsApi extends StarlarkValue {
       name = "add_joined",
       doc =
           "Appends an argument to this command line by concatenating together multiple values "
-              + "using a separator. For depsets, the items are evaluated lazily during the "
-              + "execution phase."
+              + "using a separator. The items are processed lazily during the execution phase."
               + ""
               + "<p>Processing is similar to <a href='#add_all'><code>add_all()</code></a>, but "
               + "the list of arguments derived from <code>values</code> is combined into a single "
@@ -430,7 +444,13 @@ public interface CommandLineArgsApi extends StarlarkValue {
             named = true,
             positional = false,
             defaultValue = "True",
-            doc = "Same as for <a href='#add_all.expand_directories'><code>add_all</code></a>.")
+            doc = "Same as for <a href='#add_all.expand_directories'><code>add_all</code></a>."),
+        @Param(
+            name = "allow_closure",
+            named = true,
+            positional = false,
+            defaultValue = "False",
+            doc = "Same as for <a href='#add_all.allow_closure'><code>add_all</code></a>."),
       },
       useStarlarkThread = true)
   CommandLineArgsApi addJoined(
@@ -443,6 +463,7 @@ public interface CommandLineArgsApi extends StarlarkValue {
       Boolean omitIfEmpty,
       Boolean uniquify,
       Boolean expandDirectories,
+      Boolean allowClosure,
       StarlarkThread thread)
       throws EvalException;
 

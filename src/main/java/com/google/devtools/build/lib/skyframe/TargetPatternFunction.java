@@ -66,7 +66,8 @@ public class TargetPatternFunction implements SkyFunction {
               provider,
               env.getListener(),
               patternKey.getPolicy(),
-              MultisetSemaphore.<PackageIdentifier>unbounded());
+              MultisetSemaphore.<PackageIdentifier>unbounded(),
+              SimplePackageIdentifierBatchingCallback::new);
       ImmutableSet<PathFragment> excludedSubdirectories = patternKey.getExcludedSubdirectories();
       ResolvedTargets.Builder<Target> resolvedTargetsBuilder = ResolvedTargets.builder();
       BatchCallback<Target, RuntimeException> callback =
@@ -93,7 +94,7 @@ public class TargetPatternFunction implements SkyFunction {
           };
       parsedPattern.eval(
           resolver,
-          ignoredPatterns,
+          () -> ignoredPatterns,
           excludedSubdirectories,
           callback,
           // The exception type here has to match the one on the BatchCallback. Since the callback

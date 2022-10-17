@@ -32,6 +32,7 @@ import com.google.devtools.build.lib.packages.Attribute.AllowedValueSet;
 import com.google.devtools.build.lib.packages.Attribute.LabelLateBoundDefault;
 import com.google.devtools.build.lib.packages.RuleClass;
 import com.google.devtools.build.lib.packages.RuleClass.Builder.RuleClassType;
+import com.google.devtools.build.lib.packages.RuleClass.ToolchainTransitionMode;
 import com.google.devtools.build.lib.packages.StarlarkProviderIdentifier;
 import com.google.devtools.build.lib.packages.TriState;
 import com.google.devtools.build.lib.rules.python.PyCommon;
@@ -39,13 +40,13 @@ import com.google.devtools.build.lib.rules.python.PyInfo;
 import com.google.devtools.build.lib.rules.python.PyRuleClasses;
 import com.google.devtools.build.lib.rules.python.PyStructUtils;
 import com.google.devtools.build.lib.rules.python.PythonVersion;
-import com.google.devtools.build.lib.util.FileType;
 
 /**
  * Bazel-specific rule definitions for Python rules.
  */
 public final class BazelPyRuleClasses {
-  public static final FileType PYTHON_SOURCE = FileType.of(".py", ".py3");
+
+  private BazelPyRuleClasses() {}
 
   public static final LabelLateBoundDefault<?> PY_INTERPRETER =
       LabelLateBoundDefault.fromTargetConfiguration(
@@ -144,7 +145,7 @@ public final class BazelPyRuleClasses {
       return RuleDefinition.Metadata.builder()
           .name("$base_py")
           .type(RuleClassType.ABSTRACT)
-          .ancestors(BaseRuleClasses.RuleBase.class)
+          .ancestors(BaseRuleClasses.NativeActionCreatingRule.class)
           .build();
     }
   }
@@ -162,7 +163,7 @@ public final class BazelPyRuleClasses {
           <code>name</code> is used instead (see above). If <code>name</code> does not
           match any filename in <code>srcs</code>, <code>main</code> must be specified.
           <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
-          .add(attr("main", LABEL).allowedFileTypes(PYTHON_SOURCE))
+          .add(attr("main", LABEL).allowedFileTypes(PyRuleClasses.PYTHON_SOURCE))
           /* <!-- #BLAZE_RULE($base_py_binary).ATTRIBUTE(python_version) -->
           Whether to build this target (and its transitive <code>deps</code>) for Python 2 or Python
           3. Valid values are <code>"PY2"</code> and <code>"PY3"</code> (the default).
@@ -200,7 +201,7 @@ public final class BazelPyRuleClasses {
           .add(
               attr("srcs", LABEL_LIST)
                   .mandatory()
-                  .allowedFileTypes(PYTHON_SOURCE)
+                  .allowedFileTypes(PyRuleClasses.PYTHON_SOURCE)
                   .direct_compile_time_input())
           /* <!-- #BLAZE_RULE($base_py_binary).ATTRIBUTE(legacy_create_init) -->
           Whether to implicitly create empty __init__.py files in the runfiles tree.
@@ -213,19 +214,24 @@ public final class BazelPyRuleClasses {
           <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
           .add(attr("legacy_create_init", TRISTATE).value(TriState.AUTO))
           /* <!-- #BLAZE_RULE($base_py_binary).ATTRIBUTE(stamp) -->
-          Enable link stamping.
           Whether to encode build information into the binary. Possible values:
           <ul>
-            <li><code>stamp = 1</code>: Stamp the build information into the
-              binary. Stamped binaries are only rebuilt when their dependencies
-              change. Use this if there are tests that depend on the build
-              information.</li>
-            <li><code>stamp = 0</code>: Always replace build information by constant
-              values. This gives good build result caching.</li>
-            <li><code>stamp = -1</code>: Embedding of build information is controlled
-              by the <a href="../user-manual.html#flag--stamp">--[no]stamp</a> Blaze
-              flag.</li>
+            <li>
+              <code>stamp = 1</code>: Always stamp the build information into the binary, even in
+              <a href="../user-manual.html#flag--stamp"><code>--nostamp</code></a> builds. <b>This
+              setting should be avoided</b>, since it potentially kills remote caching for the
+              binary and any downstream actions that depend on it.
+            </li>
+            <li>
+              <code>stamp = 0</code>: Always replace build information by constant values. This
+              gives good build result caching.
+            </li>
+            <li>
+              <code>stamp = -1</code>: Embedding of build information is controlled by the
+              <a href="../user-manual.html#flag--stamp"><code>--[no]stamp</code></a> flag.
+            </li>
           </ul>
+          <p>Stamped binaries are <em>not</em> rebuilt unless their dependencies change.</p>
           <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
           .add(attr("stamp", TRISTATE).value(TriState.AUTO))
           // TODO(brandjon): Consider adding to py_interpreter a .mandatoryBuiltinProviders() of
@@ -236,7 +242,7 @@ public final class BazelPyRuleClasses {
               attr("$py_toolchain_type", NODEP_LABEL)
                   .value(env.getToolsLabel("//tools/python:toolchain_type")))
           .addRequiredToolchains(env.getToolsLabel("//tools/python:toolchain_type"))
-          .useToolchainTransition(true)
+          .useToolchainTransition(ToolchainTransitionMode.ENABLED)
           .build();
     }
 

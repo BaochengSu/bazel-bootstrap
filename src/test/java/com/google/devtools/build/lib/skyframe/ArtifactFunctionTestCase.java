@@ -21,6 +21,7 @@ import com.google.devtools.build.lib.actions.ActionLookupKey;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.FileStateValue;
 import com.google.devtools.build.lib.actions.FileValue;
+import com.google.devtools.build.lib.actions.ThreadStateReceiver;
 import com.google.devtools.build.lib.actions.util.InjectedActionLookupKey;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.ServerDirectories;
@@ -36,6 +37,7 @@ import com.google.devtools.build.lib.util.io.TimestampGranularityMonitor;
 import com.google.devtools.build.lib.vfs.DigestHashFunction;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
+import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.lib.vfs.UnixGlob;
 import com.google.devtools.build.lib.vfs.inmemoryfs.InMemoryFileSystem;
@@ -93,8 +95,7 @@ abstract class ArtifactFunctionTestCase {
         ExternalFilesHelper.createForTesting(
             pkgLocator,
             ExternalFileAction.DEPEND_ON_EXTERNAL_PKG_FOR_EXTERNAL_REPO_PATHS,
-            directories,
-            BazelSkyframeExecutorConstants.EXTERNAL_PACKAGE_HELPER);
+            directories);
     differencer = new SequencedRecordingDifferencer();
     evaluator =
         new InMemoryMemoizingEvaluator(
@@ -106,11 +107,25 @@ abstract class ArtifactFunctionTestCase {
                         new AtomicReference<>(UnixGlob.DEFAULT_SYSCALLS),
                         externalFilesHelper))
                 .put(FileValue.FILE, new FileFunction(pkgLocator))
-                .put(Artifact.ARTIFACT, new ArtifactFunction(() -> true))
+                .put(
+                    Artifact.ARTIFACT,
+                    new ArtifactFunction(() -> true, MetadataConsumerForMetrics.NO_OP))
                 .put(SkyFunctions.ACTION_EXECUTION, new SimpleActionExecutionFunction())
                 .put(
                     SkyFunctions.PACKAGE,
-                    new PackageFunction(null, null, null, null, null, null, null, null))
+                    new PackageFunction(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        /*packageProgress=*/ null,
+                        PackageFunction.ActionOnIOExceptionReadingBuildFile.UseOriginalIOException
+                            .INSTANCE,
+                        PackageFunction.IncrementalityIntent.INCREMENTAL,
+                        k -> ThreadStateReceiver.NULL_INSTANCE))
                 .put(
                     SkyFunctions.PACKAGE_LOOKUP,
                     new PackageLookupFunction(
@@ -177,7 +192,7 @@ abstract class ArtifactFunctionTestCase {
     }
 
     @Override
-    protected byte[] getFastDigest(Path path) throws IOException {
+    protected byte[] getFastDigest(PathFragment path) throws IOException {
       return fastDigest ? getDigest(path) : null;
     }
   }

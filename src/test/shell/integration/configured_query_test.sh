@@ -106,6 +106,32 @@ EOF
  assert_contains "source file //$pkg:japanese.cc" output
 }
 
+function test_config_checksum_determinism() {
+  local -r pkg=$FUNCNAME
+  mkdir -p $pkg
+  cat > $pkg/BUILD <<'EOF'
+sh_library(name = 'lib')
+EOF
+
+  bazel cquery "$pkg:lib" > out1 2>"$TEST_log" || fail "Expected success"
+  bazel shutdown >& "$TEST_log" || fail "Failed to shutdown"
+  bazel cquery "$pkg:lib" > out2 2>"$TEST_log" || fail "Expected success"
+
+  output1="$(cat out1)"
+  output2="$(cat out2)"
+  if [[ "$output1" != "$output2" ]]
+  then
+    fail "$(cat<<EOF
+Nondeterminism in cquery:
+${output1}
+!=
+${output2}
+You may have added an option without a meaningful toString() implementation
+EOF
+)"
+  fi
+}
+
 function test_respects_selects() {
   local -r pkg=$FUNCNAME
   mkdir -p $pkg
@@ -424,32 +450,6 @@ EOF
   assert_not_contains "//$pkg:cclib_with_py_dep .*PythonConfiguration" output
 }
 
-function test_show_direct_host_only_config_fragments() {
-  local -r pkg=$FUNCNAME
-  mkdir -p $pkg
-  cat > $pkg/BUILD <<'EOF'
-genrule(
-    name = "gen",
-    outs = ["gen.out"],
-    cmd = "$(location :tool) > $@",
-    tools = [":tool"],
-)
-
-genrule(
-    name = "tool",
-    outs = ["tool.sh"],
-    cmd = 'echo "echo built by TOOL" > $@',
-)
-EOF
-
-  bazel cquery "deps(//$pkg:gen)" --show_config_fragments=direct_host_only \
-    > output 2>"$TEST_log" || fail "Expected success"
-
-  assert_contains "//$pkg:gen" output
-  assert_not_contains "//$pkg:gen .*CoreOptions" output
-  assert_contains "//$pkg:tool .*CoreOptions" output
-}
-
 function test_show_direct_config_fragments_select() {
   local -r pkg=$FUNCNAME
   mkdir -p $pkg
@@ -570,6 +570,11 @@ rule_with_flag_dep(
 EOF
 
   bazel cquery "//$pkg:all" --show_config_fragments=direct > output \
+    2>"$TEST_log" || fail "Expected success"
+
+  assert_contains "//$pkg:my_rule .*//$pkg:my_flag" output
+
+  bazel cquery "//$pkg:all" --show_config_fragments=transitive > output \
     2>"$TEST_log" || fail "Expected success"
 
   assert_contains "//$pkg:my_rule .*//$pkg:my_flag" output
@@ -930,7 +935,7 @@ bool_flag = rule(
 def _dep_transition_impl(settings, attr):
     return {
         "//$pkg:myflag": True,
-        "//command_line_option:test_arg": ["blah"]
+        "//command_line_option:platform_suffix": "blah"
     }
 
 _dep_transition = transition(
@@ -938,7 +943,7 @@ _dep_transition = transition(
     inputs = [],
     outputs = [
         "//$pkg:myflag",
-        "//command_line_option:test_arg",
+        "//command_line_option:platform_suffix",
     ],
 )
 
@@ -981,7 +986,7 @@ def format(target):
   print(bo)
   if bo == None:
     return str(target.label) + '%None'
-  first = ','.join(bo['//command_line_option:test_arg'])
+  first = str(bo['//command_line_option:platform_suffix'])
   second = str(('//$pkg:myflag' in bo) and bo['//$pkg:myflag'])
   return str(target.label) + '%' + first + '%' + second
 EOF
@@ -989,17 +994,17 @@ EOF
   bazel cquery "//$pkg:bar" --output=starlark \
     --starlark:file=$pkg/expr.star > output 2>"$TEST_log" || fail "Expected success"
 
-  assert_contains "//$pkg:bar%%False" output
+  assert_contains "//$pkg:bar%None%False" output
 
   bazel cquery "//$pkg:foo" --output=starlark \
     --starlark:file=$pkg/expr.star > output 2>"$TEST_log" || fail "Expected success"
 
-  assert_contains "//$pkg:foo%%False" output
+  assert_contains "//$pkg:foo%None%False" output
 
   bazel cquery "kind(rule, deps(//$pkg:foo))" --output=starlark \
     --starlark:file=$pkg/expr.star > output 2>"$TEST_log" || fail "Expected success"
 
-  assert_contains "//$pkg:foo%%False" output
+  assert_contains "//$pkg:foo%None%False" output
   assert_contains "//$pkg:bar%blah%True" output
 
   bazel cquery "//$pkg:rules.bzl" --output=starlark \
@@ -1136,6 +1141,8 @@ EOF
 
   if "$is_windows"; then
     assert_contains "cclib.lib" output
+  elif is_darwin; then
+    assert_contains "libcclib.a" output
   else
     assert_contains "libcclib.a" output
     assert_contains "libcclib.so" output
@@ -1244,6 +1251,35 @@ EOF
 
   # A Bazel crash would have exit codes 3x.
   assert_equals $? 1
+}
+
+# Regression test for https://github.com/bazelbuild/bazel/issues/13301
+function test_external_repo_scope() {
+  if [ "${PRODUCT_NAME}" != "bazel" ]; then
+    # Tests of external repositories only work under bazel.
+    return 0
+  fi
+
+  local -r dir=$FUNCNAME
+
+  mkdir -p $dir/repo
+  touch $dir/repo/WORKSPACE
+  cat > $dir/repo/BUILD <<EOF
+sh_library(name='maple', deps=[':japanese'])
+sh_library(name='japanese')
+EOF
+
+  mkdir -p $dir/main
+  cat > $dir/main/WORKSPACE <<EOF
+local_repository(name = "repo", path = "../repo")
+EOF
+  touch $dir/main/BUILD
+
+  cd $dir/main
+  bazel cquery @repo//... &>"$TEST_log" || fail "Unexpected failure"
+  expect_not_log "no targets found beneath"
+  expect_log "@repo//:maple"
+  expect_log "@repo//:japanese"
 }
 
 function test_test_arg_in_bazelrc() {

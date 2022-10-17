@@ -19,7 +19,6 @@ import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Streams;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ParamFileInfo;
 import com.google.devtools.build.lib.actions.ParameterFile;
@@ -39,7 +38,6 @@ import com.google.devtools.build.lib.analysis.actions.SpawnAction;
 import com.google.devtools.build.lib.analysis.actions.Substitution;
 import com.google.devtools.build.lib.analysis.actions.Template;
 import com.google.devtools.build.lib.analysis.actions.TemplateExpansionAction;
-import com.google.devtools.build.lib.analysis.test.InstrumentedFilesCollector.InstrumentationSpec;
 import com.google.devtools.build.lib.cmdline.LabelConstants;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.rules.cpp.CcInfo;
@@ -50,7 +48,6 @@ import com.google.devtools.build.lib.rules.python.PythonConfiguration;
 import com.google.devtools.build.lib.rules.python.PythonSemantics;
 import com.google.devtools.build.lib.rules.python.PythonUtils;
 import com.google.devtools.build.lib.rules.python.PythonVersion;
-import com.google.devtools.build.lib.util.FileTypeSet;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.io.Serializable;
@@ -67,10 +64,6 @@ public class BazelPythonSemantics implements PythonSemantics {
       new PythonUtils.GetInitPyFiles((Predicate<PathFragment> & Serializable) source -> false);
   private static final Template STUB_TEMPLATE =
       Template.forResource(BazelPythonSemantics.class, "python_stub_template.txt");
-  public static final InstrumentationSpec PYTHON_COLLECTION_SPEC =
-      new InstrumentationSpec(FileTypeSet.of(BazelPyRuleClasses.PYTHON_SOURCE))
-          .withSourceAttributes("srcs")
-          .withDependencyAttributes("deps", "data");
 
   public static final PathFragment ZIP_RUNFILES_DIRECTORY_NAME = PathFragment.create("runfiles");
 
@@ -82,7 +75,7 @@ public class BazelPythonSemantics implements PythonSemantics {
   @Override
   public String getSrcsVersionDocURL() {
     // TODO(#8996): Update URL to point to rules_python's docs instead of the Bazel site.
-    return "https://docs.bazel.build/versions/master/be/python.html#py_binary.srcs_version";
+    return "https://docs.bazel.build/versions/main/be/python.html#py_binary.srcs_version";
   }
 
   @Override
@@ -109,11 +102,6 @@ public class BazelPythonSemantics implements PythonSemantics {
   @Override
   public void collectDefaultRunfiles(RuleContext ruleContext, Runfiles.Builder builder) {
     builder.addRunfiles(ruleContext, RunfilesProvider.DEFAULT_RUNFILES);
-  }
-
-  @Override
-  public InstrumentationSpec getCoverageInstrumentationSpec() {
-    return PYTHON_COLLECTION_SPEC;
   }
 
   @Override
@@ -191,8 +179,7 @@ public class BazelPythonSemantics implements PythonSemantics {
                 Substitution.of(
                     "%enable_host_version_warning%",
                     boolToLiteral(common.shouldWarnAboutHostVersionUponFailure())),
-                Substitution.of(
-                    "%target%", ruleContext.getRule().getLabel().getDefaultCanonicalForm()),
+                Substitution.of("%target%", ruleContext.getRule().getLabel().getCanonicalForm()),
                 Substitution.of(
                     "%python_version_from_config%", versionToLiteral(common.getVersion())),
                 Substitution.of("%python_version_from_attr%", versionToLiteral(attrVersion)),
@@ -221,7 +208,7 @@ public class BazelPythonSemantics implements PythonSemantics {
      * logic will extract the zip's runfiles into a temporary directory.
      *
      * The stub script has a shebang pointing to a first-stage Python interpreter (as of this
-     * writing "#!/usr/bin/env python"). When a zip file is built on unix, this shebang is also
+     * writing "#!/usr/bin/env python3"). When a zip file is built on unix, this shebang is also
      * prepended to the final zip artifact. On Windows shebangs are ignored, and the launcher
      * runs the first stage with an interpreter whose path is passed in as LaunchInfo.
      */
@@ -251,9 +238,7 @@ public class BazelPythonSemantics implements PythonSemantics {
 
       if (OS.getCurrent() != OS.WINDOWS) {
         PathFragment shExecutable = ShToolchain.getPathOrError(ruleContext);
-        // TODO(#8685): Remove this special-case handling as part of making the proper shebang a
-        // property of the Python toolchain configuration.
-        String pythonExecutableName = OS.getCurrent() == OS.OPENBSD ? "python3" : "python";
+        String pythonExecutableName = "python3";
         // NOTE: keep the following line intact to support nix builds
         String pythonShebang = "#!/usr/bin/env " + pythonExecutableName;
         ruleContext.registerAction(
@@ -480,7 +465,7 @@ public class BazelPythonSemantics implements PythonSemantics {
         ImmutableList.<CcInfo>builder()
             .addAll(AnalysisUtils.getProviders(deps, CcInfo.PROVIDER))
             .addAll(
-                Streams.stream(AnalysisUtils.getProviders(deps, PyCcLinkParamsProvider.PROVIDER))
+                AnalysisUtils.getProviders(deps, PyCcLinkParamsProvider.PROVIDER).stream()
                     .map(PyCcLinkParamsProvider::getCcInfo)
                     .collect(ImmutableList.toImmutableList()))
             .build();

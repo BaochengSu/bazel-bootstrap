@@ -27,7 +27,6 @@ import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
 
-import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.testutil.BlazeTestUtils;
 import com.google.devtools.build.lib.testutil.ManualClock;
 import com.google.devtools.build.lib.vfs.FileSystemUtils.MoveResult;
@@ -756,19 +755,16 @@ public class FileSystemUtilsTest {
   }
 
   @Test
-  public void testIterateLines() throws Exception {
+  public void testReadLines() throws Exception {
     Path file = fileSystem.getPath("/test.txt");
     FileSystemUtils.writeContent(file, ISO_8859_1, "a\nb");
-    assertThat(Lists.newArrayList(FileSystemUtils.iterateLinesAsLatin1(file)))
-        .isEqualTo(Arrays.asList("a", "b"));
+    assertThat(FileSystemUtils.readLinesAsLatin1(file)).containsExactly("a", "b").inOrder();
 
     FileSystemUtils.writeContent(file, ISO_8859_1, "a\rb");
-    assertThat(Lists.newArrayList(FileSystemUtils.iterateLinesAsLatin1(file)))
-        .isEqualTo(Arrays.asList("a", "b"));
+    assertThat(FileSystemUtils.readLinesAsLatin1(file)).containsExactly("a", "b").inOrder();
 
     FileSystemUtils.writeContent(file, ISO_8859_1, "a\r\nb");
-    assertThat(Lists.newArrayList(FileSystemUtils.iterateLinesAsLatin1(file)))
-        .isEqualTo(Arrays.asList("a", "b"));
+    assertThat(FileSystemUtils.readLinesAsLatin1(file)).containsExactly("a", "b").inOrder();
   }
 
   @Test
@@ -793,8 +789,8 @@ public class FileSystemUtilsTest {
     FileSystemUtils.createHardLink(linkPath, originalPath);
     assertThat(originalPath.exists()).isTrue();
     assertThat(linkPath.exists()).isTrue();
-    assertThat(fileSystem.stat(linkPath, false).getNodeId())
-        .isEqualTo(fileSystem.stat(originalPath, false).getNodeId());
+    assertThat(fileSystem.stat(linkPath.asFragment(), false).getNodeId())
+        .isEqualTo(fileSystem.stat(originalPath.asFragment(), false).getNodeId());
   }
 
   @Test
@@ -834,12 +830,12 @@ public class FileSystemUtilsTest {
     assertThat(linkPath1.exists()).isTrue();
     assertThat(linkPath2.exists()).isTrue();
     assertThat(linkPath3.exists()).isTrue();
-    assertThat(fileSystem.stat(linkPath1, false).getNodeId())
-        .isEqualTo(fileSystem.stat(originalPath1, false).getNodeId());
-    assertThat(fileSystem.stat(linkPath2, false).getNodeId())
-        .isEqualTo(fileSystem.stat(originalPath2, false).getNodeId());
-    assertThat(fileSystem.stat(linkPath3, false).getNodeId())
-        .isEqualTo(fileSystem.stat(originalPath3, false).getNodeId());
+    assertThat(fileSystem.stat(linkPath1.asFragment(), false).getNodeId())
+        .isEqualTo(fileSystem.stat(originalPath1.asFragment(), false).getNodeId());
+    assertThat(fileSystem.stat(linkPath2.asFragment(), false).getNodeId())
+        .isEqualTo(fileSystem.stat(originalPath2.asFragment(), false).getNodeId());
+    assertThat(fileSystem.stat(linkPath3.asFragment(), false).getNodeId())
+        .isEqualTo(fileSystem.stat(originalPath3.asFragment(), false).getNodeId());
   }
 
   static class MultipleDeviceFS extends InMemoryFileSystem {
@@ -848,8 +844,8 @@ public class FileSystemUtilsTest {
     }
 
     @Override
-    public void renameTo(Path source, Path target) throws IOException {
-      if (!source.startsWith(target.asFragment().subFragment(0, 1))) {
+    public void renameTo(PathFragment source, PathFragment target) throws IOException {
+      if (!source.startsWith(target.subFragment(0, 1))) {
         throw new IOException("EXDEV");
       }
       super.renameTo(source, target);

@@ -308,6 +308,7 @@ class BlazeServer final {
   const int connect_timeout_secs_;
   const bool batch_;
   const bool block_for_lock_;
+  const bool preemptible_;
   const blaze_util::Path output_base_;
 };
 
@@ -355,10 +356,6 @@ static vector<string> GetServerExeArgs(const blaze_util::Path &jvm_path,
                    workspace_layout.GetPrettyWorkspaceName(workspace) + ")");
   startup_options.AddJVMArgumentPrefix(jvm_path.GetParent().GetParent(),
                                        &result);
-
-  result.push_back("-XX:+HeapDumpOnOutOfMemoryError");
-  result.push_back("-XX:HeapDumpPath=" +
-                   startup_options.output_base.AsJvmArgument());
 
   // TODO(b/109998449): only assume JDK >= 9 for embedded JDKs
   if (!startup_options.GetEmbeddedJavabase().IsEmpty()) {
@@ -1053,7 +1050,12 @@ static bool IsVolatileArg(const string &arg) {
   // server command line difference logic can be simplified then.
   static const std::set<string> volatile_startup_options = {
       "--option_sources=", "--max_idle_secs=", "--connect_timeout_secs=",
-      "--local_startup_timeout_secs=", "--client_debug="};
+      "--local_startup_timeout_secs=", "--client_debug=", "--preemptible=",
+      // Internally, -XX:HeapDumpPath is set automatically via the user's TMPDIR
+      // environment variable. Since that can change based on the shell, we
+      // tolerate changes to it. Note that an explicit setting of
+      // -XX:HeapDumpPath via --host_jvm_args *will* trigger a restart.
+      "-XX:HeapDumpPath="};
 
   // Split arg based on the first "=" if one exists in arg.
   const string::size_type eq_pos = arg.find_first_of('=');
@@ -1637,6 +1639,10 @@ int Main(int argc, const char *const *argv, WorkspaceLayout *workspace_layout,
   // than emit a help message.
   if (!workspace_layout->InWorkspace(workspace)) {
     startup_options->batch = true;
+    BAZEL_LOG(WARNING) << "Invoking " << startup_options->product_name
+                       << " in batch mode since it is not invoked from within"
+                       << " a workspace (below a directory having a WORKSPACE"
+                       << " file).";
   }
 
   vector<string> archive_contents;
@@ -1673,6 +1679,7 @@ BlazeServer::BlazeServer(const StartupOptions &startup_options)
       connect_timeout_secs_(startup_options.connect_timeout_secs),
       batch_(startup_options.batch),
       block_for_lock_(startup_options.block_for_lock),
+      preemptible_(startup_options.preemptible),
       output_base_(startup_options.output_base) {
   if (!startup_options.client_debug) {
     gpr_set_log_function(null_grpc_log_function);
@@ -1711,14 +1718,19 @@ bool BlazeServer::Connect() {
   assert(!Connected());
 
   blaze_util::Path server_dir = output_base_.GetRelative("server");
-  std::string port;
-  std::string ipv4_prefix = "127.0.0.1:";
-  std::string ipv6_prefix_1 = "[0:0:0:0:0:0:0:1]:";
-  std::string ipv6_prefix_2 = "[::1]:";
 
-  if (!blaze_util::ReadFile(server_dir.GetRelative("command_port"), &port)) {
+  command_server::ServerInfo server_info;
+  std::string bytes;
+  if (!blaze_util::ReadFile(server_dir.GetRelative("server_info.rawproto"),
+                            &bytes) ||
+      !server_info.ParseFromString(bytes)) {
     return false;
   }
+
+  const std::string port = server_info.address();
+  const std::string ipv4_prefix = "127.0.0.1:";
+  const std::string ipv6_prefix_1 = "[0:0:0:0:0:0:0:1]:";
+  const std::string ipv6_prefix_2 = "[::1]:";
 
   // Make sure that we are being directed to localhost
   if (port.compare(0, ipv4_prefix.size(), ipv4_prefix) &&
@@ -1727,17 +1739,10 @@ bool BlazeServer::Connect() {
     return false;
   }
 
-  if (!blaze_util::ReadFile(server_dir.GetRelative("request_cookie"),
-                            &request_cookie_)) {
-    return false;
-  }
+  request_cookie_ = server_info.request_cookie();
+  response_cookie_ = server_info.response_cookie();
 
-  if (!blaze_util::ReadFile(server_dir.GetRelative("response_cookie"),
-                            &response_cookie_)) {
-    return false;
-  }
-
-  pid_t server_pid = GetServerPid(blaze_util::Path(server_dir));
+  const pid_t server_pid = server_info.pid();
   if (server_pid < 0) {
     return false;
   }
@@ -1947,6 +1952,7 @@ unsigned int BlazeServer::Communicate(
   command_server::RunRequest request;
   request.set_cookie(request_cookie_);
   request.set_block_for_lock(block_for_lock_);
+  request.set_preemptible(preemptible_);
   request.set_client_description("pid=" + blaze::GetProcessIdAsString());
   for (const string &arg : arg_vector) {
     request.add_arg(arg);

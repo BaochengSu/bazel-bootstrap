@@ -132,8 +132,10 @@ abstract class FileTransport implements BuildEventTransport {
             != CLOSE_EVENT_FUTURE) {
           if (buildEventF != null) {
             BuildEventStreamProtos.BuildEvent buildEvent = buildEventF.get();
-            byte[] serialized = serializeFunc.apply(buildEvent);
-            out.write(serialized);
+            if (buildEvent != null) {
+              byte[] serialized = serializeFunc.apply(buildEvent);
+              out.write(serialized);
+            }
           }
           Instant now = Instant.now();
           if (buildEventF == null || now.compareTo(prevFlush.plus(FLUSH_INTERVAL)) > 0) {
@@ -302,7 +304,12 @@ abstract class FileTransport implements BuildEventTransport {
                   return options;
                 }
               };
-          return event.asStreamProto(context);
+          try {
+            return event.asStreamProto(context);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+          }
         },
         MoreExecutors.directExecutor());
   }

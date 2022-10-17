@@ -60,7 +60,7 @@ public class RemoteOutputService implements OutputService {
       ImmutableList<Root> sourceRoots,
       ActionInputMap inputArtifactData,
       Iterable<Artifact> outputArtifacts,
-      boolean trackFailedRemoteReads) {
+      boolean rewindingEnabled) {
     Preconditions.checkNotNull(actionInputFetcher, "actionInputFetcher");
     return new RemoteActionFileSystem(
         sourceDelegate,
@@ -133,7 +133,7 @@ public class RemoteOutputService implements OutputService {
       FileSystem fileSystem,
       ImmutableList<Root> pathEntries,
       ActionInputMap actionInputMap,
-      Map<Artifact, ImmutableCollection<Artifact>> expandedArtifacts,
+      Map<Artifact, ImmutableCollection<? extends Artifact>> expandedArtifacts,
       Map<Artifact, ImmutableList<FilesetOutputSymlink>> filesets) {
     FileSystem remoteFileSystem =
         new RemoteActionFileSystem(

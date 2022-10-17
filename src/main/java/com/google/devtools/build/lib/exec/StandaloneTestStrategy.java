@@ -20,6 +20,7 @@ import com.google.common.base.Verify;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Maps;
 import com.google.common.io.ByteStreams;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.devtools.build.lib.actions.ActionExecutionContext;
@@ -54,6 +55,7 @@ import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.events.Reporter;
 import com.google.devtools.build.lib.server.FailureDetails.Execution.Code;
+import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.server.FailureDetails.TestAction;
 import com.google.devtools.build.lib.skyframe.TreeArtifactValue;
 import com.google.devtools.build.lib.util.Pair;
@@ -107,9 +109,14 @@ public class StandaloneTestStrategy extends TestStrategy {
       TestRunnerAction action, ActionExecutionContext actionExecutionContext)
       throws ExecException, InterruptedException {
     if (action.getExecutionSettings().getInputManifest() == null) {
+      String errorMessage = "cannot run local tests with --nobuild_runfile_manifests";
       throw new TestExecException(
-          "cannot run local tests with --nobuild_runfile_manifests",
-          TestAction.Code.LOCAL_TEST_PREREQ_UNMET);
+          errorMessage,
+          FailureDetail.newBuilder()
+              .setTestAction(
+                  TestAction.newBuilder().setCode(TestAction.Code.LOCAL_TEST_PREREQ_UNMET))
+              .setMessage(errorMessage)
+              .build());
     }
     Map<String, String> testEnvironment =
         createEnvironment(
@@ -251,7 +258,8 @@ public class StandaloneTestStrategy extends TestStrategy {
       dataBuilder.setStatus(BlazeTestStatus.FLAKY);
     }
     TestResultData data = dataBuilder.build();
-    TestResult result = new TestResult(action, data, false);
+    TestResult result =
+        new TestResult(action, data, false, standaloneTestResult.primarySystemFailure());
     postTestResult(actionExecutionContext, result);
   }
 
@@ -357,6 +365,11 @@ public class StandaloneTestStrategy extends TestStrategy {
     @Override
     public ImmutableSet<TreeFileArtifact> getTreeArtifactChildren(SpecialArtifact treeArtifact) {
       return metadataHandler.getTreeArtifactChildren(treeArtifact);
+    }
+
+    @Override
+    public TreeArtifactValue getTreeArtifactValue(SpecialArtifact treeArtifact) throws IOException {
+      return metadataHandler.getTreeArtifactValue(treeArtifact);
     }
 
     @Override
@@ -496,7 +509,7 @@ public class StandaloneTestStrategy extends TestStrategy {
   private static Artifact.DerivedArtifact createArtifactOutput(
       TestRunnerAction action, PathFragment outputPath) {
     Artifact.DerivedArtifact testLog = (Artifact.DerivedArtifact) action.getTestLog();
-    return new DerivedArtifact(testLog.getRoot(), outputPath, testLog.getArtifactOwner());
+    return DerivedArtifact.create(testLog.getRoot(), outputPath, testLog.getArtifactOwner());
   }
 
   /**
@@ -523,13 +536,22 @@ public class StandaloneTestStrategy extends TestStrategy {
       envBuilder.put("TEST_SHARD_INDEX", "0");
       envBuilder.put("TEST_TOTAL_SHARDS", "0");
     }
+    Map<String, String> executionInfo =
+        Maps.newHashMapWithExpectedSize(action.getExecutionInfo().size() + 1);
+    executionInfo.putAll(action.getExecutionInfo());
+    if (result.exitCode() != 0) {
+      // If the test is failed, the spawn shouldn't use remote cache since the test.xml file is
+      // renamed immediately after the spawn execution. If there is another test attempt, the async
+      // upload will fail because it cannot read the file at original position.
+      executionInfo.put(ExecutionRequirements.NO_REMOTE_CACHE, "");
+    }
     return new SimpleSpawn(
         action,
         args,
         envBuilder.build(),
         // Pass the execution info of the action which is identical to the supported tags set on the
         // test target. In particular, this does not set the test timeout on the spawn.
-        ImmutableMap.copyOf(action.getExecutionInfo()),
+        ImmutableMap.copyOf(executionInfo),
         null,
         ImmutableMap.of(),
         /*inputs=*/ NestedSetBuilder.create(
@@ -568,7 +590,7 @@ public class StandaloneTestStrategy extends TestStrategy {
         action.getLcovMergerRunfilesSupplier(),
         /* filesetMappings= */ ImmutableMap.of(),
         /* inputs= */ NestedSetBuilder.<ActionInput>compileOrder()
-            .addAll(action.getInputs().toList())
+            .addTransitive(action.getInputs())
             .addAll(expandedCoverageDir)
             .add(action.getCollectCoverageScript())
             .add(action.getCoverageDirectoryTreeArtifact())
@@ -577,7 +599,7 @@ public class StandaloneTestStrategy extends TestStrategy {
             .build(),
         /* tools= */ NestedSetBuilder.emptySet(Order.STABLE_ORDER),
         /* outputs= */ ImmutableSet.of(
-            ActionInputHelper.fromPath(action.getCoverageData().getExecPathString())),
+            ActionInputHelper.fromPath(action.getCoverageData().getExecPath())),
         SpawnAction.DEFAULT_RESOURCE_SET);
   }
 
@@ -602,7 +624,7 @@ public class StandaloneTestStrategy extends TestStrategy {
   @Override
   public TestResult newCachedTestResult(
       Path execRoot, TestRunnerAction action, TestResultData data) {
-    return new TestResult(action, data, /*cached*/ true, execRoot);
+    return new TestResult(action, data, /*cached*/ true, execRoot, /*systemFailure=*/ null);
   }
 
   @VisibleForTesting
@@ -675,7 +697,10 @@ public class StandaloneTestStrategy extends TestStrategy {
     @Override
     public void finalizeCancelledTest(List<FailedAttemptResult> failedAttempts) throws IOException {
       TestResultData.Builder builder =
-          TestResultData.newBuilder().setTestPassed(false).setStatus(BlazeTestStatus.INCOMPLETE);
+          TestResultData.newBuilder()
+              .setCachable(false)
+              .setTestPassed(false)
+              .setStatus(BlazeTestStatus.INCOMPLETE);
       StandaloneTestResult standaloneTestResult =
           StandaloneTestResult.builder()
               .setSpawnResults(ImmutableList.of())
@@ -744,8 +769,7 @@ public class StandaloneTestStrategy extends TestStrategy {
         //    the Build Event Protocol, but never saves it to disk.
         //
         // The TestResult proto is always constructed from a TestResultData instance, either one
-        // that
-        // is created right here, or one that is read back from disk.
+        // that is created right here, or one that is read back from disk.
         TestResultData.Builder builder = null;
         ImmutableList<SpawnResult> spawnResults;
         try {
@@ -766,7 +790,7 @@ public class StandaloneTestStrategy extends TestStrategy {
           }
           spawnResults = nextContinuation.get();
           builder = TestResultData.newBuilder();
-          builder.setTestPassed(true).setStatus(BlazeTestStatus.PASSED);
+          builder.setCachable(true).setTestPassed(true).setStatus(BlazeTestStatus.PASSED);
         } catch (SpawnExecException e) {
           if (e.isCatastrophic()) {
             closeSuppressed(e, streamed);
@@ -782,6 +806,7 @@ public class StandaloneTestStrategy extends TestStrategy {
           spawnResults = ImmutableList.of(e.getSpawnResult());
           builder = TestResultData.newBuilder();
           builder
+              .setCachable(e.getSpawnResult().status().isConsideredUserError())
               .setTestPassed(false)
               .setStatus(e.hasTimedOut() ? BlazeTestStatus.TIMEOUT : BlazeTestStatus.FAILED);
         } catch (InterruptedException e) {
@@ -1078,6 +1103,7 @@ public class StandaloneTestStrategy extends TestStrategy {
           throw e;
         }
         testResultDataBuilder
+            .setCachable(e.getSpawnResult().status().isConsideredUserError())
             .setTestPassed(false)
             .setStatus(e.hasTimedOut() ? BlazeTestStatus.TIMEOUT : BlazeTestStatus.FAILED);
       } catch (ExecException | InterruptedException e) {

@@ -16,6 +16,7 @@ package com.google.devtools.build.lib.packages;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
+import com.google.devtools.build.lib.util.Fingerprint;
 import java.util.ArrayList;
 import java.util.Objects;
 
@@ -47,11 +48,9 @@ public final class AdvertisedProviderSet {
   }
 
   public static final AdvertisedProviderSet ANY =
-      new AdvertisedProviderSet(
-          true, ImmutableSet.<Class<?>>of(), ImmutableSet.<StarlarkProviderIdentifier>of());
+      new AdvertisedProviderSet(true, ImmutableSet.of(), ImmutableSet.of());
   public static final AdvertisedProviderSet EMPTY =
-      new AdvertisedProviderSet(
-          false, ImmutableSet.<Class<?>>of(), ImmutableSet.<StarlarkProviderIdentifier>of());
+      new AdvertisedProviderSet(false, ImmutableSet.of(), ImmutableSet.of());
 
   public static AdvertisedProviderSet create(
       ImmutableSet<Class<?>> builtinProviders,
@@ -78,7 +77,7 @@ public final class AdvertisedProviderSet {
     }
 
     AdvertisedProviderSet that = (AdvertisedProviderSet) obj;
-    return Objects.equals(this.canHaveAnyProvider, that.canHaveAnyProvider)
+    return this.canHaveAnyProvider == that.canHaveAnyProvider
         && Objects.equals(this.builtinProviders, that.builtinProviders)
         && Objects.equals(this.starlarkProviders, that.starlarkProviders);
   }
@@ -90,7 +89,7 @@ public final class AdvertisedProviderSet {
     }
     return String.format(
         "allowed built-in providers=%s, allowed Starlark providers=%s",
-        getBuiltinProviders(), getStarlarkProviders());
+        builtinProviders, starlarkProviders);
   }
 
   /** Checks whether the rule can have any provider.
@@ -111,19 +110,32 @@ public final class AdvertisedProviderSet {
     return starlarkProviders;
   }
 
-  public static Builder builder() {
-    return new Builder();
+  /**
+   * Adds the fingerprints of this {@link AdvertisedProviderSet} into {@code fp}.
+   *
+   * <p>Fingerprints of {@link AdvertisedProviderSet} must have the following properties:
+   *
+   * <ul>
+   *   <li>If {@code aps1.equals(aps2)} then {@code aps1} and {@code aps2} have the same
+   *       fingerprint.
+   *   <li>If {@code !aps1.equals(aps2)} then {@code aps1} and {@code aps2} don't have the same
+   *       fingerprint (except for unintentional digest collisions).
+   * </ul>
+   *
+   * <p>In other words, this method is a proxy for {@link #equals}. These properties *do not* need
+   * to be maintained across Blaze versions (e.g. there's no need to worry about historical
+   * serialized fingerprints).
+   */
+  public void fingerprint(Fingerprint fp) {
+    fp.addBoolean(canHaveAnyProvider);
+    // #builtinProviders and #starlarkProviders are ordered according to the calls to the builder
+    // methods, and that order is assumed to be deterministic.
+    builtinProviders.forEach(clazz -> fp.addString(clazz.getCanonicalName()));
+    starlarkProviders.forEach(starlarkProvider -> starlarkProvider.fingerprint(fp));
   }
 
-  /**
-   * Returns {@code true} if this provider set can have any provider, or if it advertises the
-   * specific built-in provider requested.
-   */
-  public boolean advertises(Class<?> builtinProviderClass) {
-    if (canHaveAnyProvider()) {
-      return true;
-    }
-    return builtinProviders.contains(builtinProviderClass);
+  public static Builder builder() {
+    return new Builder();
   }
 
   /**
@@ -186,11 +198,6 @@ public final class AdvertisedProviderSet {
 
     public Builder addStarlark(StarlarkProviderIdentifier id) {
       starlarkProviders.add(id);
-      return this;
-    }
-
-    public Builder addStarlark(Provider.Key id) {
-      starlarkProviders.add(StarlarkProviderIdentifier.forKey(id));
       return this;
     }
   }

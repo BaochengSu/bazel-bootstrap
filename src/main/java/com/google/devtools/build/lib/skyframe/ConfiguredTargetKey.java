@@ -14,8 +14,9 @@
 
 package com.google.devtools.build.lib.skyframe;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Interner;
 import com.google.devtools.build.lib.actions.ActionLookupKey;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
@@ -28,8 +29,36 @@ import java.util.Objects;
 import javax.annotation.Nullable;
 
 /**
- * A (Label, Configuration key) pair. Note that this pair may be used to look up the generating
- * action of an artifact.
+ * In simple form, a ({@link Label}, {@link BuildConfiguration}) pair used to trigger immediate
+ * dependency resolution and the rule analysis.
+ *
+ * <p>In practice, a ({@link Label}, canonical and post-transition {@link
+ * BuildConfigurationValue.Key}) pair plus a possible execution platform override {@link Label} with
+ * special constraints. To elaborate, in order of highest to lowest potential for concern:
+ *
+ * <p>1. The {@link BuildConfigurationValue.Key} must be post-transition and thus ready for
+ * immediate use in dependency resolution and analysis. In practice, this means that if the rule has
+ * an incoming-edge transition (cfg in {@link RuleClass}) or there are global trimming transitions,
+ * THOSE TRANSITIONS MUST ALREADY BE DONE before creating the key. Failure to do so will lead to
+ * build graphs with ConfiguredTarget that have seemingly impossible {@link BuildConfiguration} (due
+ * to the skipped transitions).
+ *
+ * <p>2. The {@link BuildConfigurationValue.Key} must be canonical. Multiple keys can correspond to
+ * the same {@link BuildConfiguration}. The canonical key is the one returned by {@link
+ * BuildConfigurationValue.key}. Failure to use a canonical key can result in build graphs with
+ * multiple seemingly-identical ConfiguredTarget that have the same ({@link Label}, {@link
+ * BuildConfiguration}) pair. This is non-performant in all cases and incorrect if those
+ * duplications lead to action conflicts due to unsharable actions.
+ *
+ * <p>3. A build should not request keys with equal ({@link Label}, {@link BuildConfiguration})
+ * pairs but different execution platform override {@link Label} if the invoked rule will register
+ * actions. (This is potentially OK if all outputs of all registered actions incorporate the
+ * execution platform in their name unless the build also requests keys without an override that
+ * happen to resolve to the same execution platform.) In practice, this issue has not been seen in
+ * any 'real' builds; however, pathologically failure could lead to multiple (potentially different)
+ * ConfiguredTarget that have the same ({@link Label}, {@link BuildConfiguration}) pair.
+ *
+ * <p>Note that this key may be used to look up the generating action of an artifact.
  */
 @AutoCodec
 public class ConfiguredTargetKey implements ActionLookupKey {
@@ -42,25 +71,28 @@ public class ConfiguredTargetKey implements ActionLookupKey {
   private final Label label;
   @Nullable private final BuildConfigurationValue.Key configurationKey;
 
-  private transient int hashCode;
+  private final transient int hashCode;
 
-  ConfiguredTargetKey(Label label, @Nullable BuildConfigurationValue.Key configurationKey) {
-    this.label = Preconditions.checkNotNull(label);
+  ConfiguredTargetKey(
+      Label label, @Nullable BuildConfigurationValue.Key configurationKey, int hashCode) {
+    this.label = checkNotNull(label);
     this.configurationKey = configurationKey;
+    this.hashCode = hashCode;
   }
 
   @AutoCodec.VisibleForSerialization
   @AutoCodec.Instantiator
   static ConfiguredTargetKey create(
       Label label, @Nullable BuildConfigurationValue.Key configurationKey) {
-    return interner.intern(new ConfiguredTargetKey(label, configurationKey));
+    int hashCode = computeHashCode(label, configurationKey, /*executionPlatformLabel=*/ null);
+    return interner.intern(new ConfiguredTargetKey(label, configurationKey, hashCode));
   }
 
   public Builder toBuilder() {
     return builder()
-        .setConfigurationKey(getConfigurationKey())
-        .setLabel(getLabel())
-        .setToolchainContextKey(getToolchainContextKey());
+        .setConfigurationKey(configurationKey)
+        .setLabel(label)
+        .setExecutionPlatformLabel(getExecutionPlatformLabel());
   }
 
   @Override
@@ -79,41 +111,23 @@ public class ConfiguredTargetKey implements ActionLookupKey {
   }
 
   @Nullable
-  ToolchainContextKey getToolchainContextKey() {
+  public Label getExecutionPlatformLabel() {
     return null;
   }
 
   @Override
   public final int hashCode() {
-    // We use the hash code caching strategy employed by java.lang.String. There are three subtle
-    // things going on here:
-    //
-    // (1) We use a value of 0 to indicate that the hash code hasn't been computed and cached yet.
-    // Yes, this means that if the hash code is really 0 then we will "recompute" it each time. But
-    // this isn't a problem in practice since a hash code of 0 should be rare.
-    //
-    // (2) Since we have no synchronization, multiple threads can race here thinking there are the
-    // first one to compute and cache the hash code.
-    //
-    // (3) Moreover, since 'hashCode' is non-volatile, the cached hash code value written from one
-    // thread may not be visible by another.
-    //
-    // All three of these issues are benign from a correctness perspective; in the end we have no
-    // overhead from synchronization, at the cost of potentially computing the hash code more than
-    // once.
-    int h = hashCode;
-    if (h == 0) {
-      h = computeHashCode();
-      hashCode = h;
-    }
-    return h;
+    return hashCode;
   }
 
-  private int computeHashCode() {
+  private static int computeHashCode(
+      Label label,
+      @Nullable BuildConfigurationValue.Key configurationKey,
+      @Nullable Label executionPlatformLabel) {
     int configVal = configurationKey == null ? 79 : configurationKey.hashCode();
-    int toolchainContextVal =
-        getToolchainContextKey() == null ? 47 : getToolchainContextKey().hashCode();
-    return 31 * label.hashCode() + configVal + toolchainContextVal;
+    int executionPlatformLabelVal =
+        executionPlatformLabel == null ? 47 : executionPlatformLabel.hashCode();
+    return 31 * label.hashCode() + configVal + executionPlatformLabelVal;
   }
 
   @Override
@@ -121,23 +135,23 @@ public class ConfiguredTargetKey implements ActionLookupKey {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
-      return false;
-    }
     if (!(obj instanceof ConfiguredTargetKey)) {
       return false;
     }
     ConfiguredTargetKey other = (ConfiguredTargetKey) obj;
-    return Objects.equals(label, other.label)
+    return hashCode == other.hashCode
+        && label.equals(other.label)
         && Objects.equals(configurationKey, other.configurationKey)
-        && Objects.equals(getToolchainContextKey(), other.getToolchainContextKey());
+        && Objects.equals(getExecutionPlatformLabel(), other.getExecutionPlatformLabel());
   }
 
   public final String prettyPrint() {
     if (label == null) {
       return "null";
     }
-    return label.toString();
+    return String.format(
+        "%s (%s)",
+        label, configurationKey == null ? "null" : configurationKey.getOptions().checksum());
   }
 
   @Override
@@ -145,43 +159,44 @@ public class ConfiguredTargetKey implements ActionLookupKey {
     // TODO(b/162809183): consider reverting to less verbose toString when bug is resolved.
     MoreObjects.ToStringHelper helper =
         MoreObjects.toStringHelper(this).add("label", label).add("config", configurationKey);
-    if (getToolchainContextKey() != null) {
-      helper.add("toolchainContextKey", getToolchainContextKey());
+    if (getExecutionPlatformLabel() != null) {
+      helper.add("executionPlatformLabel", getExecutionPlatformLabel());
     }
     return helper.toString();
   }
 
   @AutoCodec.VisibleForSerialization
   @AutoCodec
-  static class ConfiguredTargetKeyWithToolchainContext extends ConfiguredTargetKey {
-    private static final Interner<ConfiguredTargetKeyWithToolchainContext>
-        withToolchainContextInterner = BlazeInterners.newWeakInterner();
+  static class ToolchainDependencyConfiguredTargetKey extends ConfiguredTargetKey {
+    private static final Interner<ToolchainDependencyConfiguredTargetKey>
+        toolchainDependencyConfiguredTargetKeyInterner = BlazeInterners.newWeakInterner();
 
-    private final ToolchainContextKey toolchainContextKey;
+    private final Label executionPlatformLabel;
 
-    private ConfiguredTargetKeyWithToolchainContext(
+    private ToolchainDependencyConfiguredTargetKey(
         Label label,
         @Nullable BuildConfigurationValue.Key configurationKey,
-        ToolchainContextKey toolchainContextKey) {
-      super(label, configurationKey);
-      this.toolchainContextKey = toolchainContextKey;
+        int hashCode,
+        Label executionPlatformLabel) {
+      super(label, configurationKey, hashCode);
+      this.executionPlatformLabel = checkNotNull(executionPlatformLabel);
     }
 
     @AutoCodec.VisibleForSerialization
     @AutoCodec.Instantiator
-    static ConfiguredTargetKeyWithToolchainContext create(
+    static ToolchainDependencyConfiguredTargetKey create(
         Label label,
         @Nullable BuildConfigurationValue.Key configurationKey,
-        ToolchainContextKey toolchainContextKey) {
-      return withToolchainContextInterner.intern(
-          new ConfiguredTargetKeyWithToolchainContext(
-              label, configurationKey, toolchainContextKey));
+        Label executionPlatformLabel) {
+      int hashCode = computeHashCode(label, configurationKey, executionPlatformLabel);
+      return toolchainDependencyConfiguredTargetKeyInterner.intern(
+          new ToolchainDependencyConfiguredTargetKey(
+              label, configurationKey, hashCode, executionPlatformLabel));
     }
 
     @Override
-    @Nullable
-    final ToolchainContextKey getToolchainContextKey() {
-      return toolchainContextKey;
+    public final Label getExecutionPlatformLabel() {
+      return executionPlatformLabel;
     }
   }
 
@@ -191,10 +206,12 @@ public class ConfiguredTargetKey implements ActionLookupKey {
   }
 
   /** A helper class to create instances of {@link ConfiguredTargetKey}. */
-  public static class Builder {
+  public static final class Builder {
     private Label label = null;
     private BuildConfigurationValue.Key configurationKey = null;
-    private ToolchainContextKey toolchainContextKey = null;
+    private Label executionPlatformLabel = null;
+
+    private Builder() {}
 
     /** Sets the label for the target. */
     public Builder setLabel(Label label) {
@@ -231,19 +248,19 @@ public class ConfiguredTargetKey implements ActionLookupKey {
     }
 
     /**
-     * Sets the {@link ToolchainContextKey} this configured target should use for toolchain
-     * resolution. When present, this overrides the normally determined toolchain context.
+     * Sets the execution platform {@link Label} this configured target should use for toolchain
+     * resolution. When present, this overrides the normally determined execution platform.
      */
-    public Builder setToolchainContextKey(ToolchainContextKey toolchainContextKey) {
-      this.toolchainContextKey = toolchainContextKey;
+    public Builder setExecutionPlatformLabel(@Nullable Label executionPlatformLabel) {
+      this.executionPlatformLabel = executionPlatformLabel;
       return this;
     }
 
     /** Builds a new {@link ConfiguredTargetKey} based on the supplied data. */
     public ConfiguredTargetKey build() {
-      if (this.toolchainContextKey != null) {
-        return ConfiguredTargetKeyWithToolchainContext.create(
-            label, configurationKey, toolchainContextKey);
+      if (this.executionPlatformLabel != null) {
+        return ToolchainDependencyConfiguredTargetKey.create(
+            label, configurationKey, executionPlatformLabel);
       }
       return create(label, configurationKey);
     }

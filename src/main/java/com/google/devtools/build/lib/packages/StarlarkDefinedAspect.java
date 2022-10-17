@@ -20,10 +20,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.devtools.build.lib.analysis.config.transitions.ConfigurationTransition;
 import com.google.devtools.build.lib.cmdline.Label;
+import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec.VisibleForSerialization;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import net.starlark.java.eval.EvalException;
 import net.starlark.java.eval.Printer;
@@ -40,6 +39,7 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
   private final ImmutableList<ImmutableSet<StarlarkProviderIdentifier>> requiredAspectProviders;
   private final ImmutableSet<StarlarkProviderIdentifier> provides;
   private final ImmutableSet<String> paramAttributes;
+  private final ImmutableSet<StarlarkAspect> requiredAspects;
   private final ImmutableSet<String> fragments;
   private final ConfigurationTransition hostTransition;
   private final ImmutableSet<String> hostFragments;
@@ -57,6 +57,7 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
       ImmutableList<ImmutableSet<StarlarkProviderIdentifier>> requiredAspectProviders,
       ImmutableSet<StarlarkProviderIdentifier> provides,
       ImmutableSet<String> paramAttributes,
+      ImmutableSet<StarlarkAspect> requiredAspects,
       ImmutableSet<String> fragments,
       // The host transition is in lib.analysis, so we can't reference it directly here.
       ConfigurationTransition hostTransition,
@@ -71,6 +72,7 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
     this.requiredAspectProviders = requiredAspectProviders;
     this.provides = provides;
     this.paramAttributes = paramAttributes;
+    this.requiredAspects = requiredAspects;
     this.fragments = fragments;
     this.hostTransition = hostTransition;
     this.hostFragments = hostFragments;
@@ -90,6 +92,7 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
       ImmutableList<ImmutableSet<StarlarkProviderIdentifier>> requiredAspectProviders,
       ImmutableSet<StarlarkProviderIdentifier> provides,
       ImmutableSet<String> paramAttributes,
+      ImmutableSet<StarlarkAspect> requiredAspects,
       ImmutableSet<String> fragments,
       // The host transition is in lib.analysis, so we can't reference it directly here.
       ConfigurationTransition hostTransition,
@@ -106,6 +109,7 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
         requiredAspectProviders,
         provides,
         paramAttributes,
+        requiredAspects,
         fragments,
         hostTransition,
         hostFragments,
@@ -154,16 +158,16 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
   }
 
   @Override
-  public void export(Label extensionLabel, String name) {
+  public void export(EventHandler handler, Label extensionLabel, String name) {
     Preconditions.checkArgument(!isExported());
     this.aspectClass = new StarlarkAspectClass(extensionLabel, name);
   }
 
-  private static final List<String> allAttrAspects = Arrays.asList("*");
+  private static final ImmutableList<String> ALL_ATTR_ASPECTS = ImmutableList.of("*");
 
   public AspectDefinition getDefinition(AspectParameters aspectParams) {
     AspectDefinition.Builder builder = new AspectDefinition.Builder(aspectClass);
-    if (allAttrAspects.equals(attributeAspects)) {
+    if (ALL_ATTR_ASPECTS.equals(attributeAspects)) {
       builder.propagateAlongAllAttributes();
     } else {
       for (String attributeAspect : attributeAspects) {
@@ -200,6 +204,11 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
     builder.addRequiredToolchains(requiredToolchains);
     builder.useToolchainTransition(useToolchainTransition);
     builder.applyToGeneratingRules(applyToGeneratingRules);
+    ImmutableSet.Builder<AspectClass> requiredAspectsClasses = ImmutableSet.builder();
+    for (StarlarkAspect requiredAspect : requiredAspects) {
+      requiredAspectsClasses.add(requiredAspect.getAspectClass());
+    }
+    builder.requiredAspectClasses(requiredAspectsClasses.build());
     return builder.build();
   }
 
@@ -208,6 +217,7 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
     return aspectClass != null;
   }
 
+  @Override
   public Function<Rule, AspectParameters> getDefaultParametersExtractor() {
     return rule -> {
       AttributeMap ruleAttrs = RawAttributeMapper.of(rule);
@@ -258,12 +268,32 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
   }
 
   @Override
-  public void attachToAttribute(Attribute.Builder<?> attrBuilder) throws EvalException {
-    if (!isExported()) {
+  public void attachToAspectsList(
+      String baseAspectName, AspectsListBuilder aspectsList, boolean allowAspectsParameters)
+      throws EvalException {
+
+    if (!this.isExported()) {
       throw Starlark.errorf(
           "Aspects should be top-level values in extension files that define them.");
     }
-    attrBuilder.aspect(this);
+
+    if (!allowAspectsParameters && !this.paramAttributes.isEmpty()) {
+      throw Starlark.errorf("Cannot use parameterized aspect %s at the top level.", this.getName());
+    }
+
+    for (StarlarkAspect requiredAspect : requiredAspects) {
+      requiredAspect.attachToAspectsList(this.getName(), aspectsList, allowAspectsParameters);
+    }
+
+    aspectsList.addAspect(this, baseAspectName);
+  }
+
+  public ImmutableSet<StarlarkAspect> getRequiredAspects() {
+    return requiredAspects;
+  }
+
+  public ImmutableList<ImmutableSet<StarlarkProviderIdentifier>> getRequiredProviders() {
+    return requiredProviders;
   }
 
   @Override
@@ -282,11 +312,12 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
         && Objects.equals(requiredAspectProviders, that.requiredAspectProviders)
         && Objects.equals(provides, that.provides)
         && Objects.equals(paramAttributes, that.paramAttributes)
+        && Objects.equals(requiredAspects, that.requiredAspects)
         && Objects.equals(fragments, that.fragments)
         && Objects.equals(hostTransition, that.hostTransition)
         && Objects.equals(hostFragments, that.hostFragments)
         && Objects.equals(requiredToolchains, that.requiredToolchains)
-        && Objects.equals(useToolchainTransition, that.useToolchainTransition)
+        && useToolchainTransition == that.useToolchainTransition
         && Objects.equals(aspectClass, that.aspectClass);
   }
 
@@ -300,6 +331,7 @@ public class StarlarkDefinedAspect implements StarlarkExportable, StarlarkAspect
         requiredAspectProviders,
         provides,
         paramAttributes,
+        requiredAspects,
         fragments,
         hostTransition,
         hostFragments,
