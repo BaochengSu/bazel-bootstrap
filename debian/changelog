@@ -1,3 +1,14 @@
+bazel-bootstrap (4.2.3+ds-1) unstable; urgency=medium
+
+  * New upstream release
+  * Ease building packages that use Bazel source code
+    - Use default-jdk
+    - Add patch to use "@io_bazel" Bazel package names
+  * Modify d/watch to ignore pre-release tags
+  * Remove unnecessary dependency versioning
+
+ -- Olek Wojnar <olek@debian.org>  Wed, 09 Nov 2022 20:12:46 -0500
+
 bazel-bootstrap (4.2.2+ds-1) unstable; urgency=medium
 
   * New upstream release

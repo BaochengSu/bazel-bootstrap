@@ -132,7 +132,7 @@ Files-Excluded: derived
                 */*.jar
 
 Files: *
-Copyright: 2002-2020 Google Inc.
+Copyright: 2002-2022 Google Inc.
                      The Bazel Authors <bazel-dev@googlegroups.com>
 					 Anthony Bellissimo <twon33@gmail.com>
 					 Volker Braun <vbraun.name@gmail.com>
