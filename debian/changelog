@@ -1,4 +1,4 @@
-bazel-bootstrap (4.2.3+ds-1) unstable; urgency=medium
+bazel-bootstrap (4.2.3+ds-1) unstable; urgency=high
 
   * New upstream release
   * Ease building packages that use Bazel source code
@@ -6,6 +6,9 @@ bazel-bootstrap (4.2.3+ds-1) unstable; urgency=medium
     - Add patch to use "@io_bazel" Bazel package names
   * Modify d/watch to ignore pre-release tags
   * Remove unnecessary dependency versioning
+  * Fix FTBFS with OpenJDK 17 (Closes: #1023833)
+    - Add patch for `--add-opens`
+    - Update Bazel package build process in d/rules
 
  -- Olek Wojnar <olek@debian.org>  Wed, 09 Nov 2022 20:12:46 -0500
 

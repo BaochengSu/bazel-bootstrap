@@ -1,0 +1,46 @@
+Description: Add required `--add-opens` server JVM args with non-embedded JDK
+ Since the Bazel server requires JDK 11 or higher to run, the
+ `--add-opens` server JVM arg for `java.lang` can now be added
+ unconditionally, which ensures support with JDK 17+.
+ Also removes the additional opens for `java.nio`, which was only needed
+ to silence a protobuf warning that has since been fixed upstream.
+ .
+ Olek Wojnar modified upstream commit for Debian.
+Author: Fabian Meumertzheim <fabian@meumertzhe.im>
+Origin: upstream, https://github.com/bazelbuild/bazel/pull/16706
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2022-11-14
+
+--- a/src/main/cpp/blaze.cc
++++ b/src/main/cpp/blaze.cc
+@@ -360,13 +360,11 @@
+   result.push_back("-XX:HeapDumpPath=" +
+                    startup_options.output_base.AsJvmArgument());
+ 
+-  // TODO(b/109998449): only assume JDK >= 9 for embedded JDKs
+-  if (!startup_options.GetEmbeddedJavabase().IsEmpty()) {
+-    // quiet warnings from com.google.protobuf.UnsafeUtil,
+-    // see: https://github.com/google/protobuf/issues/3781
+-    result.push_back("--add-opens=java.base/java.nio=ALL-UNNAMED");
+-    result.push_back("--add-opens=java.base/java.lang=ALL-UNNAMED");
+-  }
++  // com.google.devtools.build.lib.unsafe.StringUnsafe uses reflection to access
++  // private fields in java.lang.String. The Bazel server requires Java 11, so
++  // this option is known to be supported.
++  result.push_back("--add-opens=java.base/java.nio=ALL-UNNAMED");
++  result.push_back("--add-opens=java.base/java.lang=ALL-UNNAMED");
+ 
+   result.push_back("-Xverify:none");
+ 
+--- a/scripts/bootstrap/compile.sh
++++ b/scripts/bootstrap/compile.sh
+@@ -439,6 +439,8 @@
+       -XX:+HeapDumpOnOutOfMemoryError -Xverify:none -Dfile.encoding=ISO-8859-1 \
+       -XX:HeapDumpPath=${OUTPUT_DIR} \
+       -Djava.util.logging.config.file=${OUTPUT_DIR}/javalog.properties \
++      --add-opens=java.base/java.nio=ALL-UNNAMED \
++      --add-opens=java.base/java.lang=ALL-UNNAMED \
+       ${JNI_FLAGS} \
+       -jar ${ARCHIVE_DIR}/libblaze.jar \
+       --batch \
