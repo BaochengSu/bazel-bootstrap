@@ -1,0 +1,30 @@
+Description: Allow external software to build using Bazel source code
+ Use "@io_bazel//" instead of "//" to reference Bazel packages
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2022-11-09
+
+--- a/tools/distributions/debian/debian_java.BUILD
++++ b/tools/distributions/debian/debian_java.BUILD
+@@ -217,9 +217,9 @@
+     name = "guava",
+     jars = ["guava.jar"],
+     exports = [
+-        "@//third_party:error_prone_annotations",
+-        "@//third_party:jcip_annotations",
+-        "@//third_party:jsr305",
++        "@io_bazel//third_party:error_prone_annotations",
++        "@io_bazel//third_party:jcip_annotations",
++        "@io_bazel//third_party:jsr305",
+     ],
+ )
+ 
+@@ -353,7 +353,7 @@
+     runtime_deps = [
+         ":api_client",
+         ":guava",
+-        "@//third_party/aws-sdk-auth-lite",
++        "@io_bazel//third_party/aws-sdk-auth-lite",
+     ],
+ )
+ 

@@ -23,3 +23,4 @@ fix_bashisms.patch
 fix_longlines.patch
 debian_rxjava.patch
 remove_skylib.patch
+allow_builds_using_bazel_source.patch
