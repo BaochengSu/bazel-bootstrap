@@ -3,5 +3,5 @@ opts="pgpsigurlmangle=s#$#.sig#, \
   downloadurlmangle=s#/tag/#/download/#;s#(@ANY_VERSION@)#$1/bazel-$1-dist.zip#, \
   uversionmangle=s#([\d\.])[_\.\-\+]?((RC|rc|pre|dev|beta|alpha)[\d\.]*)$#$1~$2#, \
   dversionmangle=s#\+ds\d*$##, repacksuffix=+ds" \
-  https://github.com/bazelbuild/bazel/tags?after=6.0.0-pre.20220315.4 \
-  .*/releases/tag/@ANY_VERSION@ debian uupdate
+  https://github.com/bazelbuild/bazel/releases?q=%22Release+4%22&expanded=true \
+  .*/tag/@ANY_VERSION@ debian
