@@ -9,8 +9,9 @@ bazel-bootstrap (4.2.3+ds-1) unstable; urgency=high
   * Fix FTBFS with OpenJDK 17 (Closes: #1023833)
     - Add patch for `--add-opens`
     - Update Bazel package build process in d/rules
+  * Add patch to fix FTBFS with OpenJDK 13+
 
- -- Olek Wojnar <olek@debian.org>  Wed, 09 Nov 2022 20:12:46 -0500
+ -- Olek Wojnar <olek@debian.org>  Mon, 14 Nov 2022 17:43:02 -0500
 
 bazel-bootstrap (4.2.2+ds-1) unstable; urgency=medium
 
