@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+
+bazel test --define=distribution=debian --verbose_failures \
+ //examples/java-native/src/test/java/com/example/myproject:custom_with_test_class

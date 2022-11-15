@@ -2,7 +2,7 @@
 
 bazel test \
  --define=distribution=debian --verbose_failures \
- //examples/cpp:hello-fail_test
+ //examples/java-native/src/test/java/com/example/myproject:resource-fail
 
 if [ $? -eq 3 ]; then
   exit 0

@@ -1,6 +1,0 @@
-#!/bin/bash
-set -e
-
-bazel test \
-//examples/java-native/src/test/java/com/example/myproject:sleep3 \
---define=distribution=debian

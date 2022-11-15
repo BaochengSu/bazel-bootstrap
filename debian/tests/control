@@ -1,4 +1,27 @@
-Tests: bazel-generic cpp-success cpp-failure java-1 java-2 java-3 java-4 java-5 java-6 java-7 java-8 java-9
+Tests:
+ bazel-generic
+ cpp-success
+ cpp-failure
+ java-1-hello
+ java-2-custom
+ java-3-test-class
+ java-4-fail
+ java-5-sleep0
+ java-6-sleep1
+ java-7-sleep2
+ java-8-sleep3
+ java-9-resource-fail
 Depends: bazel-bootstrap, junit4
 Restrictions: allow-stderr
-Architecture: amd64 arm64 mips64el ppc64el s390x alpha ia64 kfreebsd-amd64 ppc64 riscv64 sparc64
+Architecture:
+ amd64
+ arm64
+ mips64el
+ ppc64el
+ s390x
+ alpha
+ ia64
+ kfreebsd-amd64
+ ppc64
+ riscv64
+ sparc64

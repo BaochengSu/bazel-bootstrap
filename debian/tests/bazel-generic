@@ -1,4 +1,7 @@
 #!/bin/bash
 set -e
 
-bazel build //examples/gen:genrule
+bazel clean --expunge --define=distribution=debian
+bazel info --define=distribution=debian
+bazel build --define=distribution=debian --verbose_failures \
+ //examples/gen:genrule
