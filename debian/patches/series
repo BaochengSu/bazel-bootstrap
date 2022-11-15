@@ -26,3 +26,4 @@ remove_skylib.patch
 allow_builds_using_bazel_source.patch
 openjdk-17_add-opens.patch
 JDK-13_fix.patch
+fix_JDK-16_test_failures.patch

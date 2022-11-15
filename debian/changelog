@@ -11,6 +11,7 @@ bazel-bootstrap (4.2.3+ds-1) unstable; urgency=high
     - Update Bazel package build process in d/rules
   * Add patch to fix FTBFS with OpenJDK 13+
   * Refactor autopkgtests
+  * Add patch to fix test failures with OpenJDK 16+
 
  -- Olek Wojnar <olek@debian.org>  Mon, 14 Nov 2022 17:43:02 -0500
 

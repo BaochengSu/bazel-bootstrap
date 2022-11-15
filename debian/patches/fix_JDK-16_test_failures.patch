@@ -1,0 +1,40 @@
+Description: Rename "UseParallelOldGC" to enable JDK 16+ builds
+ Builds with the local toolchain fail when it is using OpenJDK 16, because
+ UseParallelOldGC option was deprecated in JEP 366 and then subsequently
+ removed in https://hg.openjdk.java.net/jdk/jdk/rev/62a003539b0c.
+Author: Olek Wojnar <olek@debian.org>
+Origin: upstream, https://github.com/bazelbuild/bazel/issues/13784
+Forwarded: not-needed
+Last-Update: 2022-11-14
+
+--- a/src/test/shell/bazel/bazel_java_tools_test.sh
++++ b/src/test/shell/bazel/bazel_java_tools_test.sh
+@@ -207,7 +207,7 @@
+   jvm_opts = [
+       # In JDK9 we have seen a ~30% slow down in JavaBuilder performance when using
+       # G1 collector and having compact strings enabled.
+-      "-XX:+UseParallelOldGC",
++      "-XX:+UseParallelGC",
+       "-XX:-CompactStrings",
+       # override the javac in the JDK.
+       "--patch-module=java.compiler=\$(location //:java_compiler_jar)",
+--- a/tools/jdk/java_toolchain_default.bzl.java_tools
++++ b/tools/jdk/java_toolchain_default.bzl.java_tools
+@@ -70,7 +70,7 @@
+     jvm_opts = [
+         # In JDK9 we have seen a ~30% slow down in JavaBuilder performance when using
+         # G1 collector and having compact strings enabled.
+-        "-XX:+UseParallelOldGC",
++        "-XX:+UseParallelGC",
+         "-XX:-CompactStrings",
+         # override the javac in the JDK.
+         "--patch-module=java.compiler=$(location //:java_compiler_jar)",
+@@ -111,7 +111,7 @@
+     jvm_opts = [
+         # In JDK9 we have seen a ~30% slow down in JavaBuilder performance when using
+         # G1 collector and having compact strings enabled.
+-        "-XX:+UseParallelOldGC",
++        "-XX:+UseParallelGC",
+         "-XX:-CompactStrings",
+         # override the javac in the JDK.
+         "--patch-module=java.compiler=$(location //:java_compiler_jar)",
