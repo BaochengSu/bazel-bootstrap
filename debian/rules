@@ -78,6 +78,9 @@ override_dh_install:
 	mv output/etc debian/tmp
 	mv output/usr/bin debian/tmp/usr
 	mv output/usr/share debian/tmp/usr
+# Fail build (and show culprits) if Bazel components are not properly installed
+	mv output debian/tmp/leftovers
+	ls -laR debian/tmp/leftovers
 	dh_install
 	rm -rf ${BAZDATADIR}/usr/share/bazel/embedded_tools/tools/zip/zipper
 
