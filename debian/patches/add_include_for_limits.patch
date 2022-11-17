@@ -1,18 +1,34 @@
 Description: Add include for <limits> to allow correct build of ijar binaries
- Also add include for <stdexcept> to allow proper builds on non-amd64 systems:
- https://github.com/bazelbuild/bazel/pull/13575
-Author: Olek Wojnar <olek@debian.org>
+ Also add include for <stdexcept> to allow proper builds on non-amd64 systems
+Origin: upstream
+ https://github.com/bazelbuild/bazel/issues/12756#issuecomment-1003685465
 Forwarded: not-needed
 Last-Update: 2022-09-27
 
---- a/third_party/ijar/common.h
-+++ b/third_party/ijar/common.h
-@@ -21,6 +21,8 @@
- #include <stddef.h>
- #include <stdint.h>
- #include <string.h>
+--- a/third_party/ijar/mapped_file_unix.cc
++++ b/third_party/ijar/mapped_file_unix.cc
+@@ -15,10 +15,11 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <stdio.h>
+-#include <unistd.h>
+ #include <sys/mman.h>
++#include <unistd.h>
+ 
+ #include <algorithm>
++#include <limits>
+ 
+ #include "third_party/ijar/mapped_file.h"
+ 
+--- a/third_party/ijar/zlib_client.h
++++ b/third_party/ijar/zlib_client.h
+@@ -17,6 +17,9 @@
+ 
+ #include <limits.h>
+ 
 +#include <limits>
 +#include <stdexcept>
++
+ #include "third_party/ijar/common.h"
  
- #ifdef _WIN32
- #define PATH_MAX 4096
+ namespace devtools_ijar {
