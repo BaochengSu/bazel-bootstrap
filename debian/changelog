@@ -1,6 +1,6 @@
-bazel-bootstrap (4.2.3+ds-1~exp2) experimental; urgency=high
+bazel-bootstrap (4.2.3+ds-1~exp3) experimental; urgency=high
 
-  * Upload to experimental to test fix, for real this time
+  * Upload to experimental to test fix, third time the charm?
   * New upstream release
   * Ease building packages that use Bazel source code
     - Use default-jdk
