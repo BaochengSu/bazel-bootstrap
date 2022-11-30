@@ -13,6 +13,9 @@ export BAZSRCDIR = ${CURDIR}/debian/bazel-bootstrap-source
 export CCACHE_DISABLE = 1
 export CCACHE_TEMPDIR = ${CURDIR}/debian/ccachetmp
 
+# Set locale for reproducible builds
+export LC_ALL = C
+
 # Ensure packages build with no Internet access
 export http_proxy=127.0.0.1:9
 export https_proxy=127.0.0.1:9
@@ -32,8 +35,10 @@ export EXTRA_BAZEL_ARGS = \
 	--compilation_mode dbg \
 	--action_env=CCACHE_DISABLE \
 	--action_env=CCACHE_TEMPDIR \
+	--action_env=LC_ALL \
 	--host_action_env=CCACHE_DISABLE \
 	--host_action_env=CCACHE_TEMPDIR \
+	--host_action_env=LC_ALL \
 	--sandbox_debug \
 	--sandbox_writable_path=${CCACHE_TEMPDIR} \
 	--override_repository=com_google_protobuf=${CURDIR}/tools/distributions/debian/protobuf \

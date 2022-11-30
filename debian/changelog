@@ -14,6 +14,7 @@ bazel-bootstrap (4.2.3+ds-1) unstable; urgency=high
   * Add patch to fix test failures with OpenJDK 16+
   * Sync add_include_for_limits.patch with upstream
   * Update build-bash_completion.patch to prevent duplicate file
+  * Set LC_ALL=C for reproducible builds
 
  -- Olek Wojnar <olek@debian.org>  Mon, 14 Nov 2022 17:43:02 -0500
 
