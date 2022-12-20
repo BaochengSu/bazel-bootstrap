@@ -2,10 +2,16 @@ Bazel for Debian
 ---------------
 
 Please note that Bazel does not currently support builds on 32-bit processors.
-This support may be added in the future.
+This support is unlikely to be added in the future.
 
 This build system is not currently considered stable in Debian. Furthermore,
 this is only a bootstrap version to allow required initial builds. Please
 report any bugs or unusual indications!
 
- -- Olek Wojnar <olek@debian.org>  Tue, 10 Nov 2020 10:05:44 -0400
+The following convenience files are located in the bazel-source/debian directory:
+amd64.Dockerfile -- Test amd64 build outside the Debian build system
+bazel_autopkgtest.Dockerfile -- Troubleshoot autopkgtest outside a Debian system
+mips64el.Dockerfile -- Test mips64el build outside the Debian build system
+riscv64.Dockerfile -- Test riscv64 build outside the Debian build system
+
+ -- Olek Wojnar <olek@debian.org>  Tue, 20 Dec 2022 13:03:27 -0400
