@@ -1,3 +1,10 @@
+bazel-bootstrap (4.2.3+ds-2) unstable; urgency=medium
+
+  * Temporarily add grpc-absl_synchronization.patch
+    - Fixes FTBFS caused by bug in new version of grpc (Closes: #1027112)
+
+ -- Olek Wojnar <olek@debian.org>  Thu, 05 Jan 2023 17:58:54 -0500
+
 bazel-bootstrap (4.2.3+ds-1) unstable; urgency=high
 
   * New upstream release
