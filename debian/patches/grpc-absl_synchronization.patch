@@ -1,0 +1,19 @@
+Description: Modified patch from Ubuntu to fix grpc-related FTBFS
+ Thanks to Gianfranco Costamagna for the original patch:
+ https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1027112#23
+ Patch slimmed down by Olek to only add the one missing linker flag.
+Author: Gianfranco Costamagna <locutusofborg@debian.org>
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2023-01-05
+
+--- a/tools/distributions/debian/debian_cc.BUILD
++++ b/tools/distributions/debian/debian_cc.BUILD
+@@ -39,6 +39,6 @@
+ # libgrpc++-dev
+ cc_library(
+     name = "grpc++_unsecure",
+-    linkopts = ["-lgrpc++_unsecure", "-lgrpc_unsecure", "-lgpr"],
++    linkopts = ["-lgrpc++_unsecure", "-lgrpc_unsecure", "-lgpr", "-labsl_synchronization"],
+     visibility = ["//visibility:public"],
+ )
