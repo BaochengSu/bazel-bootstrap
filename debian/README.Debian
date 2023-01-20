@@ -8,8 +8,8 @@ This build system is not currently considered stable in Debian. Furthermore,
 this is only a bootstrap version to allow required initial builds. Please
 report any bugs or unusual indications!
 
-The following convenience files are located in the bazel-source/debian directory:
-amd64.Dockerfile -- Test amd64 build outside the Debian build system
+These convenience files are located in the bazel-source/debian directory:
+amd64.Dockerfile -- Test amd64 build/autopkgtest outside the Debian build system
 bazel_autopkgtest.Dockerfile -- Troubleshoot autopkgtest outside a Debian system
 mips64el.Dockerfile -- Test mips64el build outside the Debian build system
 riscv64.Dockerfile -- Test riscv64 build outside the Debian build system

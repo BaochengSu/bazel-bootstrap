@@ -2,8 +2,10 @@ bazel-bootstrap (4.2.3+ds-2) unstable; urgency=high
 
   * Add grpc-absl_synchronization.patch
     - Fix FTBFS from added dependency in new version of grpc (Closes: #1027112)
+  * Update Dockerfiles
+    - Allow autopkgtest against unstable, experimental, and unbuilt source tree
 
- -- Olek Wojnar <olek@debian.org>  Thu, 05 Jan 2023 17:58:54 -0500
+ -- Olek Wojnar <olek@debian.org>  Fri, 27 Jan 2023 19:07:33 -0500
 
 bazel-bootstrap (4.2.3+ds-1) unstable; urgency=high
 
