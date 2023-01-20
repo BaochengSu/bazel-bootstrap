@@ -27,7 +27,12 @@ RUN sbuild-createchroot --arch=amd64 --include=eatmydata --no-deb-src\
 ENTRYPOINT sbuild-update -udr unstable-amd64-sbuild &&\
  autopkgtest\
  '--setup-commands=echo '"'"'Acquire::Retries "10";'"'"' > /etc/apt/apt.conf.d/75retry 2>&1 || true'\
- --apt-upgrade --pin-packages=experimental=src:bazel-bootstrap\
- '--add-apt-source=deb-src http://deb.debian.org/debian experimental main\
- deb http://deb.debian.org/debian experimental main'\
+## Experimental
+# --apt-upgrade --pin-packages=experimental=src:bazel-bootstrap\
+# '--add-apt-source=deb-src http://deb.debian.org/debian experimental main\
+# deb http://deb.debian.org/debian experimental main'\
+## Unstable
+ --apt-upgrade --pin-packages=unstable=src:bazel-bootstrap\
+ '--add-apt-source=deb-src http://deb.debian.org/debian unstable main\
+ deb http://deb.debian.org/debian unstable main'\
  bazel-bootstrap -- schroot unstable-amd64-sbuild
