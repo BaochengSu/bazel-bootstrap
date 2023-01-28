@@ -4,6 +4,7 @@ bazel-bootstrap (4.2.3+ds-2) unstable; urgency=high
     - Fix FTBFS from added dependency in new version of grpc (Closes: #1027112)
   * Update Dockerfiles
     - Allow autopkgtest against unstable, experimental, and unbuilt source tree
+  * Update standards to 4.6.2 (no changes)
 
  -- Olek Wojnar <olek@debian.org>  Fri, 27 Jan 2023 19:07:33 -0500
 
