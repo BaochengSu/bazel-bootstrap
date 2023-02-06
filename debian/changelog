@@ -1,3 +1,9 @@
+bazel-bootstrap (4.2.3+ds-3) unstable; urgency=high
+
+  * Temporarily disable flaky Java autopkgtests (Closes: #1029840)
+
+ -- Olek Wojnar <olek@debian.org>  Mon, 06 Feb 2023 18:03:43 -0500
+
 bazel-bootstrap (4.2.3+ds-2) unstable; urgency=high
 
   * Add grpc-absl_synchronization.patch
