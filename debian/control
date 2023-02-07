@@ -77,7 +77,7 @@ Vcs-Browser: https://salsa.debian.org/bazel-team/bazel-bootstrap
 Vcs-Git: https://salsa.debian.org/bazel-team/bazel-bootstrap.git
 
 Package: bazel-bootstrap
-Architecture: amd64 arm64 mips64el ppc64el s390x alpha ia64 kfreebsd-amd64 ppc64 riscv64 sparc64
+Architecture: amd64 arm64 ppc64el s390x alpha ia64 kfreebsd-amd64 ppc64 riscv64 sparc64
 Depends:
  bazel-bootstrap-data (= ${source:Version}),
  build-essential,

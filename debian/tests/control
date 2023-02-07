@@ -7,7 +7,6 @@ Restrictions: allow-stderr
 Architecture:
  amd64
  arm64
- mips64el
  ppc64el
  s390x
  alpha

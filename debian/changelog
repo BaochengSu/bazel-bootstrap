@@ -1,3 +1,9 @@
+bazel-bootstrap (4.2.3+ds-4) unstable; urgency=high
+
+  * Remove mips64el from supported architectures
+
+ -- Olek Wojnar <olek@debian.org>  Tue, 07 Feb 2023 05:27:57 -0500
+
 bazel-bootstrap (4.2.3+ds-3) unstable; urgency=high
 
   * Temporarily disable flaky Java autopkgtests (Closes: #1029840)
