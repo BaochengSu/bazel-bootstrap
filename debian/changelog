@@ -2,6 +2,8 @@ bazel-bootstrap (4.2.3+ds-5) unstable; urgency=medium
 
   * Add exclude_build_data.patch to remove internal timestamps
     - Ensure reproducible builds
+  * Remove bazel-bootstrap-data Recommends on bazel-bootstrap
+    - Prevent unsatisfiable dependency for unsupported architectures
 
  -- Olek Wojnar <olek@debian.org>  Mon, 13 Feb 2023 16:07:45 -0500
 

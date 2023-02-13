@@ -120,7 +120,6 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  ${python3:Depends},
-Recommends: bazel-bootstrap (= ${source:Version})
 Suggests: bash-completion
 Description: Tool to automate software builds and tests (data files)
  Supported build tasks include running compilers and linkers to produce
