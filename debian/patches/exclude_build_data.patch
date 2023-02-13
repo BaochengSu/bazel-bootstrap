@@ -1,0 +1,27 @@
+Description: Remove internal timestamps to ensure reproducible builds
+Author: Olek Wojnar <olek@debian.org>
+Forwarded: not-needed
+Last-Update: 2023-02-13
+
+--- a/src/tools/singlejar/options.h
++++ b/src/tools/singlejar/options.h
+@@ -24,7 +24,7 @@
+ class Options {
+  public:
+   Options()
+-      : exclude_build_data(false),
++      : exclude_build_data(true),
+         force_compression(false),
+         normalize_timestamps(false),
+         add_missing_directories(false),
+--- a/src/java_tools/singlejar/java/com/google/devtools/build/singlejar/SingleJar.java
++++ b/src/java_tools/singlejar/java/com/google/devtools/build/singlejar/SingleJar.java
+@@ -80,7 +80,7 @@
+   private OutputMode outputMode = OutputMode.FORCE_STORED;
+ 
+   /** Whether to include build-data.properties file */
+-  protected boolean includeBuildData = true;
++  protected boolean includeBuildData = false;
+ 
+   /** List of build information properties files */
+   protected List<String> buildInformationFiles = new ArrayList<>();

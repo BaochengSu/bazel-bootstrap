@@ -1,3 +1,10 @@
+bazel-bootstrap (4.2.3+ds-5) unstable; urgency=medium
+
+  * Add exclude_build_data.patch to remove internal timestamps
+    - Ensure reproducible builds
+
+ -- Olek Wojnar <olek@debian.org>  Mon, 13 Feb 2023 16:07:45 -0500
+
 bazel-bootstrap (4.2.3+ds-4) unstable; urgency=high
 
   * Remove mips64el from supported architectures
